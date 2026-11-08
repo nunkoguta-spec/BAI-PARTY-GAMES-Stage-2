@@ -20,7 +20,16 @@ app.use(express.json());
 
 const rooms = new Map();
 
-const QUESTION_TIME = 15_000;
+const DEFAULT_SETTINGS = Object.freeze({ quizSeconds: 15, gameMinutes: 10, correctPoints: 10, questionLimit: 0 });
+const QUESTION_BOXES = new Map([
+  ["question-box-01", { x: 360, y: 176 }],
+  ["question-box-02", { x: 800, y: 176 }],
+  ["question-box-03", { x: 1300, y: 176 }],
+  ["question-box-04", { x: 1800, y: 144 }],
+  ["question-box-05", { x: 2400, y: 176 }],
+  ["question-box-06", { x: 2900, y: 144 }],
+  ["question-box-07", { x: 3400, y: 176 }]
+]);
 
 const QUESTION_BANK = [
   {
@@ -121,6 +130,20 @@ function getRoom(socket, roomCode) {
   return room;
 }
 
+function resolveHostRoom(socket, payload = {}) {
+  const code = String(payload.roomCode || "").trim().toUpperCase();
+  const room = rooms.get(code);
+  if (!room) return null;
+  if (room.hostId === socket.id) return room;
+  if (payload.hostToken && payload.hostToken === room.hostToken) {
+    room.hostId = socket.id;
+    room.members.add(socket.id);
+    socket.join(room.code);
+    return room;
+  }
+  return null;
+}
+
 function publicLeaderboard(room) {
   return [...room.players.values()]
     .map((player) => ({
@@ -149,6 +172,7 @@ function broadcastPlayerList(room) {
       connected: true
     }))
   );
+  io.to(room.code).emit("room:status", { status: room.status });
 }
 
 // Data publik avatar untuk multiplayer.
@@ -158,16 +182,24 @@ function publicPlayerPosition(player) {
     name: player.name,
     x: player.x,
     y: player.y,
-    facing: player.facing
+    facing: player.facing,
+    vx: player.vx || 0,
+    vy: player.vy || 0,
+    state: player.state || "idle",
+    grounded: player.grounded !== false
   };
 }
 
-function publicQuestion(question) {
+function publicQuestion(question, durationSeconds, questionNumber, deadline) {
   return {
     questionId: question.id,
+    number: questionNumber,
     question: question.question,
     choices: question.choices,
-    duration: QUESTION_TIME / 1000
+    points: 10,
+    duration: durationSeconds,
+    deadline,
+    serverNow: Date.now()
   };
 }
 
@@ -189,7 +221,7 @@ function finishQuiz(room, player, session, timedOut = false) {
     session.selectedAnswer === session.question.answer;
 
   if (correct) {
-    player.score += 10;
+    player.score += room.settings.correctPoints;
   } else if (!timedOut) {
     player.score -= 5;
   }
@@ -198,7 +230,7 @@ function finishQuiz(room, player, session, timedOut = false) {
     correct,
     timedOut,
     correctAnswer: session.question.answer,
-    scoreChange: correct ? 10 : timedOut ? 0 : -5,
+    scoreChange: correct ? room.settings.correctPoints : timedOut ? 0 : -5,
     totalScore: player.score
   };
 
@@ -218,6 +250,40 @@ function finishQuiz(room, player, session, timedOut = false) {
   });
 
   broadcastLeaderboard(room);
+  if (room.status === "ended" && room.players.size) {
+    const winner = publicLeaderboard(room)[0];
+    io.to(room.code).emit("game:ended", { leaderboard: publicLeaderboard(room), winner });
+  }
+}
+
+function endGame(room, reason = "host") {
+  if (room.status === "ended") return;
+  clearTimeout(room.gameTimer);
+  room.status = "ended";
+  for (const player of room.players.values()) {
+    if (player.activeQuiz) finishQuiz(room, player, player.activeQuiz, true);
+  }
+  const leaderboard = publicLeaderboard(room);
+  io.to(room.code).emit("room:status", { status: "ended", reason, leaderboard, winner: leaderboard[0] || null });
+  io.to(room.code).emit("game:ended", { reason, leaderboard, winner: leaderboard[0] || null });
+}
+
+function pauseGame(room) {
+  if (room.status !== "playing") return false;
+  room.pausedRemaining = Math.max(0, room.endsAt - Date.now());
+  clearTimeout(room.gameTimer);
+  room.status = "paused";
+  io.to(room.code).emit("room:status", { status: "paused", remainingMs: room.pausedRemaining });
+  return true;
+}
+
+function resumeGame(room) {
+  if (room.status !== "paused") return false;
+  room.status = "playing";
+  room.endsAt = Date.now() + room.pausedRemaining;
+  room.gameTimer = setTimeout(() => endGame(room, "timeout"), room.pausedRemaining);
+  io.to(room.code).emit("room:status", { status: "playing", endsAt: room.endsAt });
+  return true;
 }
 
 // =====================================================
@@ -258,12 +324,19 @@ io.on("connection", (socket) => {
 
   socket.on("room:create", (payload = {}, callback = () => {}) => {
     const code = createRoomCode();
+    const hostToken = randomInt(100000, 999999).toString(36) + "-" + Date.now().toString(36);
 
     const room = {
       code,
       hostId: socket.id,
+      hostToken,
       members: new Set([socket.id]),
       players: new Map(),
+      status: "waiting",
+      settings: { ...DEFAULT_SETTINGS },
+      gameTimer: null,
+      endsAt: null,
+      pausedRemaining: 0,
       usedQuestions: new Set()
     };
 
@@ -274,10 +347,104 @@ io.on("connection", (socket) => {
     callback({
       ok: true,
       roomCode: code,
-      hostId: socket.id
+      hostId: socket.id,
+      hostToken
     });
 
-    console.log(`[ROOM] Created ${code}`);
+    console.log(`[ROOM] Created ${code} (host: ${socket.id})`);
+  });
+
+  // =====================================================
+  // HOST STARTS GAME
+  // =====================================================
+
+  socket.on("room:start", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room) {
+      callback({ ok: false, error: "Hanya host yang dapat memulai game." });
+      return;
+    }
+    if (room.status === "playing") {
+      callback({ ok: true, status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
+      return;
+    }
+    if (room.status === "ended") {
+      callback({ ok: false, error: "Game sudah selesai. Buat room baru untuk bermain lagi." });
+      return;
+    }
+    room.status = "playing";
+    room.endsAt = Date.now() + room.settings.gameMinutes * 60_000;
+    room.gameTimer = setTimeout(() => endGame(room, "timeout"), room.settings.gameMinutes * 60_000);
+    io.to(room.code).emit("room:settings", room.settings);
+    io.to(room.code).emit("room:status", { status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
+    callback({ ok: true, status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
+  });
+
+  socket.on("room:settings", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room || room.status !== "waiting") {
+      callback({ ok: false, error: "Pengaturan hanya dapat diubah host sebelum game dimulai." });
+      return;
+    }
+    const settings = payload.settings || {};
+    const quizSeconds = Number(settings.quizSeconds);
+    const gameMinutes = Number(settings.gameMinutes);
+    const correctPoints = Number(settings.correctPoints);
+    if (![10, 15, 20, 30, 45, 60].includes(quizSeconds) || !Number.isInteger(gameMinutes) || gameMinutes < 1 || gameMinutes > 60 || !Number.isInteger(correctPoints) || correctPoints < 1 || correctPoints > 100) {
+      callback({ ok: false, error: "Pengaturan waktu atau poin tidak valid." });
+      return;
+    }
+    room.settings = { ...room.settings, quizSeconds, gameMinutes, correctPoints };
+    io.to(room.code).emit("room:settings", room.settings);
+    callback({ ok: true, settings: room.settings });
+  });
+
+  socket.on("room:pause", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room || !pauseGame(room)) {
+      callback({ ok: false, error: "Game tidak dapat dijeda." });
+      return;
+    }
+    callback({ ok: true, remainingMs: room.pausedRemaining });
+  });
+
+  socket.on("room:resume", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room || !resumeGame(room)) {
+      callback({ ok: false, error: "Game tidak dapat dilanjutkan." });
+      return;
+    }
+    callback({ ok: true, endsAt: room.endsAt });
+  });
+
+  socket.on("room:end", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room || room.status === "ended") {
+      callback({ ok: false, error: "Game tidak dapat diakhiri." });
+      return;
+    }
+    endGame(room, "host");
+    callback({ ok: true });
+  });
+
+  socket.on("room:kick", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room) {
+      callback({ ok: false, error: "Hanya host yang dapat mengeluarkan pemain." });
+      return;
+    }
+    const targetId = String(payload.playerId || "");
+    if (!room.players.has(targetId)) {
+      callback({ ok: false, error: "Pemain tidak ditemukan." });
+      return;
+    }
+    const targetSocket = io.sockets.sockets.get(targetId);
+    if (targetSocket) {
+      targetSocket.emit("player:kicked", { reason: "Dikeluarkan oleh host." });
+      targetSocket.leave(room.code);
+    }
+    removePlayer(room, targetId);
+    callback({ ok: true });
   });
 
   // =====================================================
@@ -307,8 +474,10 @@ io.on("connection", (socket) => {
       callback({
         ok: true,
         roomCode: code,
-        playerId: socket.id
+        playerId: socket.id,
+        status: room.status
       });
+      socket.emit("room:status", { status: room.status });
       return;
     }
 
@@ -321,7 +490,11 @@ io.on("connection", (socket) => {
       usedBoxes: new Set(),
       x: 240,
       y: 208,
-      facing: "right"
+      facing: "right",
+      vx: 0,
+      vy: 0,
+      state: "idle",
+      grounded: true
     };
 
     room.members.add(socket.id);
@@ -333,8 +506,10 @@ io.on("connection", (socket) => {
       ok: true,
       roomCode: code,
       playerId: socket.id,
-      playerName: name
+      playerName: name,
+      status: room.status
     });
+    socket.emit("room:status", { status: room.status });
 
     // Kirim posisi pemain lama ke HP pemain baru.
     socket.emit(
@@ -397,22 +572,25 @@ io.on("connection", (socket) => {
 
     const player = room.players.get(socket.id);
 
-    if (!player) return;
+    if (!player || player.activeQuiz) return;
 
     const x = Number(payload.x);
     const y = Number(payload.y);
 
     if (Number.isFinite(x) && Number.isFinite(y)) {
-      player.x = Math.max(0, Math.min(100000, x));
-      player.y = Math.max(0, Math.min(100000, y));
+      const distance = Math.hypot(x - player.x, y - player.y);
+      const elapsed = Math.max(16, Date.now() - (player.lastMoveAt || Date.now() - 100));
+      if (distance > Math.max(70, 0.28 * elapsed + 45)) return;
+      player.x = Math.max(0, Math.min(3840, x));
+      player.y = Math.max(0, Math.min(384, y));
+      player.lastMoveAt = Date.now();
     }
 
-    if (
-      payload.facing === "left" ||
-      payload.facing === "right"
-    ) {
-      player.facing = payload.facing;
-    }
+    if (payload.facing === "left" || payload.facing === "right") player.facing = payload.facing;
+    if ([-1, 0, 1].includes(Math.sign(Number(payload.vx)))) player.vx = Math.max(-500, Math.min(500, Number(payload.vx) || 0));
+    if (Number.isFinite(Number(payload.vy))) player.vy = Math.max(-700, Math.min(700, Number(payload.vy)));
+    if (["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact"].includes(payload.state)) player.state = payload.state;
+    if (typeof payload.grounded === "boolean") player.grounded = payload.grounded;
 
     const movementData = publicPlayerPosition(player);
 
@@ -446,6 +624,11 @@ io.on("connection", (socket) => {
         return;
       }
 
+      if (room.status !== "playing") {
+        callback({ ok: false, error: "Game belum dimulai oleh host." });
+        return;
+      }
+
       const player = room.players.get(socket.id);
 
       if (!player) {
@@ -456,9 +639,15 @@ io.on("connection", (socket) => {
         return;
       }
 
+      if (player.activeQuiz) {
+        callback({ ok: false, error: "Selesaikan quiz yang sedang aktif." });
+        return;
+      }
+
       const boxId = String(payload.boxId || "").trim();
 
-      if (!boxId) {
+      const boxPosition = QUESTION_BOXES.get(boxId);
+      if (!boxPosition) {
         callback({
           ok: false,
           error: "Question Block tidak valid."
@@ -466,11 +655,9 @@ io.on("connection", (socket) => {
         return;
       }
 
-      if (player.activeQuiz) {
-        callback({
-          ok: false,
-          error: "Selesaikan quiz yang sedang aktif."
-        });
+      // Validate reported position against actual box location (server authority).
+      if (Math.abs(player.x - boxPosition.x) > 64 || Math.abs(player.y - boxPosition.y) > 64) {
+        callback({ ok: false, error: "Pemain terlalu jauh dari Question Block." });
         return;
       }
 
@@ -502,11 +689,13 @@ io.on("connection", (socket) => {
       room.usedQuestions.add(`${player.id}:${question.id}`);
       player.usedBoxes.add(boxId);
 
+      const durationSeconds = room.settings.quizSeconds;
       const session = {
         question,
         boxId,
         selectedAnswer: null,
         finished: false,
+        deadline: Date.now() + durationSeconds * 1000,
         timeout: null
       };
 
@@ -514,12 +703,12 @@ io.on("connection", (socket) => {
 
       session.timeout = setTimeout(() => {
         finishQuiz(room, player, session, true);
-      }, QUESTION_TIME);
+      }, durationSeconds * 1000);
 
       // Soal hanya dikirim ke HP pemain yang menabrak.
       socket.emit(
         "quiz:show",
-        publicQuestion(question)
+        publicQuestion(question, durationSeconds, player.answeredQuestions + 1, session.deadline)
       );
 
       // TV hanya menerima status quiz.
@@ -549,6 +738,11 @@ io.on("connection", (socket) => {
           ok: false,
           error: "Room tidak valid."
         });
+        return;
+      }
+
+      if (room.status !== "playing") {
+        callback({ ok: false, error: "Game belum dimulai oleh host." });
         return;
       }
 
@@ -604,16 +798,26 @@ io.on("connection", (socket) => {
         return;
       }
 
+      if (payload.hostToken && payload.hostToken === room.hostToken) {
+        room.hostId = socket.id;
+      }
+
       room.members.add(socket.id);
       socket.join(code);
 
       callback({
         ok: true,
         roomCode: code,
-        players: publicLeaderboard(room)
+        status: room.status,
+        endsAt: room.endsAt,
+        settings: room.settings,
+        players: publicLeaderboard(room),
+        avatars: [...room.players.values()].map(publicPlayerPosition)
       });
 
+      socket.emit("players:state", [...room.players.values()].map(publicPlayerPosition));
       broadcastPlayerList(room);
+      broadcastLeaderboard(room);
     }
   );
 

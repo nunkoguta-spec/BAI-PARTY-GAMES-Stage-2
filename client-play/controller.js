@@ -1,4 +1,4 @@
-
+﻿
 import { io } from "socket.io-client";
 import { createPhoneGame } from "./phone-game.js";
 
@@ -12,6 +12,10 @@ const socket = io(`http://${location.hostname}:3001`, {
   reconnectionAttempts: Infinity,
   timeout: 10000
 });
+
+const startupParams = new URLSearchParams(location.search);
+const initialRoomCode = startupParams.get("room") || "";
+const initialPlayerName = startupParams.get("name") || "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,6 +39,7 @@ const mobileInput = {
 let quizInterval = null;
 let quizDeadline = 0;
 let quizActive = false;
+let gameStarted = false;
 let joiningRoom = false;
 
 // =====================================================
@@ -86,10 +91,7 @@ function refreshGameSize() {
     const container = $("phoneGame");
     if (!container) return;
 
-    const width = Math.max(1, container.clientWidth);
-    const height = Math.max(1, container.clientHeight);
-
-    phoneGame.scale.resize(width, height);
+    if (container.clientWidth < 1 || container.clientHeight < 1) return;
     phoneGame.scale.refresh();
   }, 150);
 }
@@ -102,8 +104,7 @@ function setMobileInput(action, pressed) {
   if (!(action in mobileInput)) return;
 
   mobileInput[action] = pressed;
-
-  if (phoneScene?.mobileInput) {
+  if (phoneScene?.mobileInput && phoneScene.mobileInput !== mobileInput) {
     phoneScene.mobileInput[action] = pressed;
   }
 }
@@ -120,6 +121,8 @@ function releaseAllMobileInput() {
 
 function enterRoom(data) {
   roomCode = data.roomCode;
+  gameStarted = data.status === "playing";
+  if (phoneScene) phoneScene.gameStarted = true;
 
   // ID disesuaikan dengan index.html.
   $("displayRoomCode").textContent = roomCode;
@@ -152,9 +155,11 @@ function startPhoneGame() {
 
         // Hubungkan kontrol HP ke Phaser.
         scene.mobileInput = mobileInput;
+        scene.gameStarted = true;
 
-        $("playerStatus").textContent =
-          "Game siap! Ayo mulai bermain.";
+        $("playerStatus").textContent = gameStarted
+          ? "Game berlangsung."
+          : "Menunggu host memulai game.";
 
         refreshGameSize();
 
@@ -330,6 +335,9 @@ function setupMobileControls() {
   }
 }
 
+if (initialRoomCode) $("roomCode").value = initialRoomCode.toUpperCase();
+if (initialPlayerName) $("playerName").value = initialPlayerName.slice(0, 24);
+
 setupMobileControls();
 
 window.addEventListener("blur", releaseAllMobileInput);
@@ -379,6 +387,7 @@ socket.on("quiz:show", (question) => {
   stopQuizTimer();
 
   quizActive = true;
+  if (phoneScene) phoneScene.quizPaused = true;
   releaseAllMobileInput();
 
   $("resultPanel").classList.add("hidden");
@@ -390,15 +399,14 @@ socket.on("quiz:show", (question) => {
 
   for (const letter of ["A", "B", "C", "D"]) {
     const button = document.createElement("button");
-
-    button.className = "choice";
-
+    button.className = "pixel-btn pixel-choice-btn";
     const prefix = document.createElement("span");
-    prefix.textContent = `${letter}.`;
+    prefix.className = "pixel-choice-badge";
+    prefix.textContent = `${letter}`;
 
     button.append(
       prefix,
-      document.createTextNode(question.choices[letter] ?? "")
+      document.createTextNode(` ${question.choices[letter] ?? ""}`)
     );
 
     button.addEventListener("click", () => {
@@ -439,12 +447,10 @@ socket.on("quiz:show", (question) => {
     $("choices").append(button);
   }
 
-  const duration = Math.max(
-    1,
-    Number(question.duration) || 15
-  );
-
-  quizDeadline = Date.now() + duration * 1000;
+  const duration = Math.max(1, Number(question.duration) || 15);
+  quizDeadline = question.deadline ? Number(question.deadline) : (Date.now() + duration * 1000);
+  $("quizPointsValue").textContent = String(question.points || 10);
+  $("quizQuestionNumber").textContent = `SOAL #${question.number || 1}`;
 
   renderTimer();
   quizInterval = setInterval(renderTimer, 100);
@@ -454,6 +460,23 @@ socket.on("quiz:show", (question) => {
 // QUIZ RESULT
 // =====================================================
 
+let quizAutoCloseTimer = null;
+function closeQuizUI() {
+  if (quizAutoCloseTimer) {
+    clearTimeout(quizAutoCloseTimer);
+    quizAutoCloseTimer = null;
+  }
+  $("quizPanel")?.classList.add("hidden");
+  $("resultPanel")?.classList.add("hidden");
+  if (phoneScene) {
+    phoneScene.quizPaused = false;
+    phoneScene.activeQuestionBoxId = null;
+  }
+  if ($("playerStatus")) {
+    $("playerStatus").textContent = "Siap bermain lagi.";
+  }
+}
+
 socket.on("quiz:result", (result) => {
   quizActive = false;
   stopQuizTimer();
@@ -461,23 +484,43 @@ socket.on("quiz:result", (result) => {
   score = Number(result.totalScore) || 0;
   $("score").textContent = score;
 
-  $("quizPanel").classList.add("hidden");
-  $("resultPanel").classList.remove("hidden");
+  // Highlight choices with pixel styles
+  const choices = $("choices")?.querySelectorAll("button") || [];
+  choices.forEach((btn) => {
+    const letter = btn.querySelector(".pixel-choice-badge")?.textContent?.trim();
+    if (letter === result.correctAnswer) {
+      btn.classList.add("pixel-choice-correct");
+    } else if (btn.classList.contains("selected") && !result.correct) {
+      btn.classList.add("pixel-choice-wrong");
+    }
+  });
+
+  const quizMessage = $("quizMessage");
+  if (quizMessage) {
+    if (result.correct) {
+      quizMessage.innerHTML = `<span class="pixel-feedback success">★ BENAR! +${result.scoreChange} POIN ★</span>`;
+    } else if (result.timedOut) {
+      quizMessage.innerHTML = `<span class="pixel-feedback timeout">⏱ WAKTU HABIS! (+0)</span>`;
+    } else {
+      quizMessage.innerHTML = `<span class="pixel-feedback wrong">✖ SALAH! JAWABAN: ${result.correctAnswer}</span>`;
+    }
+  }
 
   $("resultTitle").textContent = result.timedOut
     ? "WAKTU HABIS!"
     : result.correct
-      ? "RICHTIG! BENAR!"
-      : "FALSCH! SALAH!";
+      ? "★ BENAR! ★"
+      : "✖ SALAH! ✖";
 
   $("resultDetail").textContent =
-    `Jawaban benar: ${result.correctAnswer} | ` +
-    `Perubahan skor: ${
-      result.scoreChange > 0 ? "+" : ""
-    }${result.scoreChange} | ` +
-    `Total skor: ${result.totalScore}`;
+    `Jawaban benar: ${result.correctAnswer} | Poin: ${result.scoreChange > 0 ? "+" : ""}${result.scoreChange} | Total: ${result.totalScore}`;
 
-  $("playerStatus").textContent = "Quiz selesai.";
+  $("playerStatus").textContent = result.correct ? "Jawaban Benar! +Poin" : "Quiz selesai.";
+
+  if (quizAutoCloseTimer) clearTimeout(quizAutoCloseTimer);
+  quizAutoCloseTimer = setTimeout(() => {
+    closeQuizUI();
+  }, result.correct ? 1400 : 2200);
 });
 
 // =====================================================
@@ -485,16 +528,135 @@ socket.on("quiz:result", (result) => {
 // =====================================================
 
 $("closeResultButton").addEventListener("click", () => {
-  $("resultPanel").classList.add("hidden");
-  $("playerStatus").textContent = "Siap bermain lagi.";
+  closeQuizUI();
+});
+
+$("restartGameBtn")?.addEventListener("click", () => {
+  $("gameOverPanel")?.classList.add("hidden");
 });
 
 // =====================================================
 // UPDATE PLAYER LIST AND SCORE
 // =====================================================
 
+let playerGameTimerInterval = null;
+function updatePlayerGameTimer(endsAt) {
+  if (playerGameTimerInterval) clearInterval(playerGameTimerInterval);
+  const element = $("displayGameTimer");
+  if (!element) return;
+  if (!endsAt) {
+    element.textContent = "--:--";
+    return;
+  }
+  const tick = () => {
+    const remainingMs = Math.max(0, endsAt - Date.now());
+    const totalSec = Math.ceil(remainingMs / 1000);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    element.textContent = `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    if (remainingMs <= 0) {
+      clearInterval(playerGameTimerInterval);
+      element.textContent = "00:00";
+    }
+  };
+  tick();
+  playerGameTimerInterval = setInterval(tick, 1000);
+}
+
+const toggleBtn = $("toggleLeaderboardBtn");
+const drawer = $("playerLeaderboardDrawer");
+if (toggleBtn && drawer) {
+  toggleBtn.addEventListener("click", () => {
+    drawer.classList.toggle("hidden");
+  });
+}
+
+function renderPlayerDrawer(players = []) {
+  const container = $("playerLeaderboardList");
+  const sorted = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  const myIndex = sorted.findIndex(p => p.playerId === socket.id);
+  if ($("playerRank")) {
+    $("playerRank").textContent = myIndex !== -1 ? `#${myIndex + 1}` : "#-";
+  }
+  if (!container) return;
+  container.replaceChildren();
+  sorted.forEach((p, idx) => {
+    const row = document.createElement("div");
+    row.className = `pixel-player-row ${p.playerId === socket.id ? "pixel-row-highlight" : ""}`;
+    const rank = document.createElement("span");
+    rank.textContent = `${idx === 0 ? "👑 " : ""}${idx + 1}. ${p.name || "Player"}`;
+    const pts = document.createElement("span");
+    pts.textContent = `${Number(p.score) || 0} PTS`;
+    row.append(rank, pts);
+    container.appendChild(row);
+  });
+}
+
+socket.on("game:ended", ({ leaderboard, winner, reason } = {}) => {
+  stopQuizTimer();
+  updatePlayerGameTimer(null);
+  closeQuizUI();
+  const modal = $("gameOverPanel");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  $("winnerBanner").textContent = winner ? `👑 JUARA 1: ${winner.name} (${winner.score} PTS)` : "★ GAME OVER ★";
+  const sorted = Array.isArray(leaderboard) ? [...leaderboard].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)) : [];
+  if ($("podiumName1")) $("podiumName1").textContent = sorted[0]?.name ? sorted[0].name.slice(0, 8) : "-";
+  if ($("podiumScore1")) $("podiumScore1").textContent = sorted[0] ? `${sorted[0].score} PTS` : "-";
+  if ($("podiumName2")) $("podiumName2").textContent = sorted[1]?.name ? sorted[1].name.slice(0, 8) : "-";
+  if ($("podiumScore2")) $("podiumScore2").textContent = sorted[1] ? `${sorted[1].score} PTS` : "-";
+  if ($("podiumName3")) $("podiumName3").textContent = sorted[2]?.name ? sorted[2].name.slice(0, 8) : "-";
+  if ($("podiumScore3")) $("podiumScore3").textContent = sorted[2] ? `${sorted[2].score} PTS` : "-";
+
+  const finalContainer = $("finalLeaderboardList");
+  if (finalContainer && sorted.length) {
+    finalContainer.replaceChildren();
+    sorted.forEach((p, idx) => {
+      const row = document.createElement("div");
+      row.className = `pixel-player-row ${p.playerId === socket.id ? "pixel-row-highlight" : ""}`;
+      row.textContent = `${idx === 0 ? "👑 " : ""}${idx + 1}. ${p.name} - ${p.score} PTS`;
+      finalContainer.appendChild(row);
+    });
+  }
+});
+
+socket.on("player:kicked", ({ reason } = {}) => {
+  alert(reason || "Anda telah dikeluarkan dari permainan oleh host.");
+  location.reload();
+});
+
+socket.on("room:status", ({ status, endsAt, remainingMs } = {}) => {
+  gameStarted = status === "playing";
+  if (phoneScene) phoneScene.gameStarted = true;
+  if (endsAt) updatePlayerGameTimer(endsAt);
+  if (status === "paused") {
+    if (playerGameTimerInterval) clearInterval(playerGameTimerInterval);
+    const sec = Math.ceil((remainingMs || 0) / 1000);
+    $("displayGameTimer").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}P`;
+  }
+  if ($("playerStatus") && !quizActive) {
+    $("playerStatus").textContent = gameStarted
+      ? "Game berlangsung."
+      : status === "paused"
+        ? "Game dijeda oleh host."
+        : "Menunggu host memulai game.";
+  }
+});
+
+socket.on("tv:leaderboard", (players) => {
+  if (!Array.isArray(players)) return;
+  const ranked = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  const mine = ranked.find(player => player.playerId === socket.id);
+  if (mine) {
+    score = Number(mine.score) || 0;
+    $("score").textContent = score;
+  }
+});
+
 socket.on("room:players", (players) => {
   if (!Array.isArray(players)) return;
+  phoneScene?.setLeaderboardData(players);
+  renderPlayerDrawer(players);
 
   const mine = players.find(
     (player) => player.playerId === socket.id
@@ -506,8 +668,9 @@ socket.on("room:players", (players) => {
   }
 
   if (!quizActive) {
-    $("playerStatus").textContent =
-      `${players.length} pemain di room.`;
+    $("playerStatus").textContent = gameStarted
+      ? `${players.length} pemain di room.`
+      : "Menunggu host memulai game.";
   }
 });
 

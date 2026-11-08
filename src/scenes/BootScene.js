@@ -101,6 +101,54 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
+    const jump = `${ASSET}/avatar/Jump`;
+    for (const [key, url] of [
+      ["avatar-body-jump-left", `${jump}/Character/Character_Jump_Left-Sheet.png`],
+      ["avatar-body-jump-right", `${jump}/Character/Character_Jump_Right-Sheet.png`],
+      ["avatar-bottoms-jump-left", `${jump}/Clothing/Clothing_Bottoms_Jump_Left-Sheet.png`],
+      ["avatar-bottoms-jump-right", `${jump}/Clothing/Clothing_Bottoms_Jump_Right-Sheet.png`],
+      ["avatar-shoes-jump-left", `${jump}/Clothing/Clothing_Shoes_Jump_Left-Sheet.png`],
+      ["avatar-shoes-jump-right", `${jump}/Clothing/Clothing_Shoes_Jump_Right-Sheet.png`],
+      ["avatar-top-jump-left", `${jump}/Clothing/Clothing_Tops_Jump_Left-Sheet.png`],
+      ["avatar-top-jump-right", `${jump}/Clothing/Clothing_Tops_Jump_Right-Sheet.png`],
+      ["avatar-eyes-jump-left", `${jump}/Eyes/Eyes_Jump_Left-Sheet.png`],
+      ["avatar-eyes-jump-right", `${jump}/Eyes/Eyes_Jump_Right-Sheet.png`],
+      ["avatar-hair-jump-left", `${jump}/Hair/Hair_Jump_Left-Sheet.png`],
+      ["avatar-hair-jump-right", `${jump}/Hair/Hair_Jump_Right-Sheet.png`]
+    ]) this.load.spritesheet(key, url, { frameWidth: FRAME, frameHeight: FRAME });
+
+    const interact = `${ASSET}/avatar/Interact`;
+    for (const [key, url] of [
+      ["avatar-body-interact-left", `${interact}/Character/Character_Interact_Left-Sheet.png`],
+      ["avatar-body-interact-right", `${interact}/Character/Character_Interact_Right-Sheet.png`],
+      ["avatar-bottoms-interact-left", `${interact}/Clothing/Clothing_Bottoms_Interact_Left-Sheet.png`],
+      ["avatar-bottoms-interact-right", `${interact}/Clothing/Clothing_Bottoms_Interact_Right-Sheet.png`],
+      ["avatar-shoes-interact-left", `${interact}/Clothing/Clothing_Shoes_Interact_Left-Sheet.png`],
+      ["avatar-shoes-interact-right", `${interact}/Clothing/Clothing_Shoes_Interact_Right-Sheet.png`],
+      ["avatar-top-interact-left", `${interact}/Clothing/Clothing_Tops_Interact_Left-Sheet.png`],
+      ["avatar-top-interact-right", `${interact}/Clothing/Clothing_Tops_Interact_Right-Sheet.png`],
+      ["avatar-eyes-interact-left", `${interact}/Eyes/Eyes_Interact_Left-Sheet.png`],
+      ["avatar-eyes-interact-right", `${interact}/Eyes/Eyes_Interact_Right-Sheet.png`],
+      ["avatar-hair-interact-left", `${interact}/Hair/Hair_Interact_Left-Sheet.png`],
+      ["avatar-hair-interact-right", `${interact}/Hair/Hair_Interact_Right-Sheet.png`]
+    ]) this.load.spritesheet(key, url, { frameWidth: FRAME, frameHeight: FRAME });
+
+    const hurt = `${ASSET}/avatar/Hurt`;
+    for (const [key, url] of [
+      ["avatar-body-hurt-left", `${hurt}/Character/Character_Hurt_Left-Sheet.png`],
+      ["avatar-body-hurt-right", `${hurt}/Character/Character_Hurt_Right-Sheet.png`],
+      ["avatar-bottoms-hurt-left", `${hurt}/Clothing/Clothing_Bottoms_Hurt_Left-Sheet.png`],
+      ["avatar-bottoms-hurt-right", `${hurt}/Clothing/Clothing_Bottoms_Hurt_Right-Sheet.png`],
+      ["avatar-shoes-hurt-left", `${hurt}/Clothing/Clothing_Shoes_Hurt_Left-Sheet.png`],
+      ["avatar-shoes-hurt-right", `${hurt}/Clothing/Clothing_Shoes_Hurt_Right-Sheet.png`],
+      ["avatar-top-hurt-left", `${hurt}/Clothing/Clothing_Tops_Hurt_Left-Sheet.png`],
+      ["avatar-top-hurt-right", `${hurt}/Clothing/Clothing_Tops_Hurt_Right-Sheet.png`],
+      ["avatar-eyes-hurt-left", `${hurt}/Eyes/Eyes_Hurt_Left-Sheet.png`],
+      ["avatar-eyes-hurt-right", `${hurt}/Eyes/Eyes_Hurt_Right-Sheet.png`],
+      ["avatar-hair-hurt-left", `${hurt}/Hair/Hair_Hurt_Left-Sheet.png`],
+      ["avatar-hair-hurt-right", `${hurt}/Hair/Hair_Hurt_Right-Sheet.png`]
+    ]) this.load.spritesheet(key, url, { frameWidth: FRAME, frameHeight: FRAME });
+
     // Laporan jika ada aset yang gagal dimuat.
     this.load.on("loaderror", (file) => {
       console.error(
@@ -111,6 +159,18 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    this.scene.start("WorldScene");
+    window.deutschStartWorld = () => {
+      if (this.scene.isActive("WorldScene")) return;
+      this.scene.start("WorldScene");
+    };
+
+    this.game.events.on("step", () => {
+      if (!window.deutschWorldError) return;
+      const error = window.deutschWorldError;
+      window.deutschWorldError = null;
+      window.dispatchEvent(new CustomEvent("deutsch:world-error", { detail: error }));
+    });
+
+    window.dispatchEvent(new Event("deutsch:boot-ready"));
   }
 }

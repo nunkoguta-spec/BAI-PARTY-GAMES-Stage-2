@@ -14,6 +14,7 @@ export function createPhoneGame({
   class PhoneWorldScene extends WorldScene {
     create() {
       super.create();
+      this.gameStarted = true;
 
       this.lastNetworkUpdate = 0;
 
@@ -26,32 +27,14 @@ export function createPhoneGame({
       // =====================================================
 
       const handlePlayersState = (players = []) => {
-        console.log(
-          "[PHONE NETWORK] players:state diterima:",
-          players
-        );
-
         if (!Array.isArray(players)) return;
 
         for (const player of players) {
           if (!player?.playerId) continue;
           if (player.playerId === socket.id) continue;
 
-          console.log(
-            "[PHONE NETWORK] Membuat avatar dari state:",
-            player.name,
-            player.playerId,
-            player.x,
-            player.y
-          );
-
           this.createRemoteAvatar(player);
         }
-
-        console.log(
-          "[PHONE NETWORK] Total remote avatar:",
-          this.remoteAvatars?.size
-        );
       };
 
       // =====================================================
@@ -59,20 +42,10 @@ export function createPhoneGame({
       // =====================================================
 
       const handlePlayerJoined = (player) => {
-        console.log(
-          "[PHONE NETWORK] player:joined diterima:",
-          player
-        );
-
         if (!player?.playerId) return;
         if (player.playerId === socket.id) return;
 
         this.createRemoteAvatar(player);
-
-        console.log(
-          "[PHONE NETWORK] Avatar pemain baru dibuat:",
-          player.name
-        );
       };
 
       // =====================================================
@@ -83,16 +56,6 @@ export function createPhoneGame({
         if (!player?.playerId) return;
         if (player.playerId === socket.id) return;
 
-        console.log(
-          "[PHONE NETWORK] POSISI REMOTE:",
-          JSON.stringify(player),
-          "POSISI SAYA:",
-          this.player?.x,
-          this.player?.y,
-          "CAMERA:",
-          this.cameras.main.worldView
-        );
-
         this.updateRemoteAvatar(player);
       };
 
@@ -101,13 +64,7 @@ export function createPhoneGame({
       // =====================================================
 
       const handlePlayerLeft = ({ playerId } = {}) => {
-        console.log(
-          "[PHONE NETWORK] player:left diterima:",
-          playerId
-        );
-
         if (!playerId) return;
-
         this.removeRemoteAvatar(playerId);
       };
 
@@ -120,19 +77,44 @@ export function createPhoneGame({
       socket.on("player:moved", handlePlayerMoved);
       socket.on("player:left", handlePlayerLeft);
 
+      // Leaderboard updates from server
+      const handleLeaderboard = (players) => {
+        this.setLeaderboardData(players);
+      };
+      socket.on("tv:leaderboard", handleLeaderboard);
+
+      const handleQuizResult = (result) => {
+        if (!result) return;
+        if (result.correct) {
+          this.showFloatingFeedback?.(this.player?.x || 240, this.player?.y || 208, `+${result.scoreChange || 10} PTS!`, "#82d82c");
+        } else {
+          this.showFloatingFeedback?.(this.player?.x || 240, this.player?.y || 208, "SALAH!", "#f24b4b");
+          this.setAvatarAnimation?.(`hurt-${this.playerFacing}`);
+        }
+      };
+      socket.on("quiz:result", handleQuizResult);
+
+      const handleGameEnded = ({ leaderboard } = {}) => {
+        if (Array.isArray(leaderboard)) {
+          this.showPodium?.(leaderboard);
+        }
+      };
+      socket.on("game:ended", handleGameEnded);
+
       // =====================================================
       // BERSIHKAN LISTENERS SAAT SCENE DITUTUP
       // =====================================================
 
       this.events.once(
-        Phaser.Scenes.Events.SHUTDOWN,
+        "shutdown",
         () => {
-          console.log("[PHONE NETWORK] Membersihkan listeners.");
-
           socket.off("players:state", handlePlayersState);
           socket.off("player:joined", handlePlayerJoined);
           socket.off("player:moved", handlePlayerMoved);
           socket.off("player:left", handlePlayerLeft);
+          socket.off("tv:leaderboard", handleLeaderboard);
+          socket.off("quiz:result", handleQuizResult);
+          socket.off("game:ended", handleGameEnded);
         }
       );
 
@@ -194,6 +176,10 @@ export function createPhoneGame({
             );
 
             if (!result?.ok) {
+              this.quizPaused = false;
+              this.activeQuestionBoxId = null;
+              const box = this.questionBoxes?.find(item => item.getData("boxId") === boxId);
+              if (box) box.setData("used", false);
               onQuizError?.(
                 result?.error || "Quiz gagal dimulai."
               );
@@ -218,6 +204,7 @@ export function createPhoneGame({
     update(time, delta) {
       super.update(time, delta);
 
+      if (this.quizPaused) return;
       if (!this.player || !this.player.body) return;
       if (!socket.connected) return;
 
@@ -229,17 +216,31 @@ export function createPhoneGame({
         roomCode,
         x: this.player.x,
         y: this.player.y,
-        facing: this.playerFacing || "right"
+        vx: this.player.body.velocity.x,
+        vy: this.player.body.velocity.y,
+        facing: this.playerFacing || "right",
+        state: this.networkCharacterState?.state || "idle",
+        grounded: this.networkCharacterState?.grounded ?? this.player.body.onFloor()
       });
     }
   }
 
   // =====================================================
-  // PHASER GAME CONFIGURATION
+  // PHASER GAME CONFIGURATION — mobile starts WorldScene directly
   // =====================================================
 
+  class PhoneBootScene extends BootScene {
+    create() {
+      if (!this.scene.isActive("WorldScene")) {
+        this.scene.start("WorldScene");
+      }
+    }
+  }
+
   return new Phaser.Game({
-    type: Phaser.AUTO,
+    type: Phaser.CANVAS,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoRound: true,
     parent,
     width: 480,
     height: 270,
@@ -257,7 +258,9 @@ export function createPhoneGame({
 
     scale: {
       mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: 480,
+      height: 270
     },
 
     physics: {
@@ -271,7 +274,7 @@ export function createPhoneGame({
     },
 
     scene: [
-      BootScene,
+      PhoneBootScene,
       PhoneWorldScene
     ]
   });

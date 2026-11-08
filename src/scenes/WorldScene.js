@@ -16,8 +16,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create() {
+    try {
+      this.createWorld();
+    } catch (error) {
+      window.deutschWorldError = error;
+      throw error;
+    }
+  }
+
+  createWorld() {
     // DATA AVATAR MULTIPLAYER
     this.remoteAvatars = new Map();
+
+    // Host mode flag — set by HostPanel to skip player spawn
+    this.isHostMode = this.isHostMode || window.deutschHostMode === true;
 
     this.createParallaxBackground();
 
@@ -90,60 +102,91 @@ export class WorldScene extends Phaser.Scene {
     // DEKORASI
     this.createWorldDecorations();
 
-    // SPAWN
-    const spawn = map.findObject(
-      "Objects",
-      (object) => object.name === "PlayerSpawn"
-    ) || { x: 240, y: 208 };
-
-    this.createAvatar(
-      Math.round(spawn.x),
-      Math.round(spawn.y)
-    );
-
     // QUESTION BOX
     this.createQuestionBoxes();
 
-    // SINKRONISASI KOSTUM
-    this.events.on(
-      Phaser.Scenes.Events.POST_UPDATE,
-      this.syncAvatarLayers,
-      this
-    );
+    // SPAWN — skip for host mode
+    if (!this.isHostMode) {
+      const spawn = map.findObject(
+        "Objects",
+        (object) => object.name === "PlayerSpawn"
+      ) || { x: 240, y: 208 };
 
-    // COLLISION PLAYER
-    this.physics.add.collider(this.player, this.groundLayer);
-    this.physics.add.collider(this.player, this.platformLayer);
-
-    // COLLISION QUESTION BOX
-    for (const box of this.questionBoxes) {
-      this.physics.add.collider(
-        this.player,
-        box,
-        (player, target) => {
-          this.onQuestionBoxCollision(player, target);
-        }
+      this.createAvatar(
+        Math.round(spawn.x),
+        Math.round(spawn.y)
       );
+
+      // SINKRONISASI KOSTUM — use string event name (Phaser 3 standard)
+      this.events.on(
+        "postupdate",
+        this.syncAvatarLayers,
+        this
+      );
+
+      // COLLISION PLAYER
+      this.physics.add.collider(this.player, this.groundLayer);
+      this.physics.add.collider(this.player, this.platformLayer);
+
+      // COLLISION QUESTION BOX
+      for (const box of this.questionBoxes) {
+        this.physics.add.collider(
+          this.player,
+          box,
+          (player, target) => {
+            this.onQuestionBoxCollision(player, target);
+          }
+        );
+      }
+
+      // KONTROL
+      this.setupControls();
+
+      // KAMERA — follow player with proper X and Y lerp
+      const camera = this.cameras.main;
+
+      camera.setBounds(
+        0,
+        0,
+        this.worldWidth,
+        this.worldHeight
+      );
+
+      camera.setRoundPixels(true);
+      camera.startFollow(this.player, true, 0.12, 0.12);
+    } else {
+      // Host mode: just set camera bounds, no player
+      const camera = this.cameras.main;
+
+      camera.setBounds(
+        0,
+        0,
+        this.worldWidth,
+        this.worldHeight
+      );
+
+      camera.setRoundPixels(true);
+
+      // Follow active remote player on host display; no local host character.
+      this.hostSpectatorTarget = null;
+      this.hostFollowPlayer = (player) => {
+        if (!player?.sprites?.[0]) return;
+        this.hostSpectatorTarget = player.sprites[0];
+        camera.startFollow(this.hostSpectatorTarget, true, 0.12, 0.12);
+      };
+      this.hostClearFollow = () => {
+        this.hostSpectatorTarget = null;
+        camera.stopFollow();
+        camera.scrollX = 0;
+        camera.scrollY = 0;
+      };
+      camera.scrollX = 0;
+      camera.scrollY = 0;
     }
 
-    // KONTROL
-    this.setupControls();
-
-    // KAMERA
-    const camera = this.cameras.main;
-
-    camera.setBounds(
-      0,
-      0,
-      this.worldWidth,
-      this.worldHeight
-    );
-
-    camera.setRoundPixels(true);
-    camera.startFollow(this.player, true, 0.12, 0);
-
-    this.cameraY = 20;
-    camera.scrollY = this.cameraY;
+    // LEADERBOARD HUD (in-game on all clients and host)
+    this.createLeaderboardHUD();
+    this.createGameTimerHUD();
   }
 
   // =====================================================
@@ -153,21 +196,34 @@ export class WorldScene extends Phaser.Scene {
   createQuestionBoxes() {
     this.questionBoxes = [];
 
-    const box = this.physics.add.staticImage(
-      360,
-      176,
-      "question-box"
-    );
+    // Spread question boxes across the map (world is 3840px wide)
+    const boxPositions = [
+      { x: 360,  y: 176, id: "question-box-01" },
+      { x: 800,  y: 176, id: "question-box-02" },
+      { x: 1300, y: 176, id: "question-box-03" },
+      { x: 1800, y: 144, id: "question-box-04" },
+      { x: 2400, y: 176, id: "question-box-05" },
+      { x: 2900, y: 144, id: "question-box-06" },
+      { x: 3400, y: 176, id: "question-box-07" }
+    ];
 
-    box.setDepth(15);
-    box.setOrigin(0.5, 0.5);
-    box.refreshBody();
+    for (const pos of boxPositions) {
+      const box = this.physics.add.staticImage(
+        pos.x,
+        pos.y,
+        "question-box"
+      );
 
-    box.setData("used", false);
-    box.setData("boxId", "question-box-01");
-    box.setData("originalY", box.y);
+      box.setDepth(15);
+      box.setOrigin(0.5, 0.5);
+      box.refreshBody();
 
-    this.questionBoxes.push(box);
+      box.setData("used", false);
+      box.setData("boxId", pos.id);
+      box.setData("originalY", box.y);
+
+      this.questionBoxes.push(box);
+    }
   }
 
   onQuestionBoxCollision(player, box) {
@@ -188,7 +244,11 @@ export class WorldScene extends Phaser.Scene {
     }
 
     box.setData("used", true);
-    player.body.setVelocityY(0);
+    this.activeQuestionBoxId = box.getData("boxId");
+    this.quizPaused = true;
+    player.body.setVelocity(0, 0);
+    this.setAvatarAnimation(`interact-${this.playerFacing}`);
+    this.networkCharacterState = { state: `interact-${this.playerFacing}`, grounded: true, vx: 0, vy: 0 };
 
     const originalY = box.getData("originalY");
 
@@ -246,6 +306,9 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createParallaxBackground() {
+    this.cameras.main.setBackgroundColor("#78bde8");
+    if (!["bg-sky", "deco-cloud-1", "deco-cloud-2", "deco-cloud-3", "deco-cloud-5", "deco-cloud-6", "bg-snow-peaks", "bg-hills", "bg-forest", "deco-tree-2", "deco-tree-3"].every(key => this.textures.exists(key))) return;
+
     this.add.tileSprite(
       0,
       0,
@@ -478,6 +541,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.player.setOrigin(0.5, 0.5);
     this.player.setDepth(20);
+    for (const sprite of [this.player]) sprite.setFlipX(false);
 
     this.physics.add.existing(this.player);
 
@@ -620,7 +684,11 @@ export class WorldScene extends Phaser.Scene {
       y,
       targetX: x,
       targetY: y,
-      facing: data.facing === "left" ? "left" : "right"
+      facing: data.facing === "left" ? "left" : "right",
+      state: data.state || "idle",
+      grounded: data.grounded !== false,
+      lastUpdate: performance.now(),
+      snapshots: [{ time: performance.now(), x, y }]
     });
 
     console.log(
@@ -650,13 +718,20 @@ export class WorldScene extends Phaser.Scene {
     const x = Number(data.x);
     const y = Number(data.y);
 
-    if (Number.isFinite(x)) {
+    const now = performance.now();
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      remote.snapshots.push({ time: now, x, y });
+      remote.snapshots = remote.snapshots.slice(-4);
       remote.targetX = x;
+      remote.targetY = y;
+      remote.lastUpdate = now;
     }
 
-    if (Number.isFinite(y)) {
-      remote.targetY = y;
+    if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact"].includes(data.state)) {
+      remote.state = data.state;
+      this.applyRemoteAvatarFrame(remote, data.state, 0);
     }
+    if (typeof data.grounded === "boolean") remote.grounded = data.grounded;
 
     if (data.facing === "left" || data.facing === "right") {
       remote.facing = data.facing;
@@ -702,31 +777,45 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    // INTERPOLASI GERAKAN REMOTE
-    const smoothing = Math.min(1, delta / 85);
-
+    const renderAt = performance.now() - 100;
     for (const remote of this.remoteAvatars.values()) {
-      remote.x = Phaser.Math.Linear(
-        remote.x,
-        remote.targetX,
-        smoothing
-      );
-
-      remote.y = Phaser.Math.Linear(
-        remote.y,
-        remote.targetY,
-        smoothing
-      );
-
+      const snapshots = remote.snapshots;
+      while (snapshots.length > 2 && snapshots[1].time <= renderAt) snapshots.shift();
+      const first = snapshots[0];
+      const second = snapshots[1];
+      if (first && second && second.time > first.time) {
+        const t = Phaser.Math.Clamp((renderAt - first.time) / (second.time - first.time), 0, 1);
+        remote.x = Phaser.Math.Linear(first.x, second.x, t);
+        remote.y = Phaser.Math.Linear(first.y, second.y, t);
+      } else if (first) {
+        const extrapolation = Math.min(100, Math.max(0, renderAt - first.time));
+        remote.x = Phaser.Math.Linear(remote.x, first.x, Math.min(1, delta / 60));
+        remote.y = Phaser.Math.Linear(remote.y, first.y, Math.min(1, delta / 60));
+        if (extrapolation > 0) {
+          remote.x = Phaser.Math.Linear(remote.x, remote.targetX, 0.04);
+          remote.y = Phaser.Math.Linear(remote.y, remote.targetY, 0.04);
+        }
+      }
+      const frameNumber = remote.state.startsWith("walk") ? Math.floor(renderAt / 125) % FRAME_COUNT : 0;
+      this.applyRemoteAvatarFrame(remote, remote.state, frameNumber);
       const x = Math.round(remote.x);
       const y = Math.round(remote.y);
-
-      for (const sprite of remote.sprites) {
-        sprite.setPosition(x, y);
-      }
-
+      for (const sprite of remote.sprites) sprite.setPosition(x, y);
       remote.nameLabel.setPosition(x, y - 25);
     }
+  }
+
+  applyRemoteAvatarFrame(remote, state, frame) {
+    const animation = state.startsWith("walk") ? "walk" : state.startsWith("jump") || state.startsWith("fall") ? "jump" : state === "interact" ? "interact" : "idle";
+    const direction = state.endsWith("left") ? "left" : remote.facing;
+    const textureState = animation === "idle" ? "idle" : animation === "walk" ? `walk-${direction}` : animation === "jump" ? `jump-${direction}` : `walk-${direction}`;
+    const parts = ["body", "bottoms", "shoes", "top", "eyes", "hair"];
+    remote.sprites.forEach((sprite, index) => {
+      const texture = animation === "idle" ? `avatar-${parts[index]}` : `avatar-${parts[index]}-${textureState}`;
+      const textureKey = this.textures.exists(texture) ? texture : (animation === "jump" ? `avatar-${parts[index]}-walk-${direction}` : `avatar-${parts[index]}`);
+      if (sprite.texture.key !== textureKey) sprite.setTexture(textureKey);
+      sprite.setFrame((index === 0 ? DEFAULT_AVATAR.skin : DEFAULT_AVATAR[parts[index] === "bottoms" ? "bottoms" : parts[index] === "shoes" ? "shoes" : parts[index] === "top" ? "top" : parts[index] === "eyes" ? "eyes" : "hair"]) * FRAME_COUNT + frame);
+    });
   }
 
   // =====================================================
@@ -746,15 +835,16 @@ export class WorldScene extends Phaser.Scene {
   }
 
   getAvatarTexture(part, state) {
-    if (state === "idle") {
-      return part.idleTexture;
-    }
-
-    return `avatar-${part.name}-walk-${state}`;
+    if (state === "idle") return part.idleTexture;
+    const texture = `avatar-${part.name}-${state}`;
+    if (this.textures.exists(texture)) return texture;
+    return `avatar-${part.name}-walk-${state.endsWith("left") ? "left" : "right"}`;
   }
 
   applyAvatarFrame() {
-    const state = this.avatarState;
+    const rawState = this.avatarState;
+    const direction = rawState.endsWith("left") || rawState === "left" ? "left" : "right";
+    const state = rawState === "idle" ? "idle" : rawState.startsWith("jump") || rawState.startsWith("fall") ? `jump-${direction}` : rawState === "left" || rawState === "right" ? `walk-${rawState}` : rawState;
     const frame = this.avatarFrame;
 
     const bodyConfig = this.avatarConfig[0];
@@ -832,10 +922,17 @@ export class WorldScene extends Phaser.Scene {
 
     this.mobileJumpWasDown = false;
     this.playerFacing = "right";
+    this.wasGrounded = true;
+    this.networkCharacterState = { state: "idle", grounded: true, vx: 0, vy: 0 };
   }
 
   updatePlayerMovement() {
     const body = this.player.body;
+
+    if (this.quizPaused) {
+      body.setVelocity(0, body.velocity.y);
+      return;
+    }
 
     const left =
       this.cursors.left.isDown ||
@@ -875,7 +972,33 @@ export class WorldScene extends Phaser.Scene {
       body.onFloor()
     ) {
       body.setVelocityY(-JUMP_SPEED);
+      this.setAvatarAnimation(`jump-${this.playerFacing}`);
     }
+
+    const grounded = body.onFloor();
+    if (grounded && !this.wasGrounded) {
+      this.events.emit("player:landed");
+      this.tweens.add({
+        targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+        scaleX: 1.2,
+        scaleY: 0.82,
+        duration: 75,
+        yoyo: true,
+        ease: "Quad.easeOut"
+      });
+    }
+    this.wasGrounded = grounded;
+
+    if (this.avatarState.startsWith("interact") || this.avatarState.startsWith("hurt")) {
+      this.networkCharacterState = { state: this.avatarState, grounded, vx: 0, vy: 0 };
+      return;
+    }
+
+    const state = !grounded
+      ? (body.velocity.y < 0 ? `jump-${this.playerFacing}` : `fall-${this.playerFacing}`)
+      : Math.abs(body.velocity.x) > 5 ? `walk-${this.playerFacing}` : "idle";
+    this.networkCharacterState = { state, grounded, vx: Math.round(body.velocity.x), vy: Math.round(body.velocity.y) };
+    this.setAvatarAnimation(state === "walk-left" ? "left" : state === "walk-right" ? "right" : state === "idle" ? "idle" : state);
   }
 
   // =====================================================
@@ -883,8 +1006,6 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   update(_time, delta) {
-    this.cameras.main.scrollY = this.cameraY;
-
     const scrollX = this.cameras.main.scrollX;
 
     for (const layer of this.parallaxLayers || []) {
@@ -912,7 +1033,7 @@ export class WorldScene extends Phaser.Scene {
     // UPDATE AVATAR PEMAIN LAIN
     this.updateRemoteAvatars(delta);
 
-    if (!this.player || !this.avatarParts) {
+    if (this.isHostMode || !this.player || !this.avatarParts) {
       return;
     }
 
@@ -922,5 +1043,340 @@ export class WorldScene extends Phaser.Scene {
 
   postUpdate() {
     this.syncAvatarLayers();
+  }
+
+  // =====================================================
+  // LEADERBOARD HUD (RETRO ARCADE)
+  // =====================================================
+
+  createLeaderboardHUD() {
+    this.leaderboardData = [];
+    this.leaderboardTexts = [];
+    this.previousRanks = new Map();
+
+    this.leaderboardBg = this.add.graphics();
+    this.leaderboardBg.setScrollFactor(0);
+    this.leaderboardBg.setDepth(98);
+
+    this.leaderboardTitle = this.add.text(
+      VIEW_W - 10,
+      8,
+      "LEADERBOARD",
+      {
+        fontFamily: "'Press Start 2P', monospace, sans-serif",
+        fontSize: "7px",
+        color: "#f7c83b",
+        stroke: "#000000",
+        strokeThickness: 2,
+        align: "right"
+      }
+    );
+    this.leaderboardTitle.setOrigin(1, 0);
+    this.leaderboardTitle.setScrollFactor(0);
+    this.leaderboardTitle.setDepth(100);
+  }
+
+  setLeaderboardData(players) {
+    if (!Array.isArray(players)) return;
+    this.leaderboardData = [...players]
+      .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
+      .slice(0, 5);
+    this.updateLeaderboardHUD();
+  }
+
+  updateLeaderboardHUD() {
+    if (!this.leaderboardTitle) return;
+
+    for (const text of this.leaderboardTexts) {
+      text.destroy();
+    }
+    this.leaderboardTexts = [];
+
+    const data = this.leaderboardData || [];
+    if (!data.length) {
+      this.leaderboardBg.clear();
+      return;
+    }
+
+    const startY = 22;
+    const itemHeight = 12;
+    const panelWidth = 140;
+    const panelHeight = 18 + data.length * itemHeight;
+    const panelX = VIEW_W - panelWidth - 4;
+    const panelY = 4;
+
+    this.leaderboardBg.clear();
+    this.leaderboardBg.fillStyle(0x111422, 0.85);
+    this.leaderboardBg.fillRect(panelX, panelY, panelWidth, panelHeight);
+    this.leaderboardBg.lineStyle(2, 0x000000, 1);
+    this.leaderboardBg.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    this.leaderboardBg.lineStyle(1, 0x313859, 0.8);
+    this.leaderboardBg.strokeRect(panelX + 2, panelY + 2, panelWidth - 4, panelHeight - 4);
+
+    for (let i = 0; i < data.length; i++) {
+      const entry = data[i];
+      const id = entry.playerId;
+      const name = String(entry.name || "Player").slice(0, 8);
+      const score = Number(entry.score) || 0;
+      const isTop = i === 0 && score > 0;
+      const prefix = i === 0 && score > 0 ? "👑" : `${i + 1}.`;
+      const color = isTop ? "#f7c83b" : (i === 1 ? "#cbd5e1" : (i === 2 ? "#e29b52" : "#9299ab"));
+
+      const prevRank = this.previousRanks.get(id);
+      const rankUp = prevRank !== undefined && prevRank > i;
+      this.previousRanks.set(id, i);
+
+      const text = this.add.text(
+        VIEW_W - 8,
+        startY + i * itemHeight,
+        `${prefix} ${name} ${score}`,
+        {
+          fontFamily: "'Press Start 2P', monospace, sans-serif",
+          fontSize: "6px",
+          color,
+          stroke: "#000000",
+          strokeThickness: 2,
+          align: "right"
+        }
+      );
+      text.setOrigin(1, 0);
+      text.setScrollFactor(0);
+      text.setDepth(100);
+
+      if (rankUp) {
+        this.tweens.add({
+          targets: text,
+          scaleX: 1.25,
+          scaleY: 1.25,
+          duration: 140,
+          yoyo: true,
+          ease: "Quad.easeOut"
+        });
+      }
+
+      this.leaderboardTexts.push(text);
+    }
+  }
+  createGameTimerHUD() {
+    this.gameTimerBox = this.add.graphics();
+    this.gameTimerBox.setScrollFactor(0);
+    this.gameTimerBox.setDepth(98);
+
+    this.gameTimerText = this.add.text(
+      VIEW_W / 2,
+      8,
+      "⏱ 10:00",
+      {
+        fontFamily: "'Press Start 2P', monospace, sans-serif",
+        fontSize: "8px",
+        color: "#82d82c",
+        stroke: "#000000",
+        strokeThickness: 3,
+        align: "center"
+      }
+    );
+    this.gameTimerText.setOrigin(0.5, 0);
+    this.gameTimerText.setScrollFactor(0);
+    this.gameTimerText.setDepth(100);
+    this.gameTimerText.setVisible(false);
+  }
+
+  setGameTimer(endsAt, status, remainingMs) {
+    if (!this.gameTimerText) return;
+    if (this.gameTimerInterval) {
+      clearInterval(this.gameTimerInterval);
+      this.gameTimerInterval = null;
+    }
+
+    if (status === "paused") {
+      this.gameTimerText.setVisible(true);
+      const sec = Math.ceil((remainingMs || 0) / 1000);
+      const min = Math.floor(sec / 60);
+      const rem = sec % 60;
+      this.gameTimerText.setText(`⏱ ${String(min).padStart(2, "0")}:${String(rem).padStart(2, "0")} PAUSED`);
+      this.gameTimerText.setColor("#f7c83b");
+      this.drawGameTimerBox();
+      return;
+    }
+
+    if (status === "ended") {
+      this.gameTimerText.setVisible(true);
+      this.gameTimerText.setText("⏱ GAME OVER");
+      this.gameTimerText.setColor("#f24b4b");
+      this.drawGameTimerBox();
+      return;
+    }
+
+    if (!endsAt || status !== "playing") {
+      this.gameTimerText.setVisible(false);
+      this.gameTimerBox?.clear();
+      return;
+    }
+
+    this.gameTimerText.setVisible(true);
+    this.gameTimerText.setColor("#82d82c");
+
+    const tick = () => {
+      const left = Math.max(0, endsAt - Date.now());
+      const totalSec = Math.ceil(left / 1000);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      this.gameTimerText.setText(`⏱ ${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`);
+      if (left <= 30000) {
+        this.gameTimerText.setColor("#f24b4b");
+      }
+      this.drawGameTimerBox();
+      if (left <= 0) {
+        clearInterval(this.gameTimerInterval);
+        this.gameTimerInterval = null;
+        this.gameTimerText.setText("⏱ SELESAI");
+      }
+    };
+    tick();
+    this.gameTimerInterval = setInterval(tick, 1000);
+  }
+
+  drawGameTimerBox() {
+    if (!this.gameTimerBox || !this.gameTimerText || !this.gameTimerText.visible) return;
+    const bounds = this.gameTimerText.getBounds();
+    this.gameTimerBox.clear();
+    this.gameTimerBox.fillStyle(0x111422, 0.88);
+    this.gameTimerBox.fillRect(bounds.x - 6, bounds.y - 3, bounds.width + 12, bounds.height + 6);
+    this.gameTimerBox.lineStyle(2, 0x000000, 1);
+    this.gameTimerBox.strokeRect(bounds.x - 6, bounds.y - 3, bounds.width + 12, bounds.height + 6);
+    this.gameTimerBox.lineStyle(1, 0x313859, 0.7);
+    this.gameTimerBox.strokeRect(bounds.x - 4, bounds.y - 1, bounds.width + 8, bounds.height + 2);
+  }
+
+  showFloatingFeedback(x, y, text, color = "#f7c83b") {
+    const label = this.add.text(x, y - 22, text, {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "8px",
+      color,
+      stroke: "#000000",
+      strokeThickness: 3
+    }).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: label,
+      y: label.y - 28,
+      alpha: 0,
+      duration: 1100,
+      ease: "Cubic.easeOut",
+      onComplete: () => label.destroy()
+    });
+  }
+
+  showPodium(leaderboard = []) {
+    if (this.podiumContainer) this.podiumContainer.destroy();
+    const sorted = [...leaderboard].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+
+    this.podiumContainer = this.add.container(VIEW_W / 2, VIEW_H / 2);
+    this.podiumContainer.setScrollFactor(0);
+    this.podiumContainer.setDepth(300);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x111422, 0.94);
+    bg.fillRect(-170, -110, 340, 220);
+    bg.lineStyle(4, 0x000000, 1);
+    bg.strokeRect(-170, -110, 340, 220);
+    bg.lineStyle(2, 0xf7c83b, 1);
+    bg.strokeRect(-166, -106, 332, 212);
+    this.podiumContainer.add(bg);
+
+    const title = this.add.text(0, -92, "★ GAME OVER ★", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "12px",
+      color: "#f7c83b",
+      stroke: "#000000",
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    this.podiumContainer.add(title);
+
+    const winner = sorted[0];
+    const winnerText = this.add.text(0, -72, winner ? `👑 PEMENANG: ${winner.name}` : "SELESAI", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "8px",
+      color: "#82d82c",
+      stroke: "#000000",
+      strokeThickness: 2
+    }).setOrigin(0.5);
+    this.podiumContainer.add(winnerText);
+
+    // 2nd Place (Left)
+    const p2Bg = this.add.graphics();
+    p2Bg.fillStyle(0xcbd5e1, 1);
+    p2Bg.fillRect(-90, 5, 54, 45);
+    p2Bg.lineStyle(2, 0x000000, 1);
+    p2Bg.strokeRect(-90, 5, 54, 45);
+    this.podiumContainer.add(p2Bg);
+    const p2Num = this.add.text(-63, 20, "2", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "14px",
+      color: "#171324"
+    }).setOrigin(0.5);
+    const p2Name = this.add.text(-63, -8, sorted[1]?.name ? sorted[1].name.slice(0, 6) : "-", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "6px",
+      color: "#cbd5e1"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p2Num, p2Name]);
+
+    // 1st Place (Center)
+    const p1Bg = this.add.graphics();
+    p1Bg.fillStyle(0xf7c83b, 1);
+    p1Bg.fillRect(-27, -20, 54, 70);
+    p1Bg.lineStyle(2, 0x000000, 1);
+    p1Bg.strokeRect(-27, -20, 54, 70);
+    this.podiumContainer.add(p1Bg);
+    const p1Crown = this.add.text(0, -42, "👑", { fontSize: "14px" }).setOrigin(0.5);
+    const p1Num = this.add.text(0, 5, "1", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "18px",
+      color: "#171324"
+    }).setOrigin(0.5);
+    const p1Name = this.add.text(0, -30, sorted[0]?.name ? sorted[0].name.slice(0, 6) : "-", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "6px",
+      color: "#f7c83b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p1Crown, p1Num, p1Name]);
+
+    // 3rd Place (Right)
+    const p3Bg = this.add.graphics();
+    p3Bg.fillStyle(0xe29b52, 1);
+    p3Bg.fillRect(36, 20, 54, 30);
+    p3Bg.lineStyle(2, 0x000000, 1);
+    p3Bg.strokeRect(36, 20, 54, 30);
+    this.podiumContainer.add(p3Bg);
+    const p3Num = this.add.text(63, 32, "3", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "12px",
+      color: "#171324"
+    }).setOrigin(0.5);
+    const p3Name = this.add.text(63, 8, sorted[2]?.name ? sorted[2].name.slice(0, 6) : "-", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "6px",
+      color: "#e29b52"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p3Num, p3Name]);
+
+    for (let c = 0; c < 16; c++) {
+      const star = this.add.text(Phaser.Math.Between(-150, 150), Phaser.Math.Between(-80, 80), "★", {
+        fontFamily: "'Press Start 2P', monospace, sans-serif",
+        fontSize: `${Phaser.Math.Between(6, 10)}px`,
+        color: Phaser.Utils.Array.GetRandom(["#f7c83b", "#82d82c", "#ffffff", "#38bdf8"])
+      }).setOrigin(0.5);
+      this.podiumContainer.add(star);
+      this.tweens.add({
+        targets: star,
+        y: star.y - 12,
+        alpha: 0.3,
+        duration: Phaser.Math.Between(800, 1400),
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut"
+      });
+    }
   }
 }
