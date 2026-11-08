@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # BAI PARTY GAMES — Stage 2: Tiled World + Parallax
 
 Proyek dibangun ulang dari fondasi Stage 1. Stage 2 menambahkan dunia platformer berbasis Tiled JSON, kamera horizontal, dan parallax dari aset asli yang diunggah.
@@ -44,3 +45,6 @@ Stage 3: gerakan kiri/kanan dan lompat menggunakan keyboard terlebih dahulu. Tid
 
 ## Stage 2.1 — visual cleanup
 The runtime scene now removes the dark mountain overlays and snow-peak sprites that looked like clouds. It keeps the pack's original sky and uses its original tree sprites at different scroll factors for layered parallax. All sprite assets remain unmodified. The uploaded pack does not contain a conventional bright-blue sky with white cloud sprites or distant green hills; those elements are intentionally not fabricated with code.
+=======
+# BAI-PARTY-GAMES-Stage-2
+>>>>>>> 84e3a82b8deba1a20d1a2c13584b399f4a2edf4a

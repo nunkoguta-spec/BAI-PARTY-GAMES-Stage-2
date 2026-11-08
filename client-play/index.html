@@ -1,0 +1,151 @@
+﻿
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#111827">
+  <title>BAI PARTY GAMES - Controller</title>
+  <link rel="stylesheet" href="/client-play/style.css">
+</head>
+
+<body>
+  <main class="app">
+
+    <!-- JOIN ROOM -->
+    <section id="joinPanel" class="panel">
+      <div class="brand">
+        <h1>BAI PARTY GAMES</h1>
+        <p class="muted">DEUTSCH ADVENTURE</p>
+      </div>
+
+      <p class="muted">
+        Masuk ke room untuk mulai bermain bersama.
+      </p>
+
+      <label for="playerName">NAMA PEMAIN</label>
+      <input
+        id="playerName"
+        type="text"
+        maxlength="24"
+        placeholder="Masukkan nama pemain"
+        autocomplete="nickname"
+      >
+
+      <label for="roomCode">ROOM CODE</label>
+      <input
+        id="roomCode"
+        type="text"
+        maxlength="8"
+        placeholder="Masukkan kode room"
+        autocomplete="off"
+      >
+
+      <button id="joinButton" type="button">
+        MASUK ROOM
+      </button>
+
+      <p id="joinMessage" class="message"></p>
+    </section>
+
+    <!-- GAME PANEL -->
+    <section id="gamePanel" class="hidden">
+
+      <header class="game-header">
+        <div>
+          <div class="muted">PEMAIN</div>
+          <strong id="displayPlayerName">Player</strong>
+        </div>
+
+        <div>
+          <div class="muted">ROOM</div>
+          <strong id="displayRoomCode">------</strong>
+        </div>
+
+        <div>
+          <div class="muted">SKOR</div>
+          <strong id="score">0</strong>
+        </div>
+      </header>
+
+      <p id="playerStatus" class="status">
+        Menghubungkan permainan...
+      </p>
+
+      <!-- PHASER GAME -->
+      <section class="game-container">
+        <div id="phoneGame"></div>
+      </section>
+
+      <!-- MOBILE CONTROLS -->
+      <section id="mobileControls" class="mobile-controls">
+        <button
+          id="leftButton"
+          class="control-button"
+          type="button"
+          aria-label="Bergerak ke kiri"
+        >
+          ◀
+        </button>
+
+        <button
+          id="rightButton"
+          class="control-button"
+          type="button"
+          aria-label="Bergerak ke kanan"
+        >
+          ▶
+        </button>
+
+        <button
+          id="jumpButton"
+          class="control-button jump-button"
+          type="button"
+          aria-label="Melompat"
+        >
+          JUMP
+        </button>
+      </section>
+
+      <!-- QUIZ PANEL -->
+      <section id="quizPanel" class="panel hidden">
+        <div class="section-title">
+          DEUTSCH QUIZ
+        </div>
+
+        <div class="quiz-timer">
+          <span>WAKTU</span>
+          <strong id="quizTimer">15</strong>
+        </div>
+
+        <p id="questionText" class="question"></p>
+
+        <div id="choices" class="choices"></div>
+
+        <p id="quizMessage" class="message"></p>
+      </section>
+
+      <!-- QUIZ RESULT -->
+      <section id="resultPanel" class="panel hidden">
+        <div class="section-title">
+          HASIL JAWABAN
+        </div>
+
+        <h2 id="resultTitle">-</h2>
+
+        <p id="resultDetail" class="muted"></p>
+
+        <button
+          id="closeResultButton"
+          type="button"
+        >
+          TUTUP HASIL
+        </button>
+      </section>
+
+    </section>
+  </main>
+
+  <script type="module" src="/client-play/controller.js"></script>
+</body>
+</html>

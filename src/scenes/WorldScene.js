@@ -1,4 +1,4 @@
-
+﻿
 import Phaser from "phaser";
 import { DEFAULT_AVATAR } from "../avatar/defaultAvatar.js";
 
@@ -16,6 +16,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create() {
+    // DATA AVATAR MULTIPLAYER
+    this.remoteAvatars = new Map();
+
     this.createParallaxBackground();
 
     // TILEMAP
@@ -35,9 +38,6 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.groundLayer = map.createLayer("Ground", tileset, 0, 0);
-
-    // Platform tidak diturunkan lagi.
-    // Ini mencegah baris platform bawah menempel ke jalan.
     this.platformLayer = map.createLayer("Platforms", tileset, 0, 0);
 
     if (!this.groundLayer || !this.platformLayer) {
@@ -47,18 +47,35 @@ export class WorldScene extends Phaser.Scene {
     this.groundLayer.setDepth(5);
     this.platformLayer.setDepth(6);
 
-    // COLLISION SEMUA TILE PADA TILESET (144 TILE)
-this.groundLayer.setCollisionBetween(0, 143, true);
-this.platformLayer.setCollisionBetween(0, 143, true);
+    // COLLISION TILEMAP
+    const firstTileIndex = 0;
+    const lastTileIndex = 143;
 
-// Hitung ulang sisi collision setiap tile.
-this.groundLayer.calculateFacesWithin(
-  0, 0, map.width, map.height
-);
+    this.groundLayer.setCollisionBetween(
+      firstTileIndex,
+      lastTileIndex,
+      true
+    );
 
-this.platformLayer.calculateFacesWithin(
-  0, 0, map.width, map.height
-);
+    this.platformLayer.setCollisionBetween(
+      firstTileIndex,
+      lastTileIndex,
+      true
+    );
+
+    this.groundLayer.calculateFacesWithin(
+      0,
+      0,
+      map.width,
+      map.height
+    );
+
+    this.platformLayer.calculateFacesWithin(
+      0,
+      0,
+      map.width,
+      map.height
+    );
 
     this.worldWidth = map.widthInPixels;
     this.worldHeight = map.heightInPixels;
@@ -83,15 +100,31 @@ this.platformLayer.calculateFacesWithin(
       Math.round(spawn.x),
       Math.round(spawn.y)
     );
-    this.events.on(
-  Phaser.Scenes.Events.POST_UPDATE,
-  this.syncAvatarLayers,
-  this
-);
 
-    // COLLISION
+    // QUESTION BOX
+    this.createQuestionBoxes();
+
+    // SINKRONISASI KOSTUM
+    this.events.on(
+      Phaser.Scenes.Events.POST_UPDATE,
+      this.syncAvatarLayers,
+      this
+    );
+
+    // COLLISION PLAYER
     this.physics.add.collider(this.player, this.groundLayer);
     this.physics.add.collider(this.player, this.platformLayer);
+
+    // COLLISION QUESTION BOX
+    for (const box of this.questionBoxes) {
+      this.physics.add.collider(
+        this.player,
+        box,
+        (player, target) => {
+          this.onQuestionBoxCollision(player, target);
+        }
+      );
+    }
 
     // KONTROL
     this.setupControls();
@@ -114,6 +147,101 @@ this.platformLayer.calculateFacesWithin(
   }
 
   // =====================================================
+  // QUESTION BOX
+  // =====================================================
+
+  createQuestionBoxes() {
+    this.questionBoxes = [];
+
+    const box = this.physics.add.staticImage(
+      360,
+      176,
+      "question-box"
+    );
+
+    box.setDepth(15);
+    box.setOrigin(0.5, 0.5);
+    box.refreshBody();
+
+    box.setData("used", false);
+    box.setData("boxId", "question-box-01");
+    box.setData("originalY", box.y);
+
+    this.questionBoxes.push(box);
+  }
+
+  onQuestionBoxCollision(player, box) {
+    if (!player.body || !box.body || box.getData("used")) {
+      return;
+    }
+
+    const previousTop = player.body.prev.y;
+    const currentTop = player.body.y;
+    const boxBottom = box.body.y + box.body.height;
+
+    const hitFromBelow =
+      previousTop >= boxBottom - 10 &&
+      currentTop <= boxBottom + 2;
+
+    if (!hitFromBelow) {
+      return;
+    }
+
+    box.setData("used", true);
+    player.body.setVelocityY(0);
+
+    const originalY = box.getData("originalY");
+
+    this.tweens.add({
+      targets: box,
+      y: originalY - 7,
+      duration: 90,
+      yoyo: true,
+      ease: "Quad.easeOut",
+      onUpdate: () => box.body.updateFromGameObject(),
+      onComplete: () => box.body.updateFromGameObject()
+    });
+
+    this.time.delayedCall(180, () => {
+      box.setTint(0x777777);
+    });
+
+    const feedback = this.add.text(
+      box.x,
+      box.y - 27,
+      "QUIZ!",
+      {
+        fontFamily: "Arial",
+        fontSize: "12px",
+        fontStyle: "bold",
+        color: "#fff36b",
+        stroke: "#43220c",
+        strokeThickness: 3
+      }
+    );
+
+    feedback.setOrigin(0.5);
+    feedback.setDepth(30);
+
+    this.tweens.add({
+      targets: feedback,
+      y: feedback.y - 22,
+      alpha: 0,
+      duration: 650,
+      onComplete: () => feedback.destroy()
+    });
+
+    this.events.emit("question-box-hit", {
+      boxId: box.getData("boxId"),
+      playerId: null
+    });
+
+    console.log(
+      "[BAI PARTY GAMES] Question Box berhasil dipukul!"
+    );
+  }
+
+  // =====================================================
   // BACKGROUND DAN PARALLAX
   // =====================================================
 
@@ -129,7 +257,6 @@ this.platformLayer.calculateFacesWithin(
       .setScrollFactor(0)
       .setDepth(-100);
 
-    // AWAN
     const clouds = [
       [40, 28, "deco-cloud-1", 0.10, 6],
       [300, 52, "deco-cloud-2", 0.14, 4],
@@ -154,7 +281,6 @@ this.platformLayer.calculateFacesWithin(
       };
     });
 
-    // GUNUNG, BUKIT, HUTAN
     this.parallaxLayers = [
       ["bg-snow-peaks", 62, 0.06, -90],
       ["bg-hills", 104, 0.16, -80],
@@ -184,7 +310,6 @@ this.platformLayer.calculateFacesWithin(
       };
     });
 
-    // POHON JAUH
     const farTrees = [
       [650, "deco-tree-3"],
       [1250, "deco-tree-3"],
@@ -201,7 +326,6 @@ this.platformLayer.calculateFacesWithin(
         .setDepth(3);
     }
 
-    // POHON TENGAH
     const midTrees = [
       [900, "deco-tree-2"],
       [1550, "deco-tree-2"],
@@ -239,13 +363,11 @@ this.platformLayer.calculateFacesWithin(
         .setDepth(4);
     }
 
-    // RUMAH
     this.add.image(2200, WORLD_DECOR_Y, "deco-house")
       .setOrigin(0.5, 1)
       .setScrollFactor(1, 1)
       .setDepth(4);
 
-    // BUNGA
     const flowers = [
       [360, "deco-flower-1"],
       [850, "deco-flower-2"],
@@ -264,7 +386,6 @@ this.platformLayer.calculateFacesWithin(
         .setDepth(7);
     }
 
-    // RUMPUT DAN BATU
     const tufts = [
       [90, "deco-grass-1"],
       [300, "deco-grass-2"],
@@ -290,7 +411,6 @@ this.platformLayer.calculateFacesWithin(
         .setDepth(7);
     }
 
-    // PAGAR
     this.add.image(980, WORLD_DECOR_Y, "deco-fence-1")
       .setOrigin(0.5, 1)
       .setScrollFactor(1, 1)
@@ -303,7 +423,7 @@ this.platformLayer.calculateFacesWithin(
   }
 
   // =====================================================
-  // AVATAR
+  // AVATAR LOKAL
   // =====================================================
 
   createAvatar(x, y) {
@@ -349,7 +469,6 @@ this.platformLayer.calculateFacesWithin(
     this.avatarConfig = parts;
     this.avatarParts = [];
 
-    // BADAN UTAMA
     this.player = this.add.sprite(
       x,
       y,
@@ -366,7 +485,6 @@ this.platformLayer.calculateFacesWithin(
     this.player.body.setOffset(7, 6);
     this.player.body.setCollideWorldBounds(true);
 
-    // LAPISAN KOSTUM
     for (const part of parts.slice(1)) {
       const sprite = this.add.sprite(
         x,
@@ -393,7 +511,226 @@ this.platformLayer.calculateFacesWithin(
   }
 
   // =====================================================
-  // ANIMASI AVATAR TERPUSAT
+  // MULTIPLAYER REMOTE AVATAR
+  // =====================================================
+
+  createRemoteAvatar(data) {
+    if (!data || !data.playerId) {
+      return;
+    }
+
+    if (this.remoteAvatars.has(data.playerId)) {
+      this.updateRemoteAvatar(data);
+      return;
+    }
+
+    const x = Number.isFinite(Number(data.x))
+      ? Number(data.x)
+      : 240;
+
+    const y = Number.isFinite(Number(data.y))
+      ? Number(data.y)
+      : 208;
+
+    // REMOTE AVATAR:
+    // Depth dibuat di atas avatar lokal agar tidak tertutup.
+    const parts = [
+      {
+        name: "body",
+        texture: "avatar-body",
+        row: DEFAULT_AVATAR.skin,
+        depth: 26
+      },
+      {
+        name: "bottoms",
+        texture: "avatar-bottoms",
+        row: DEFAULT_AVATAR.bottoms,
+        depth: 27
+      },
+      {
+        name: "shoes",
+        texture: "avatar-shoes",
+        row: DEFAULT_AVATAR.shoes,
+        depth: 28
+      },
+      {
+        name: "top",
+        texture: "avatar-top",
+        row: DEFAULT_AVATAR.top,
+        depth: 29
+      },
+      {
+        name: "eyes",
+        texture: "avatar-eyes",
+        row: DEFAULT_AVATAR.eyes,
+        depth: 30
+      },
+      {
+        name: "hair",
+        texture: "avatar-hair",
+        row: DEFAULT_AVATAR.hair,
+        depth: 31
+      }
+    ];
+
+    const sprites = [];
+
+    for (const part of parts) {
+      const sprite = this.add.sprite(
+        x,
+        y,
+        part.texture,
+        part.row * FRAME_COUNT
+      );
+
+      sprite.setOrigin(0.5, 0.5);
+      sprite.setDepth(part.depth);
+      sprite.setFlipX(data.facing === "left");
+      sprite.setVisible(true);
+      sprite.setActive(true);
+
+      sprites.push(sprite);
+    }
+
+    const nameLabel = this.add.text(
+      x,
+      y - 25,
+      String(data.name || "Player").slice(0, 24),
+      {
+        fontFamily: "Arial",
+        fontSize: "10px",
+        fontStyle: "bold",
+        color: "#ffffff",
+        stroke: "#172033",
+        strokeThickness: 3,
+        align: "center"
+      }
+    );
+
+    nameLabel.setOrigin(0.5, 1);
+    nameLabel.setDepth(32);
+    nameLabel.setVisible(true);
+
+    this.remoteAvatars.set(data.playerId, {
+      playerId: data.playerId,
+      name: data.name || "Player",
+      sprites,
+      nameLabel,
+      x,
+      y,
+      targetX: x,
+      targetY: y,
+      facing: data.facing === "left" ? "left" : "right"
+    });
+
+    console.log(
+      "[MULTIPLAYER] Avatar pemain dibuat:",
+      data.name,
+      data.playerId,
+      "Posisi:",
+      x,
+      y,
+      "Depth:",
+      sprites.map((sprite) => sprite.depth)
+    );
+  }
+
+  updateRemoteAvatar(data) {
+    if (!data || !data.playerId) {
+      return;
+    }
+
+    let remote = this.remoteAvatars.get(data.playerId);
+
+    if (!remote) {
+      this.createRemoteAvatar(data);
+      return;
+    }
+
+    const x = Number(data.x);
+    const y = Number(data.y);
+
+    if (Number.isFinite(x)) {
+      remote.targetX = x;
+    }
+
+    if (Number.isFinite(y)) {
+      remote.targetY = y;
+    }
+
+    if (data.facing === "left" || data.facing === "right") {
+      remote.facing = data.facing;
+
+      for (const sprite of remote.sprites) {
+        sprite.setFlipX(remote.facing === "left");
+      }
+    }
+
+    if (data.name) {
+      remote.name = String(data.name).slice(0, 24);
+      remote.nameLabel.setText(remote.name);
+    }
+  }
+
+  removeRemoteAvatar(playerId) {
+    if (!playerId) {
+      return;
+    }
+
+    const remote = this.remoteAvatars.get(playerId);
+
+    if (!remote) {
+      return;
+    }
+
+    for (const sprite of remote.sprites) {
+      sprite.destroy();
+    }
+
+    remote.nameLabel.destroy();
+
+    this.remoteAvatars.delete(playerId);
+
+    console.log(
+      "[MULTIPLAYER] Avatar pemain dihapus:",
+      playerId
+    );
+  }
+
+  updateRemoteAvatars(delta) {
+    if (!this.remoteAvatars) {
+      return;
+    }
+
+    // INTERPOLASI GERAKAN REMOTE
+    const smoothing = Math.min(1, delta / 85);
+
+    for (const remote of this.remoteAvatars.values()) {
+      remote.x = Phaser.Math.Linear(
+        remote.x,
+        remote.targetX,
+        smoothing
+      );
+
+      remote.y = Phaser.Math.Linear(
+        remote.y,
+        remote.targetY,
+        smoothing
+      );
+
+      const x = Math.round(remote.x);
+      const y = Math.round(remote.y);
+
+      for (const sprite of remote.sprites) {
+        sprite.setPosition(x, y);
+      }
+
+      remote.nameLabel.setPosition(x, y - 25);
+    }
+  }
+
+  // =====================================================
+  // ANIMASI AVATAR LOKAL
   // =====================================================
 
   setAvatarAnimation(state) {
@@ -420,7 +757,6 @@ this.platformLayer.calculateFacesWithin(
     const state = this.avatarState;
     const frame = this.avatarFrame;
 
-    // BADAN
     const bodyConfig = this.avatarConfig[0];
     const bodyTexture = this.getAvatarTexture(bodyConfig, state);
     const bodyFrame = bodyConfig.row * FRAME_COUNT + frame;
@@ -428,7 +764,6 @@ this.platformLayer.calculateFacesWithin(
     this.player.setTexture(bodyTexture);
     this.player.setFrame(bodyFrame);
 
-    // LAPISAN KOSTUM MENGGUNAKAN FRAME YANG SAMA
     for (const part of this.avatarParts) {
       const config = part.config;
       const texture = this.getAvatarTexture(config, state);
@@ -459,8 +794,6 @@ this.platformLayer.calculateFacesWithin(
     }
   }
 
-  // Sinkronisasi semua bagian setelah physics selesai.
-  // Ini mencegah lapisan kostum tertinggal dari badan.
   syncAvatarLayers() {
     if (!this.player || !this.avatarParts) {
       return;
@@ -472,18 +805,7 @@ this.platformLayer.calculateFacesWithin(
     for (const part of this.avatarParts) {
       part.sprite.setPosition(x, y);
     }
-  }syncAvatarLayers() {
-  if (!this.player || !this.avatarParts) {
-    return;
   }
-
-  const x = this.player.x;
-  const y = this.player.y;
-
-  for (const part of this.avatarParts) {
-    part.sprite.setPosition(x, y);
-  }
-}
 
   // =====================================================
   // KONTROL
@@ -501,34 +823,57 @@ this.platformLayer.calculateFacesWithin(
     this.jumpKey = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
+
+    this.mobileInput = {
+      left: false,
+      right: false,
+      jump: false
+    };
+
+    this.mobileJumpWasDown = false;
+    this.playerFacing = "right";
   }
 
   updatePlayerMovement() {
     const body = this.player.body;
 
     const left =
-      this.cursors.left.isDown || this.keys.a.isDown;
+      this.cursors.left.isDown ||
+      this.keys.a.isDown ||
+      this.mobileInput.left;
 
     const right =
-      this.cursors.right.isDown || this.keys.d.isDown;
+      this.cursors.right.isDown ||
+      this.keys.d.isDown ||
+      this.mobileInput.right;
 
     if (left && !right) {
       body.setVelocityX(-MOVE_SPEED);
+      this.playerFacing = "left";
       this.setAvatarAnimation("left");
     } else if (right && !left) {
       body.setVelocityX(MOVE_SPEED);
+      this.playerFacing = "right";
       this.setAvatarAnimation("right");
     } else {
       body.setVelocityX(0);
       this.setAvatarAnimation("idle");
     }
 
-    const jumpPressed =
+    const mobileJumpPressed =
+      this.mobileInput.jump && !this.mobileJumpWasDown;
+
+    this.mobileJumpWasDown = this.mobileInput.jump;
+
+    const keyboardJumpPressed =
       Phaser.Input.Keyboard.JustDown(this.jumpKey) ||
       Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
       Phaser.Input.Keyboard.JustDown(this.keys.w);
 
-    if (jumpPressed && body.onFloor()) {
+    if (
+      (keyboardJumpPressed || mobileJumpPressed) &&
+      body.onFloor()
+    ) {
       body.setVelocityY(-JUMP_SPEED);
     }
   }
@@ -542,14 +887,12 @@ this.platformLayer.calculateFacesWithin(
 
     const scrollX = this.cameras.main.scrollX;
 
-    // PARALLAX
     for (const layer of this.parallaxLayers || []) {
       layer.sprite.tilePositionX = Math.round(
         scrollX * layer.factor
       );
     }
 
-    // AWAN
     for (const cloud of this.clouds || []) {
       cloud.sprite.x +=
         (cloud.drift * delta) / 1000;
@@ -566,6 +909,9 @@ this.platformLayer.calculateFacesWithin(
         Math.round(cloud.sprite.x * 4) / 4;
     }
 
+    // UPDATE AVATAR PEMAIN LAIN
+    this.updateRemoteAvatars(delta);
+
     if (!this.player || !this.avatarParts) {
       return;
     }
@@ -574,7 +920,6 @@ this.platformLayer.calculateFacesWithin(
     this.updateAvatarAnimation(delta);
   }
 
-  // Dipanggil setelah update physics pada frame berjalan.
   postUpdate() {
     this.syncAvatarLayers();
   }

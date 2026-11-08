@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+﻿import Phaser from "phaser";
 
 const ASSET = "/assets";
 const FRAME = 32;
@@ -10,6 +10,9 @@ export class BootScene extends Phaser.Scene {
 
   preload() {
     this.load.tilemapTiledJSON("level-01", "/maps/level-01.json");
+
+    // Question Box Stage 4
+    this.load.image("question-box", "/assets/question-box-32x32.png");
 
     this.load.image(
       "mountains-tiles",

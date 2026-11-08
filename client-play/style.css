@@ -1,0 +1,645 @@
+﻿
+:root {
+  font-family: Inter, system-ui, Arial, sans-serif;
+  color: #f8fafc;
+  background: #080d18;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --bg: #080d18;
+  --panel: #151f32;
+  --panel-light: #1e2b42;
+  --primary: #38bdf8;
+  --primary-dark: #0284c7;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --muted: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background: var(--bg);
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* =====================================================
+   JOIN SCREEN
+===================================================== */
+
+.app {
+  width: 100%;
+  max-width: 480px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#joinPanel {
+  width: 100%;
+  padding: 28px 22px;
+  border: 1px solid #293850;
+  border-radius: 22px;
+  background: linear-gradient(145deg, #18243a, #101827);
+  box-shadow: 0 20px 60px #0008;
+}
+
+.brand {
+  margin-bottom: 25px;
+  text-align: center;
+}
+
+.brand h1 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 27px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.brand p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 4px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+#joinPanel > .muted {
+  margin: 0 0 25px;
+  text-align: center;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+#joinPanel label {
+  display: block;
+  margin: 18px 0 8px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+#joinPanel input {
+  width: 100%;
+  height: 52px;
+  padding: 0 15px;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  outline: none;
+  background: #0b1322;
+  color: white;
+  font-size: 16px;
+}
+
+#joinPanel input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px #38bdf822;
+}
+
+#joinButton {
+  width: 100%;
+  min-height: 54px;
+  margin-top: 25px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #062033;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+#joinButton:active {
+  transform: scale(0.98);
+}
+
+.message {
+  min-height: 20px;
+  margin: 12px 0 0;
+  color: #fca5a5;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* =====================================================
+   GAME SCREEN - PORTRAIT DEFAULT
+===================================================== */
+
+#gamePanel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #26364d;
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.game-header > div {
+  min-width: 0;
+}
+
+.game-header .muted {
+  margin-bottom: 4px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.game-header strong {
+  display: block;
+  overflow: hidden;
+  color: white;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  margin: 0;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+}
+
+.game-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 2px solid #334155;
+  border-radius: 12px;
+  background: #111827;
+}
+
+#phoneGame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#phoneGame canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+  touch-action: none;
+}
+
+/* =====================================================
+   MOBILE CONTROLS
+===================================================== */
+
+.mobile-controls {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 4px 15px;
+}
+
+.control-button {
+  width: 76px;
+  height: 68px;
+  flex: 0 0 auto;
+  border: 2px solid #475569;
+  border-radius: 17px;
+  background: linear-gradient(145deg, #26364f, #142033);
+  color: white;
+  font-size: 27px;
+  font-weight: 900;
+  box-shadow: 0 5px 0 #080d18;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.control-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #080d18;
+  background: #334e70;
+}
+
+.jump-button {
+  width: 100px;
+  background: linear-gradient(145deg, #16a34a, #15803d);
+  border-color: #4ade80;
+  color: white;
+  font-size: 17px;
+  letter-spacing: 1px;
+}
+
+.jump-button:active {
+  background: #166534;
+}
+
+/* =====================================================
+   QUIZ AND RESULT
+===================================================== */
+
+#quizPanel,
+#resultPanel {
+  width: 100%;
+  padding: 20px;
+  border: 1px solid #334155;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #1e2b42, #111827);
+  box-shadow: 0 15px 45px #0009;
+}
+
+.section-title {
+  margin-bottom: 14px;
+  color: var(--primary);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+.quiz-timer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #0b1322;
+}
+
+.quiz-timer span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.quiz-timer strong {
+  color: #facc15;
+  font-size: 23px;
+}
+
+.question {
+  margin: 12px 0 18px;
+  color: white;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.choices button {
+  min-height: 52px;
+  padding: 10px;
+  border: 1px solid #475569;
+  border-radius: 11px;
+  background: #26364f;
+  color: white;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.choices button:active {
+  background: var(--primary-dark);
+}
+
+.choices button:disabled {
+  opacity: 0.65;
+}
+
+#resultPanel {
+  text-align: center;
+}
+
+#resultTitle {
+  margin: 12px 0;
+  font-size: 25px;
+}
+
+#resultDetail {
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+#closeResultButton {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+  border-radius: 11px;
+  background: var(--primary);
+  color: #062033;
+  font-weight: 900;
+}
+
+/* =====================================================
+   LANDSCAPE - FULL VIEWPORT GAME
+===================================================== */
+
+@media screen and (orientation: landscape) and (max-height: 700px) {
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: #000;
+  }
+
+  .app {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    display: block;
+  }
+
+  #gamePanel:not(.hidden) {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    display: block;
+    background: #000;
+  }
+
+  .game-header {
+    position: absolute;
+    z-index: 20;
+    top: max(7px, env(safe-area-inset-top));
+    left: max(9px, env(safe-area-inset-left));
+    right: max(9px, env(safe-area-inset-right));
+    width: auto;
+    min-height: 42px;
+    padding: 6px 12px;
+    border: 1px solid #ffffff30;
+    border-radius: 10px;
+    background: #101827cc;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+  }
+
+  .game-header .muted {
+    margin-bottom: 2px;
+    font-size: 8px;
+  }
+
+  .game-header strong {
+    font-size: 11px;
+  }
+
+  .status {
+    display: none;
+  }
+
+  .game-container {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+    background: #000;
+  }
+
+  #phoneGame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #phoneGame canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: fill;
+  }
+
+  .mobile-controls {
+    position: absolute;
+    z-index: 30;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  .control-button {
+    position: absolute;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    width: clamp(55px, 10vh, 76px);
+    height: clamp(55px, 10vh, 76px);
+    border-radius: 16px;
+    background: #18263bdc;
+    border: 2px solid #ffffff70;
+    font-size: clamp(20px, 4vh, 29px);
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  #leftButton {
+    left: max(15px, env(safe-area-inset-left));
+  }
+
+  #rightButton {
+    left: calc(max(15px, env(safe-area-inset-left)) + clamp(63px, 11vh, 84px));
+  }
+
+  .jump-button {
+    right: max(18px, env(safe-area-inset-right));
+    width: clamp(78px, 14vh, 110px);
+    font-size: clamp(13px, 2.5vh, 18px);
+    background: #15803ddd;
+    border-color: #4ade80;
+  }
+
+  #quizPanel,
+  #resultPanel {
+    position: absolute;
+    z-index: 50;
+    top: 50%;
+    left: 50%;
+    width: min(440px, 76vw);
+    max-height: 88%;
+    overflow-y: auto;
+    padding: 15px 18px;
+    transform: translate(-50%, -50%);
+    border: 1px solid #64748b;
+    background: #111827f2;
+    box-shadow: 0 15px 50px #000c;
+  }
+
+  .section-title {
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+
+  .quiz-timer {
+    margin-bottom: 8px;
+    padding: 6px 10px;
+  }
+
+  .quiz-timer strong {
+    font-size: 19px;
+  }
+
+  .question {
+    margin: 8px 0 12px;
+    font-size: clamp(14px, 3vh, 19px);
+  }
+
+  .choices {
+    gap: 7px;
+  }
+
+  .choices button {
+    min-height: 40px;
+    padding: 7px;
+    font-size: 12px;
+  }
+
+  #resultTitle {
+    font-size: 21px;
+  }
+
+  #closeResultButton {
+    min-height: 40px;
+  }
+}
+
+/* =====================================================
+   SMALL PHONES
+===================================================== */
+
+@media screen and (max-width: 360px) {
+  .app {
+    padding: 12px;
+  }
+
+  #joinPanel {
+    padding: 22px 16px;
+  }
+
+  .brand h1 {
+    font-size: 23px;
+  }
+
+  .control-button {
+    width: 65px;
+    height: 60px;
+  }
+
+  .jump-button {
+    width: 88px;
+    font-size: 15px;
+  }
+
+  #quizPanel,
+  #resultPanel {
+    padding: 15px;
+  }
+}
+
+/* =====================================================
+   LANDSCAPE SAFE AREA / SHORT SCREENS
+===================================================== */
+
+@media screen and (orientation: landscape) and (max-height: 420px) {
+  .game-header {
+    min-height: 34px;
+    padding: 4px 9px;
+  }
+
+  .control-button {
+    bottom: max(9px, env(safe-area-inset-bottom));
+    width: 52px;
+    height: 52px;
+    border-radius: 13px;
+  }
+
+  #rightButton {
+    left: calc(max(15px, env(safe-area-inset-left)) + 59px);
+  }
+
+  .jump-button {
+    width: 76px;
+  }
+}
