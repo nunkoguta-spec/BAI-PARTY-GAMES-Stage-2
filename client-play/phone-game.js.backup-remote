@@ -1,0 +1,171 @@
+
+import Phaser from "phaser";
+import { THEME } from "../src/theme.js";
+import { BootScene } from "../src/scenes/BootScene.js";
+import { WorldScene } from "../src/scenes/WorldScene.js";
+
+export function createPhoneGame({
+  parent,
+  socket,
+  roomCode,
+  onSceneReady,
+  onQuizError
+}) {
+  class PhoneWorldScene extends WorldScene {
+    create() {
+      super.create();
+
+      this.lastNetworkUpdate = 0;
+
+      // =================================================
+      // MULTIPLAYER AVATAR EVENTS
+      // =================================================
+
+      const handlePlayersState = (players = []) => {
+        if (!Array.isArray(players)) return;
+
+        for (const player of players) {
+          if (!player?.playerId) continue;
+
+          if (player.playerId === socket.id) continue;
+
+          this.createRemoteAvatar(player);
+        }
+
+        console.log(
+          "[MULTIPLAYER] Initial players:",
+          players.length
+        );
+      };
+
+      const handlePlayerJoined = (player) => {
+        if (!player?.playerId) return;
+
+        if (player.playerId === socket.id) return;
+
+        this.createRemoteAvatar(player);
+      };
+
+      const handlePlayerMoved = (player) => {
+        if (!player?.playerId) return;
+
+        if (player.playerId === socket.id) return;
+
+        this.updateRemoteAvatar(player);
+      };
+
+      const handlePlayerLeft = ({ playerId } = {}) => {
+        if (!playerId) return;
+
+        this.removeRemoteAvatar(playerId);
+      };
+
+      socket.on("players:state", handlePlayersState);
+      socket.on("player:joined", handlePlayerJoined);
+      socket.on("player:moved", handlePlayerMoved);
+      socket.on("player:left", handlePlayerLeft);
+
+      // Simpan handler untuk dibersihkan saat scene ditutup.
+      this.events.once(
+        Phaser.Scenes.Events.SHUTDOWN,
+        () => {
+          socket.off("players:state", handlePlayersState);
+          socket.off("player:joined", handlePlayerJoined);
+          socket.off("player:moved", handlePlayerMoved);
+          socket.off("player:left", handlePlayerLeft);
+
+          console.log(
+            "[MULTIPLAYER] Avatar listeners cleaned."
+          );
+        }
+      );
+
+      // =================================================
+      // QUESTION BOX -> QUIZ HP
+      // =================================================
+
+      this.events.on("question-box-hit", ({ boxId }) => {
+        socket.emit(
+          "quiz:request",
+          {
+            roomCode,
+            boxId
+          },
+          (result) => {
+            if (!result?.ok) {
+              onQuizError?.(
+                result?.error || "Quiz gagal dimulai."
+              );
+            }
+          }
+        );
+      });
+
+      onSceneReady?.(this);
+    }
+
+    // =================================================
+    // UPDATE DAN KIRIM POSISI PEMAIN
+    // =================================================
+
+    update(time, delta) {
+      super.update(time, delta);
+
+      if (!this.player || !this.player.body) {
+        return;
+      }
+
+      if (!socket.connected) return;
+
+      if (time - this.lastNetworkUpdate < 100) {
+        return;
+      }
+
+      this.lastNetworkUpdate = time;
+
+      socket.emit("player:move", {
+        roomCode,
+        x: this.player.x,
+        y: this.player.y,
+        facing: this.playerFacing || "right"
+      });
+    }
+  }
+
+  return new Phaser.Game({
+    type: Phaser.AUTO,
+    parent,
+    width: 480,
+    height: 270,
+    backgroundColor: THEME.sky,
+    pixelArt: true,
+    roundPixels: true,
+    antialias: false,
+
+    render: {
+      pixelArt: true,
+      roundPixels: true,
+      antialias: false
+    },
+
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+
+    physics: {
+      default: "arcade",
+      arcade: {
+        gravity: {
+          y: 900
+        },
+        debug: false
+      }
+    },
+
+    scene: [
+      BootScene,
+      PhoneWorldScene
+    ]
+  });
+}

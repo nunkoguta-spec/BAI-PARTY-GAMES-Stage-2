@@ -1,0 +1,88 @@
+﻿<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#111827">
+  <title>BAI PARTY GAMES - Controller</title>
+  <link rel="stylesheet" href="/client-play/style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">BAI <span>PARTY GAMES</span></div>
+      <div id="connection" class="connection offline">● DISCONNECTED</div>
+    </header>
+
+    <section id="joinPanel" class="panel">
+      <div class="eyebrow">PLAYER CONTROLLER</div>
+      <h1>Siap bermain?</h1>
+      <p class="muted">Masuk ke room untuk mulai bermain bersama.</p>
+
+      <label for="playerName">NAMA PEMAIN</label>
+      <input id="playerName" maxlength="24" placeholder="Nama kamu" value="Player">
+
+      <label for="roomCode">KODE ROOM</label>
+      <input id="roomCode" maxlength="6" placeholder="ABC123" autocomplete="off">
+
+      <button id="joinButton" class="primary">JOIN ROOM</button>
+      <button id="createButton" class="secondary">BUAT ROOM BARU</button>
+      <p id="joinMessage" class="message"></p>
+    </section>
+
+    <section id="gamePanel" class="hidden">
+      <div class="room-card">
+        <div>
+          <div class="eyebrow">ROOM AKTIF</div>
+          <div id="activeRoom" class="room-code">------</div>
+        </div>
+        <div class="player-tag" id="activeName">PLAYER</div>
+      </div>
+
+      <section class="panel status-panel">
+        <div class="section-title">STATUS PEMAIN</div>
+        <div id="playerStatus" class="muted">Terhubung ke room.</div>
+        <div class="score-line">
+          <span>SKOR KAMU</span>
+          <strong id="score">0</strong>
+        </div>
+      </section>
+
+      <section class="panel controls-panel">
+        <div class="section-title">KONTROL</div>
+        <p class="muted small">Kontrol input siap. Integrasi gerakan karakter Phaser menyusul.</p>
+        <div class="controls">
+          <button class="control-button" id="leftButton" aria-label="Kiri">◀</button>
+          <button class="control-button jump" id="jumpButton">JUMP</button>
+          <button class="control-button" id="rightButton" aria-label="Kanan">▶</button>
+        </div>
+      </section>
+
+      <section id="quizPanel" class="panel quiz-panel hidden">
+        <div class="quiz-head">
+          <div>
+            <div class="eyebrow">GERMAN QUIZ</div>
+            <h2>Jawab pertanyaan!</h2>
+          </div>
+          <div class="timer" id="timer">15</div>
+        </div>
+        <div class="timer-track"><div id="timerBar"></div></div>
+        <p id="questionText" class="question"></p>
+        <div id="choices" class="choices"></div>
+        <p id="quizMessage" class="message"></p>
+      </section>
+
+      <section id="resultPanel" class="panel hidden">
+        <div class="section-title">HASIL JAWABAN</div>
+        <h2 id="resultTitle">-</h2>
+        <p id="resultDetail" class="muted"></p>
+      </section>
+
+      <button id="testQuizButton" class="secondary test-button">UJI QUIZ (DEVELOPMENT)</button>
+      <p class="muted small center">Tombol uji hanya untuk mengetes quiz sebelum terhubung ke Question Block.</p>
+    </section>
+  </main>
+
+  <script type="module" src="/client-play/controller.js"></script>
+</body>
+</html>

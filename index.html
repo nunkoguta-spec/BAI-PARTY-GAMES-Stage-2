@@ -1,0 +1,40 @@
+﻿<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#171324" />
+  <title>Deutsch Adventure</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <main id="stage-shell" aria-label="Deutsch Adventure">
+    <section id="main-menu" class="menu-screen" aria-labelledby="menu-title">
+      <div class="menu-content">
+        <p class="menu-eyebrow">Deutsch Adventure</p>
+        <h1 id="menu-title">Deutsch Adventure</h1>
+        <p id="menu-tagline" class="menu-tagline"></p>
+        <nav id="menu-actions" class="menu-actions" aria-label="Menu utama">
+          <button id="menu-host" type="button"></button>
+          <button id="menu-join" type="button"></button>
+          <button id="menu-settings" type="button"></button>
+        </nav>
+        <section id="menu-form" class="menu-form" hidden></section>
+        <section id="menu-settings-panel" class="menu-form" hidden>
+          <h2 id="settings-title"></h2>
+          <p id="settings-language-label"></p>
+          <div id="menu-language-options" class="menu-languages"></div>
+          <button id="settings-back" class="menu-secondary" type="button"></button>
+        </section>
+        <p id="menu-message" class="menu-message" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+    <div id="game" hidden></div>
+  </main>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

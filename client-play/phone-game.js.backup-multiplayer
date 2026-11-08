@@ -1,0 +1,100 @@
+
+import Phaser from "phaser";
+import { THEME } from "../src/theme.js";
+import { BootScene } from "../src/scenes/BootScene.js";
+import { WorldScene } from "../src/scenes/WorldScene.js";
+
+export function createPhoneGame({
+  parent,
+  socket,
+  roomCode,
+  onSceneReady,
+  onQuizError
+}) {
+  class PhoneWorldScene extends WorldScene {
+    create() {
+      super.create();
+
+      this.lastNetworkUpdate = 0;
+
+      this.events.on("question-box-hit", ({ boxId }) => {
+        socket.emit(
+          "quiz:request",
+          {
+            roomCode,
+            boxId
+          },
+          (result) => {
+            if (!result?.ok) {
+              onQuizError?.(
+                result?.error || "Quiz gagal dimulai."
+              );
+            }
+          }
+        );
+      });
+
+      onSceneReady?.(this);
+    }
+
+    update(time, delta) {
+      super.update(time, delta);
+
+      if (!this.player || !this.player.body) {
+        return;
+      }
+
+      if (!socket.connected) return;
+
+      if (time - this.lastNetworkUpdate < 100) {
+        return;
+      }
+
+      this.lastNetworkUpdate = time;
+
+      socket.emit("player:move", {
+        roomCode,
+        x: this.player.x,
+        y: this.player.y,
+        facing: this.playerFacing || "right"
+      });
+    }
+  }
+
+  return new Phaser.Game({
+    type: Phaser.AUTO,
+    parent,
+    width: 480,
+    height: 270,
+    backgroundColor: THEME.sky,
+    pixelArt: true,
+    roundPixels: true,
+    antialias: false,
+
+    render: {
+      pixelArt: true,
+      roundPixels: true,
+      antialias: false
+    },
+
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+
+    physics: {
+      default: "arcade",
+      arcade: {
+        gravity: {
+          y: 900
+        },
+        debug: false
+      }
+    },
+
+    scene: [
+      BootScene,
+      PhoneWorldScene
+    ]
+  });
+}
