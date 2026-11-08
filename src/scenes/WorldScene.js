@@ -779,7 +779,7 @@ export class WorldScene extends Phaser.Scene {
 
     const renderAt = performance.now() - 100;
     for (const remote of this.remoteAvatars.values()) {
-      const snapshots = remote.snapshots;
+      const snapshots = remote.snapshots || [];
       while (snapshots.length > 2 && snapshots[1].time <= renderAt) snapshots.shift();
       const first = snapshots[0];
       const second = snapshots[1];
@@ -788,16 +788,16 @@ export class WorldScene extends Phaser.Scene {
         remote.x = Phaser.Math.Linear(first.x, second.x, t);
         remote.y = Phaser.Math.Linear(first.y, second.y, t);
       } else if (first) {
-        const extrapolation = Math.min(100, Math.max(0, renderAt - first.time));
-        remote.x = Phaser.Math.Linear(remote.x, first.x, Math.min(1, delta / 60));
-        remote.y = Phaser.Math.Linear(remote.y, first.y, Math.min(1, delta / 60));
-        if (extrapolation > 0) {
-          remote.x = Phaser.Math.Linear(remote.x, remote.targetX, 0.04);
-          remote.y = Phaser.Math.Linear(remote.y, remote.targetY, 0.04);
+        remote.x = Phaser.Math.Linear(remote.x, first.x, Math.min(1, delta / 50));
+        remote.y = Phaser.Math.Linear(remote.y, first.y, Math.min(1, delta / 50));
+        if (remote.targetX !== undefined) {
+          remote.x = Phaser.Math.Linear(remote.x, remote.targetX, 0.08);
+          remote.y = Phaser.Math.Linear(remote.y, remote.targetY, 0.08);
         }
       }
-      const frameNumber = remote.state.startsWith("walk") ? Math.floor(renderAt / 125) % FRAME_COUNT : 0;
-      this.applyRemoteAvatarFrame(remote, remote.state, frameNumber);
+
+      this.updateRemoteAvatarAnimation(remote, delta);
+
       const x = Math.round(remote.x);
       const y = Math.round(remote.y);
       for (const sprite of remote.sprites) sprite.setPosition(x, y);
@@ -805,16 +805,71 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  applyRemoteAvatarFrame(remote, state, frame) {
-    const animation = state.startsWith("walk") ? "walk" : state.startsWith("jump") || state.startsWith("fall") ? "jump" : state === "interact" ? "interact" : "idle";
-    const direction = state.endsWith("left") ? "left" : remote.facing;
-    const textureState = animation === "idle" ? "idle" : animation === "walk" ? `walk-${direction}` : animation === "jump" ? `jump-${direction}` : `walk-${direction}`;
+  updateRemoteAvatarAnimation(remote, delta) {
+    const dx = (remote.targetX !== undefined ? remote.targetX - remote.x : 0);
+    const dy = (remote.targetY !== undefined ? remote.targetY - remote.y : 0);
+    const vx = remote.vx !== undefined ? remote.vx : dx * 10;
+    const vy = remote.vy !== undefined ? remote.vy : dy * 10;
+    const isMoving = Math.abs(dx) > 0.4 || Math.abs(vx) > 8;
+    const isJumping = vy < -30 || dy < -2;
+    const isFalling = vy > 50 || dy > 2;
+
+    let anim = "idle";
+    let direction = remote.facing || "right";
+
+    if (remote.state?.startsWith("interact")) {
+      anim = "interact";
+    } else if (remote.state?.startsWith("hurt")) {
+      anim = "hurt";
+    } else if (isJumping || isFalling) {
+      anim = "jump";
+    } else if (isMoving) {
+      anim = "walk";
+    }
+
+    if (remote.state?.endsWith("left")) direction = "left";
+    else if (remote.state?.endsWith("right")) direction = "right";
+    else if (dx > 0.4 || vx > 8) direction = "right";
+    else if (dx < -0.4 || vx < -8) direction = "left";
+    remote.facing = direction;
+
+    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 8 : 6);
+    const frameDuration = 1000 / frameRate;
+
+    remote.animTimer = (remote.animTimer || 0) + delta;
+    if (remote.animTimer >= frameDuration) {
+      const steps = Math.floor(remote.animTimer / frameDuration);
+      remote.animTimer -= steps * frameDuration;
+      remote.animFrame = ((remote.animFrame || 0) + steps) % FRAME_COUNT;
+    }
+
+    const frame = remote.animFrame || 0;
     const parts = ["body", "bottoms", "shoes", "top", "eyes", "hair"];
+    const rows = [
+      DEFAULT_AVATAR.skin,
+      DEFAULT_AVATAR.bottoms,
+      DEFAULT_AVATAR.shoes,
+      DEFAULT_AVATAR.top,
+      DEFAULT_AVATAR.eyes,
+      DEFAULT_AVATAR.hair
+    ];
+
     remote.sprites.forEach((sprite, index) => {
-      const texture = animation === "idle" ? `avatar-${parts[index]}` : `avatar-${parts[index]}-${textureState}`;
-      const textureKey = this.textures.exists(texture) ? texture : (animation === "jump" ? `avatar-${parts[index]}-walk-${direction}` : `avatar-${parts[index]}`);
+      const part = parts[index];
+      let textureKey = `avatar-${part}`;
+      if (anim === "walk") textureKey = `avatar-${part}-walk-${direction}`;
+      else if (anim === "jump") textureKey = `avatar-${part}-jump-${direction}`;
+      else if (anim === "interact") textureKey = `avatar-${part}-interact-${direction}`;
+      else if (anim === "hurt") textureKey = `avatar-${part}-hurt-${direction}`;
+
+      if (!this.textures.exists(textureKey)) {
+        textureKey = `avatar-${part}-walk-${direction}`;
+        if (!this.textures.exists(textureKey)) textureKey = `avatar-${part}`;
+      }
+
       if (sprite.texture.key !== textureKey) sprite.setTexture(textureKey);
-      sprite.setFrame((index === 0 ? DEFAULT_AVATAR.skin : DEFAULT_AVATAR[parts[index] === "bottoms" ? "bottoms" : parts[index] === "shoes" ? "shoes" : parts[index] === "top" ? "top" : parts[index] === "eyes" ? "eyes" : "hair"]) * FRAME_COUNT + frame);
+      sprite.setFrame(rows[index] * FRAME_COUNT + frame);
+      sprite.setFlipX(false);
     });
   }
 
