@@ -1,13 +1,13 @@
 
 import { io } from "socket.io-client";
 import { createPhoneGame } from "./phone-game.js";
-import { SOCKET_SERVER_URL } from "../src/socketConfig.js";
 
 // =====================================================
 // SOCKET.IO
 // =====================================================
 
-const socket = io(SOCKET_SERVER_URL, {
+const serverUrl = import.meta.env.VITE_SERVER_URL || `${location.protocol === "https:" ? "https:" : "http:"}//${location.hostname}:3001`;
+const socket = io(serverUrl, {
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,

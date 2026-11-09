@@ -1,7 +1,6 @@
 
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
-import { SOCKET_SERVER_URL } from "./socketConfig.js";
 
 export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   const panel = document.createElement("section");
@@ -140,6 +139,8 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     hostMinibar.hidden = true;
   });
 
+  const hostname = location.hostname || "localhost";
+  const serverUrl = import.meta.env.VITE_SERVER_URL || `${location.protocol === "https:" ? "https:" : "http:"}//${hostname}:3001`;
   let controllerUrl = `${location.origin}/client-play/`;
 
   controllerUrlElement.textContent = controllerUrl;
@@ -268,7 +269,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     }
   }
 
-  const socket = io(SOCKET_SERVER_URL, {
+  const socket = io(serverUrl, {
     autoConnect: false,
     reconnection: true,
     reconnectionAttempts: Infinity,
