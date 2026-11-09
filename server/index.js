@@ -3,6 +3,7 @@ import express from "express";
 import http from "node:http";
 import { Server } from "socket.io";
 import { randomInt } from "node:crypto";
+import { COURSE } from "../src/game/course.js";
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -20,73 +21,43 @@ app.use(express.json());
 
 const rooms = new Map();
 
-const DEFAULT_SETTINGS = Object.freeze({ quizSeconds: 15, gameMinutes: 10, correctPoints: 10, questionLimit: 0 });
-const QUESTION_BOXES = new Map([
-  ["question-box-01", { x: 360, y: 176 }],
-  ["question-box-02", { x: 800, y: 176 }],
-  ["question-box-03", { x: 1300, y: 176 }],
-  ["question-box-04", { x: 1800, y: 144 }],
-  ["question-box-05", { x: 2400, y: 176 }],
-  ["question-box-06", { x: 2900, y: 144 }],
-  ["question-box-07", { x: 3400, y: 176 }]
-]);
+const DEFAULT_SETTINGS = Object.freeze({ quizSeconds: 15, gameMinutes: 20, correctPoints: 10, questionLimit: 0, hazardPenalty: COURSE.hazardPenalty, finishBonusSeconds: COURSE.finishBonusSeconds, courseWidth: COURSE.width, finishX: COURSE.finishX });
+const WORLD_WIDTH = COURSE.width;
+const WORLD_HEIGHT = COURSE.height;
+const FINISH_X = COURSE.finishX;
+const QUESTION_BOXES = new Map(COURSE.questionBoxes.map(box => [box.id, box]));
+const SAFE_QUESTION_IDS = new Set(COURSE.questionBoxes.map(box => box.id));
+const COURSE_HAZARDS = COURSE.hazards;
+const COURSE_SLUGS = COURSE.slugs || [];
 
 const QUESTION_BANK = [
-  {
-    id: "de-001",
-    question: "Was bedeutet „Guten Morgen“?",
-    choices: {
-      A: "Selamat malam",
-      B: "Selamat pagi",
-      C: "Selamat tinggal",
-      D: "Terima kasih"
-    },
-    answer: "B"
-  },
-  {
-    id: "de-002",
-    question: "Wie sagt man „Terima kasih“ auf Deutsch?",
-    choices: {
-      A: "Bitte",
-      B: "Entschuldigung",
-      C: "Danke",
-      D: "Hallo"
-    },
-    answer: "C"
-  },
-  {
-    id: "de-003",
-    question: "Was bedeutet „Buch“?",
-    choices: {
-      A: "Buku",
-      B: "Meja",
-      C: "Kursi",
-      D: "Pintu"
-    },
-    answer: "A"
-  },
-  {
-    id: "de-004",
-    question: "Wie sagt man „Saya makan“ auf Deutsch?",
-    choices: {
-      A: "Ich trinke",
-      B: "Ich schlafe",
-      C: "Ich esse",
-      D: "Ich spiele"
-    },
-    answer: "C"
-  },
-  {
-    id: "de-005",
-    question: "Was ist die richtige Übersetzung für „Hund“?",
-    choices: {
-      A: "Kucing",
-      B: "Burung",
-      C: "Ikan",
-      D: "Anjing"
-    },
-    answer: "D"
-  }
+  { id: "de-001", tier: 1, question: "Was bedeutet „Guten Morgen“?", choices: { A: "Selamat malam", B: "Selamat pagi", C: "Selamat tinggal", D: "Terima kasih" }, answer: "B" },
+  { id: "de-002", tier: 1, question: "Wie sagt man „Terima kasih“ auf Deutsch?", choices: { A: "Bitte", B: "Entschuldigung", C: "Danke", D: "Hallo" }, answer: "C" },
+  { id: "de-003", tier: 1, question: "Was bedeutet „Buch“?", choices: { A: "Buku", B: "Meja", C: "Kursi", D: "Pintu" }, answer: "A" },
+  { id: "de-004", tier: 1, question: "Wie sagt man „Saya makan“ auf Deutsch?", choices: { A: "Ich trinke", B: "Ich schlafe", C: "Ich esse", D: "Ich spiele" }, answer: "C" },
+  { id: "de-005", tier: 1, question: "Was ist die richtige Übersetzung für „Hund“?", choices: { A: "Kucing", B: "Burung", C: "Ikan", D: "Anjing" }, answer: "D" },
+  { id: "de-017", tier: 1, question: "Was bedeutet „Wasser“?", choices: { A: "Api", B: "Air", C: "Angin", D: "Tanah" }, answer: "B" },
+  { id: "de-018", tier: 1, question: "Wie sagt man „Guten Abend“ auf Indonesisch?", choices: { A: "Selamat pagi", B: "Selamat siang", C: "Selamat malam", D: "Sampai jumpa" }, answer: "C" },
+  { id: "de-019", tier: 1, question: "Welches Wort bedeutet „Haus“?", choices: { A: "Haus", B: "Maus", C: "Baum", D: "Buch" }, answer: "A" },
+  { id: "de-006", tier: 2, question: "Welcher Artikel gehört zu „Mädchen“?", choices: { A: "der", B: "die", C: "das", D: "den" }, answer: "C" },
+  { id: "de-007", tier: 2, question: "Wie lautet der Plural von „Buch“?", choices: { A: "Bücher", B: "Buche", C: "Buchs", D: "Buchen" }, answer: "A" },
+  { id: "de-008", tier: 2, question: "Was bedeutet „obwohl“?", choices: { A: "karena", B: "meskipun", C: "sebelum", D: "setelah" }, answer: "B" },
+  { id: "de-020", tier: 2, question: "Was ist das Gegenteil von „langsam“?", choices: { A: "schnell", B: "klein", C: "ruhig", D: "hell" }, answer: "A" },
+  { id: "de-021", tier: 2, question: "Welcher Kasus folgt auf „mit“?", choices: { A: "Nominativ", B: "Akkusativ", C: "Dativ", D: "Genitiv" }, answer: "C" },
+  { id: "de-022", tier: 2, question: "Was bedeutet „deshalb“?", choices: { A: "oleh karena itu", B: "walaupun", C: "sebelum", D: "mungkin" }, answer: "A" },
+  { id: "de-009", tier: 3, question: "Welcher Satz steht im Perfekt?", choices: { A: "Ich habe gegessen", B: "Ich esse", C: "Ich werde essen", D: "Ich aß" }, answer: "A" },
+  { id: "de-010", tier: 3, question: "Er interessiert ___ für Musik.", choices: { A: "sich", B: "ihn", C: "ihm", D: "sein" }, answer: "A" },
+  { id: "de-011", tier: 3, question: "Wenn ich mehr Zeit ___, würde ich reisen.", choices: { A: "habe", B: "hatte", C: "hätte", D: "haben" }, answer: "C" },
+  { id: "de-012", tier: 3, question: "Trotz ___ Regens gingen wir spazieren.", choices: { A: "der", B: "dem", C: "den", D: "des" }, answer: "D" },
+  { id: "de-013", tier: 3, question: "„Es kommt darauf an“ bedeutet ungefähr ...", choices: { A: "ini bergantung", B: "ini terlambat", C: "ini selesai", D: "ini menyenangkan" }, answer: "A" },
+  { id: "de-014", tier: 3, question: "Welcher Satz ist ein korrekter Nebensatz?", choices: { A: "..., weil ich bin müde", B: "..., weil ich müde bin", C: "..., weil bin ich müde", D: "..., weil müde ich bin" }, answer: "B" },
+  { id: "de-015", tier: 3, question: "Die Entscheidung wurde gestern ___.", choices: { A: "treffen", B: "getroffen", C: "trifft", D: "getrifft" }, answer: "B" },
+  { id: "de-016", tier: 3, question: "„Sowohl ... als auch“ bedeutet ...", choices: { A: "bukan ... melainkan", B: "baik ... maupun", C: "meskipun", D: "sebelum" }, answer: "B" },
+  { id: "de-023", tier: 3, question: "Wählen Sie die richtige Konjunktiv-II-Form: „Wenn er ___, wäre alles einfacher.“", choices: { A: "kommt", B: "käme", C: "gekommen", D: "kommen" }, answer: "B" },
+  { id: "de-024", tier: 3, question: "Was bedeutet „in Betracht ziehen“?", choices: { A: "mempertimbangkan", B: "menghindari", C: "menjelaskan", D: "menyelesaikan" }, answer: "A" },
+  { id: "de-025", tier: 3, question: "Er wartete, ___ der Zug endlich ankam.", choices: { A: "bis", B: "obwohl", C: "damit", D: "während" }, answer: "A" },
+  { id: "de-026", tier: 3, question: "„Je öfter man übt, desto ___ wird man.“", choices: { A: "gut", B: "besser", C: "am besten", D: "guter" }, answer: "B" },
+  { id: "de-027", tier: 3, question: "Welche Präposition verlangt den Genitiv?", choices: { A: "mit", B: "zu", C: "wegen", D: "bei" }, answer: "C" }
 ];
 
 // =====================================================
@@ -150,7 +121,10 @@ function publicLeaderboard(room) {
       playerId: player.id,
       name: player.name,
       score: player.score,
-      answeredQuestions: player.answeredQuestions
+      answeredQuestions: player.answeredQuestions,
+      finishedAt: player.finishedAt || null,
+      finishBonus: player.finishBonus || 0,
+      hazardHits: player.hazardHits || 0
     }))
     .sort((a, b) => b.score - a.score);
 }
@@ -183,20 +157,26 @@ function publicPlayerPosition(player) {
     x: player.x,
     y: player.y,
     facing: player.facing,
+    serverNow: Date.now(),
     vx: player.vx || 0,
     vy: player.vy || 0,
     state: player.state || "idle",
-    grounded: player.grounded !== false
+    grounded: player.grounded !== false,
+    finished: Boolean(player.finished),
+    finishBonus: player.finishBonus || 0,
+    hazardHits: player.hazardHits || 0
   };
 }
 
-function publicQuestion(question, durationSeconds, questionNumber, deadline) {
+function publicQuestion(question, durationSeconds, questionNumber, deadline, tier = 1, basePoints = 10) {
+  const multiplier = tier >= 3 ? 2 : tier === 2 ? 1.5 : 1;
   return {
     questionId: question.id,
     number: questionNumber,
+    tier,
     question: question.question,
     choices: question.choices,
-    points: 10,
+    points: Math.round(basePoints * multiplier),
     duration: durationSeconds,
     deadline,
     serverNow: Date.now()
@@ -219,18 +199,27 @@ function finishQuiz(room, player, session, timedOut = false) {
   const correct =
     !timedOut &&
     session.selectedAnswer === session.question.answer;
+  const tierMultiplier = session.question.tier === 3 ? 2 : session.question.tier === 2 ? 1.5 : 1;
+  const correctAward = Math.round(room.settings.correctPoints * tierMultiplier);
 
   if (correct) {
-    player.score += room.settings.correctPoints;
+    player.score += correctAward;
   } else if (!timedOut) {
     player.score -= 5;
   }
+  const difficultyTier = session.question.tier || 1;
+  const followingTier = difficultyTier === 1 ? 2 : 3;
+  io.to(player.id).emit("quiz:progress", {
+    answered: player.answeredQuestions,
+    nextTier: followingTier,
+    nextPoints: Math.round(room.settings.correctPoints * (followingTier === 3 ? 2 : 1.5))
+  });
 
   const result = {
     correct,
     timedOut,
     correctAnswer: session.question.answer,
-    scoreChange: correct ? room.settings.correctPoints : timedOut ? 0 : -5,
+    scoreChange: correct ? correctAward : timedOut ? 0 : -5,
     totalScore: player.score
   };
 
@@ -241,6 +230,7 @@ function finishQuiz(room, player, session, timedOut = false) {
   io.to(room.code).emit("tv:quiz-status", {
     playerId: player.id,
     playerName: player.name,
+    boxId: session.boxId,
     status: timedOut
       ? "timeout"
       : correct
@@ -259,30 +249,76 @@ function finishQuiz(room, player, session, timedOut = false) {
 function endGame(room, reason = "host") {
   if (room.status === "ended") return;
   clearTimeout(room.gameTimer);
+  clearTimeout(room.finishGraceTimer);
   room.status = "ended";
   for (const player of room.players.values()) {
     if (player.activeQuiz) finishQuiz(room, player, player.activeQuiz, true);
   }
   const leaderboard = publicLeaderboard(room);
-  io.to(room.code).emit("room:status", { status: "ended", reason, leaderboard, winner: leaderboard[0] || null });
-  io.to(room.code).emit("game:ended", { reason, leaderboard, winner: leaderboard[0] || null });
+  const winner = leaderboard[0] || null;
+  io.to(room.code).emit("room:status", { status: "ended", reason, leaderboard, winner });
+  io.to(room.code).emit("game:ended", { reason, leaderboard, winner });
 }
 
 function pauseGame(room) {
   if (room.status !== "playing") return false;
   room.pausedRemaining = Math.max(0, room.endsAt - Date.now());
   clearTimeout(room.gameTimer);
+  for (const player of room.players.values()) {
+    if (player.activeQuiz) {
+      player.activeQuiz.pausedRemaining = Math.max(0, player.activeQuiz.deadline - Date.now());
+      clearTimeout(player.activeQuiz.timeout);
+    }
+  }
   room.status = "paused";
   io.to(room.code).emit("room:status", { status: "paused", remainingMs: room.pausedRemaining });
+  for (const player of room.players.values()) {
+    if (player.activeQuiz) {
+      io.to(player.id).emit("quiz:timer-pause", { remainingMs: player.activeQuiz.pausedRemaining });
+    }
+  }
   return true;
+}
+
+function finishPlayer(room, player) {
+  if (!room || !player || player.finished || room.status !== "playing" || player.x < FINISH_X - 110) return null;
+  const finishedAt = Date.now();
+  player.finished = true;
+  player.finishedAt = finishedAt;
+  room.finishedPlayers.add(player.id);
+  const elapsedMs = Math.max(0, finishedAt - (room.startedAt || finishedAt));
+  const remainingSeconds = Math.max(0, Math.floor((room.endsAt - finishedAt) / 1000));
+  player.finishRank = room.finishedPlayers.size;
+  player.finishBonus = Math.min(25, Math.floor(remainingSeconds * room.settings.finishBonusSeconds));
+  player.score += player.finishBonus;
+  const result = { playerId: player.id, name: player.name, score: player.score, finishBonus: player.finishBonus, elapsedMs, rank: player.finishRank };
+  io.to(room.code).emit("player:finished", result);
+  io.to(room.code).emit("tv:player-finished", result);
+  broadcastLeaderboard(room);
+  broadcastPlayerList(room);
+  if (room.finishedPlayers.size >= room.players.size) {
+    endGame(room, "finish");
+  } else if (!room.finishGraceTimer) {
+    room.finishGraceTimer = setTimeout(() => endGame(room, "finish-grace"), COURSE.finishGraceMs);
+  }
+  return result;
 }
 
 function resumeGame(room) {
   if (room.status !== "paused") return false;
+  const now = Date.now();
   room.status = "playing";
-  room.endsAt = Date.now() + room.pausedRemaining;
+  room.startedAt = now - (room.settings.gameMinutes * 60_000 - room.pausedRemaining);
+  room.endsAt = now + room.pausedRemaining;
   room.gameTimer = setTimeout(() => endGame(room, "timeout"), room.pausedRemaining);
-  io.to(room.code).emit("room:status", { status: "playing", endsAt: room.endsAt });
+  for (const player of room.players.values()) {
+    const session = player.activeQuiz;
+    if (!session || session.finished || !session.pausedRemaining) continue;
+    session.deadline = now + session.pausedRemaining;
+    session.timeout = setTimeout(() => finishQuiz(room, player, session, true), session.pausedRemaining);
+    io.to(player.id).emit("quiz:timer-resume", { deadline: session.deadline, serverNow: now });
+  }
+  io.to(room.code).emit("room:status", { status: "playing", startedAt: room.startedAt, endsAt: room.endsAt, serverNow: now });
   return true;
 }
 
@@ -336,8 +372,11 @@ io.on("connection", (socket) => {
       settings: { ...DEFAULT_SETTINGS },
       gameTimer: null,
       endsAt: null,
+      startedAt: null,
       pausedRemaining: 0,
-      usedQuestions: new Set()
+      finishGraceTimer: null,
+      usedQuestions: new Set(),
+      finishedPlayers: new Set()
     };
 
     rooms.set(code, room);
@@ -368,16 +407,71 @@ io.on("connection", (socket) => {
       callback({ ok: true, status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
       return;
     }
+    if (room.status === "paused") {
+      callback({ ok: false, error: "Game sedang dijeda. Lanjutkan sesi sebelum mulai ulang." });
+      return;
+    }
     if (room.status === "ended") {
-      callback({ ok: false, error: "Game sudah selesai. Buat room baru untuk bermain lagi." });
+      callback({ ok: false, error: "Tekan MULAI ULANG untuk reset sesi terlebih dahulu." });
       return;
     }
     room.status = "playing";
-    room.endsAt = Date.now() + room.settings.gameMinutes * 60_000;
+    room.startedAt = Date.now();
+    room.finishGraceTimer = null;
+    room.finishedPlayers.clear();
+    for (const player of room.players.values()) {
+      player.finished = false;
+      player.finishedAt = null;
+      player.finishRank = 0;
+      player.finishBonus = 0;
+      player.usedHazards?.clear();
+      player.lastHazardAt = 0;
+    }
+    room.endsAt = room.startedAt + room.settings.gameMinutes * 60_000;
     room.gameTimer = setTimeout(() => endGame(room, "timeout"), room.settings.gameMinutes * 60_000);
     io.to(room.code).emit("room:settings", room.settings);
-    io.to(room.code).emit("room:status", { status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
-    callback({ ok: true, status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
+    io.to(room.code).emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
+    callback({ ok: true, status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
+  });
+
+  socket.on("room:restart", (payload = {}, callback = () => {}) => {
+    const room = resolveHostRoom(socket, payload);
+    if (!room || room.status !== "ended") {
+      callback({ ok: false, error: "Mulai ulang hanya tersedia setelah sesi berakhir." });
+      return;
+    }
+    clearTimeout(room.finishGraceTimer);
+    room.finishGraceTimer = null;
+    room.finishedPlayers.clear();
+    room.usedQuestions.clear();
+    for (const player of room.players.values()) {
+      if (player.activeQuiz?.timeout) clearTimeout(player.activeQuiz.timeout);
+      player.score = 0;
+      player.answeredQuestions = 0;
+      player.usedBoxes.clear();
+      player.activeQuiz = null;
+      player.x = COURSE.startX;
+      player.y = COURSE.startY;
+      player.vx = 0;
+      player.vy = 0;
+      player.state = "idle";
+      player.finished = false;
+      player.finishedAt = null;
+      player.finishBonus = 0;
+      player.hazardHits = 0;
+      player.lastHazardAt = 0;
+    }
+    room.status = "waiting";
+    room.startedAt = null;
+    room.endsAt = null;
+    room.pausedRemaining = 0;
+    broadcastPlayerList(room);
+    broadcastLeaderboard(room);
+    io.to(room.code).emit("room:status", { status: "waiting", reset: true, serverNow: Date.now() });
+    for (const player of room.players.values()) {
+      io.to(player.id).emit("player:reset", { x: COURSE.startX, y: COURSE.startY, score: 0 });
+    }
+    callback({ ok: true });
   });
 
   socket.on("room:settings", (payload = {}, callback = () => {}) => {
@@ -390,11 +484,12 @@ io.on("connection", (socket) => {
     const quizSeconds = Number(settings.quizSeconds);
     const gameMinutes = Number(settings.gameMinutes);
     const correctPoints = Number(settings.correctPoints);
-    if (![10, 15, 20, 30, 45, 60].includes(quizSeconds) || !Number.isInteger(gameMinutes) || gameMinutes < 1 || gameMinutes > 60 || !Number.isInteger(correctPoints) || correctPoints < 1 || correctPoints > 100) {
+    const hazardPenalty = settings.hazardPenalty === undefined ? room.settings.hazardPenalty : Number(settings.hazardPenalty);
+    if (![10, 15, 20, 30, 45, 60].includes(quizSeconds) || !Number.isInteger(gameMinutes) || gameMinutes < 1 || gameMinutes > 60 || !Number.isInteger(correctPoints) || correctPoints < 1 || correctPoints > 100 || !Number.isInteger(hazardPenalty) || hazardPenalty < 0 || hazardPenalty > 50) {
       callback({ ok: false, error: "Pengaturan waktu atau poin tidak valid." });
       return;
     }
-    room.settings = { ...room.settings, quizSeconds, gameMinutes, correctPoints };
+    room.settings = { ...room.settings, quizSeconds, gameMinutes, correctPoints, hazardPenalty };
     io.to(room.code).emit("room:settings", room.settings);
     callback({ ok: true, settings: room.settings });
   });
@@ -444,6 +539,9 @@ io.on("connection", (socket) => {
       targetSocket.leave(room.code);
     }
     removePlayer(room, targetId);
+    if (room.status === "playing" && room.players.size > 0 && room.finishedPlayers.size >= room.players.size) {
+      endGame(room, "finish");
+    }
     callback({ ok: true });
   });
 
@@ -477,7 +575,8 @@ io.on("connection", (socket) => {
         playerId: socket.id,
         status: room.status
       });
-      socket.emit("room:status", { status: room.status });
+      socket.emit("room:settings", room.settings);
+      socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
       return;
     }
 
@@ -494,7 +593,13 @@ io.on("connection", (socket) => {
       vx: 0,
       vy: 0,
       state: "idle",
-      grounded: true
+      grounded: true,
+      hazardHits: 0,
+      usedHazards: new Set(),
+      finishedAt: null,
+      finishBonus: 0,
+      finished: false,
+      lastHazardAt: 0
     };
 
     room.members.add(socket.id);
@@ -507,9 +612,10 @@ io.on("connection", (socket) => {
       roomCode: code,
       playerId: socket.id,
       playerName: name,
-      status: room.status
+      status: room.status,
+      course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, questionBoxes: COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS }
     });
-    socket.emit("room:status", { status: room.status });
+    socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
 
     // Kirim posisi pemain lama ke HP pemain baru.
     socket.emit(
@@ -565,6 +671,55 @@ io.on("connection", (socket) => {
   // SINKRONISASI POSISI AVATAR
   // =====================================================
 
+  socket.on("hazard:request", (payload = {}) => {
+    const room = getRoom(socket, payload.roomCode);
+    const player = room?.players.get(socket.id);
+    const hazard = COURSE_HAZARDS.find(item => item.id === payload.hazardId);
+    if (!room || room.status !== "playing" || !player || !hazard || player.activeQuiz || player.finished) return;
+    const recentHit = Date.now() - (player.lastHazardAt || 0) < 1600;
+    // Match player center with hazard body and player Arcade body, not nearby decoration.
+    const near = Math.abs(player.x - hazard.x) < 19 && Math.abs(player.y - hazard.y) < 15 && Number(player.vy) >= -80;
+    if (!near || recentHit) return;
+    player.lastHazardAt = Date.now();
+    player.hazardHits = (player.hazardHits || 0) + 1;
+    player.score -= room.settings.hazardPenalty;
+    player.x = Math.max(COURSE.startX, player.x - 96);
+    player.y = COURSE.startY;
+    player.vx = 0;
+    player.vy = 0;
+    player.state = "hurt";
+    const result = { hazardId: hazard.id, penalty: room.settings.hazardPenalty, totalScore: player.score, respawnX: player.x, respawnY: player.y };
+    io.to(room.code).emit("hazard:hit", { playerId: player.id, ...result });
+    io.to(room.code).emit("hazard:score", { playerId: player.id, name: player.name, score: player.score, penalty: room.settings.hazardPenalty });
+    socket.to(room.code).emit("player:moved", publicPlayerPosition(player));
+    socket.to(room.code).emit("tv:player-move", publicPlayerPosition(player));
+    broadcastLeaderboard(room);
+    broadcastPlayerList(room);
+  });
+
+  socket.on("slug:hit", (payload = {}) => {
+    const room = getRoom(socket, payload.roomCode);
+    const player = room?.players.get(socket.id);
+    const slug = COURSE_SLUGS.find(item => item.id === payload.slugId);
+    if (!room || room.status !== "playing" || !player || !slug || player.finished || player.activeQuiz) return;
+    if (Date.now() - (player.lastSlugAt || 0) < 2200) return;
+    if (Math.abs(player.x - slug.x) > 24 || Math.abs(player.y - slug.y) > 16 || Number(player.vy) < -80) return;
+    player.lastSlugAt = Date.now();
+    player.hazardHits = (player.hazardHits || 0) + 1;
+    player.score -= room.settings.hazardPenalty;
+    player.x = Math.max(COURSE.startX, player.x - 120);
+    player.y = COURSE.startY;
+    player.vx = player.vy = 0;
+    player.state = "hurt";
+    const result = { slugId: slug.id, penalty: room.settings.hazardPenalty, totalScore: player.score, respawnX: player.x, respawnY: player.y };
+    io.to(room.code).emit("hazard:hit", { playerId: player.id, ...result });
+    io.to(room.code).emit("hazard:score", { playerId: player.id, name: player.name, score: player.score, penalty: room.settings.hazardPenalty });
+    socket.to(room.code).emit("player:moved", publicPlayerPosition(player));
+    socket.to(room.code).emit("tv:player-move", publicPlayerPosition(player));
+    broadcastLeaderboard(room);
+    broadcastPlayerList(room);
+  });
+
   socket.on("player:move", (payload = {}) => {
     const room = getRoom(socket, payload.roomCode);
 
@@ -572,7 +727,7 @@ io.on("connection", (socket) => {
 
     const player = room.players.get(socket.id);
 
-    if (!player || player.activeQuiz) return;
+    if (!player || player.activeQuiz || room.status !== "playing" || player.finished) return;
 
     const x = Number(payload.x);
     const y = Number(payload.y);
@@ -580,9 +735,13 @@ io.on("connection", (socket) => {
     if (Number.isFinite(x) && Number.isFinite(y)) {
       const distance = Math.hypot(x - player.x, y - player.y);
       const elapsed = Math.max(16, Date.now() - (player.lastMoveAt || Date.now() - 100));
-      if (distance > Math.max(70, 0.28 * elapsed + 45)) return;
-      player.x = Math.max(0, Math.min(3840, x));
-      player.y = Math.max(0, Math.min(384, y));
+      // Allow Phaser jump velocity plus horizontal speed, including delayed mobile packets.
+      if (distance > Math.max(110, 0.8 * elapsed + 60)) {
+        socket.emit("player:correction", publicPlayerPosition(player));
+        return;
+      }
+      player.x = Math.max(0, Math.min(WORLD_WIDTH, x));
+      player.y = Math.max(0, Math.min(WORLD_HEIGHT, y));
       player.lastMoveAt = Date.now();
     }
 
@@ -593,6 +752,7 @@ io.on("connection", (socket) => {
     if (typeof payload.grounded === "boolean") player.grounded = payload.grounded;
 
     const movementData = publicPlayerPosition(player);
+    movementData.serverNow = Date.now();
 
     // HP pemain lain.
     socket.to(room.code).emit(
@@ -600,11 +760,45 @@ io.on("connection", (socket) => {
       movementData
     );
 
-    // TV Live Spectator.
-    socket.to(room.code).emit(
-      "tv:player-move",
-      movementData
+    // TV Live Spectator and all other player clients receive same authoritative state.
+    socket.to(room.code).emit("tv:player-move", movementData);
+
+    // Server authoritative hazard collision; a hit deducts points once per hit window.
+    const hitHazard = COURSE_HAZARDS.find(h =>
+      Math.abs(player.x - h.x) < 19 && Math.abs(player.y - h.y) < 15 &&
+      Number(player.vy) >= -80 &&
+      Date.now() - (player.lastHazardAt || 0) > 1800
     );
+    if (hitHazard) {
+      player.hazardHits = (player.hazardHits || 0) + 1;
+      player.lastHazardAt = Date.now();
+      player.score -= room.settings.hazardPenalty;
+      const hazardResult = {
+        hazardId: hitHazard.id,
+        penalty: room.settings.hazardPenalty,
+        totalScore: player.score,
+        respawnX: Math.max(COURSE.startX, player.x - 90),
+        respawnY: COURSE.startY
+      };
+      player.x = hazardResult.respawnX;
+      player.y = hazardResult.respawnY;
+      player.vx = 0;
+      player.vy = 0;
+      player.state = "hurt";
+      socket.emit("hazard:hit", hazardResult);
+      io.to(room.code).emit("tv:hazard-hit", { playerId: player.id, ...hazardResult });
+      io.to(room.code).emit("hazard:score", { playerId: player.id, name: player.name, score: player.score, penalty: room.settings.hazardPenalty });
+      socket.emit("player:moved", publicPlayerPosition(player));
+      socket.emit("tv:player-move", publicPlayerPosition(player));
+      socket.to(room.code).emit("player:moved", publicPlayerPosition(player));
+      socket.to(room.code).emit("tv:player-move", publicPlayerPosition(player));
+      broadcastPlayerList(room);
+      broadcastLeaderboard(room);
+    }
+
+    if (!player.finished && player.x >= FINISH_X - 110 && player.x <= FINISH_X + 80) {
+      finishPlayer(room, player);
+    }
   });
 
   // =====================================================
@@ -644,10 +838,15 @@ io.on("connection", (socket) => {
         return;
       }
 
+      if (player.finished) {
+        callback({ ok: false, error: "Pemain sudah mencapai finish." });
+        return;
+      }
+
       const boxId = String(payload.boxId || "").trim();
 
       const boxPosition = QUESTION_BOXES.get(boxId);
-      if (!boxPosition) {
+      if (!boxPosition || !SAFE_QUESTION_IDS.has(boxId)) {
         callback({
           ok: false,
           error: "Question Block tidak valid."
@@ -660,6 +859,10 @@ io.on("connection", (socket) => {
         callback({ ok: false, error: "Pemain terlalu jauh dari Question Block." });
         return;
       }
+      if (Math.abs(player.x - boxPosition.x) > 32 || player.y < boxPosition.y + 8 || player.y > boxPosition.y + 64) {
+        callback({ ok: false, error: "Question Block hanya aktif saat dipukul dari bawah." });
+        return;
+      }
 
       if (player.usedBoxes.has(boxId)) {
         callback({
@@ -669,22 +872,21 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const available = QUESTION_BANK.filter(
-        (question) =>
-          !room.usedQuestions.has(
-            `${player.id}:${question.id}`
-          )
-      );
+      const boxTier = boxPosition.tier || 1;
+      // Use exact course tier first so questions grow harder later; prior tiers only refill exhausted tier pools.
+      const tierPool = QUESTION_BANK.filter(question => (question.tier || 1) === boxTier);
+      const answeredIds = room.usedQuestions;
+      const available = tierPool.filter(question => !answeredIds.has(`${player.id}:${question.id}`));
+      const questionPool = available.length
+        ? available
+        : QUESTION_BANK.filter(question => (question.tier || 1) <= boxTier && !answeredIds.has(`${player.id}:${question.id}`));
 
-      if (available.length === 0) {
-        callback({
-          ok: false,
-          error: "Quiz untuk pemain ini sudah habis."
-        });
+      if (!questionPool.length) {
+        callback({ ok: false, error: "Semua pertanyaan quiz telah dijawab." });
         return;
       }
 
-      const question = available[randomInt(available.length)];
+      const question = questionPool[randomInt(questionPool.length)];
 
       room.usedQuestions.add(`${player.id}:${question.id}`);
       player.usedBoxes.add(boxId);
@@ -696,6 +898,7 @@ io.on("connection", (socket) => {
         selectedAnswer: null,
         finished: false,
         deadline: Date.now() + durationSeconds * 1000,
+        pausedRemaining: 0,
         timeout: null
       };
 
@@ -708,8 +911,11 @@ io.on("connection", (socket) => {
       // Soal hanya dikirim ke HP pemain yang menabrak.
       socket.emit(
         "quiz:show",
-        publicQuestion(question, durationSeconds, player.answeredQuestions + 1, session.deadline)
+        publicQuestion(question, durationSeconds, player.answeredQuestions + 1, session.deadline, question.tier, room.settings.correctPoints)
       );
+      session.progressHandler = payload => {
+        if (payload?.status === "paused") io.to(player.id).emit("quiz:timer-pause", { remainingMs: session.pausedRemaining });
+      };
 
       // TV hanya menerima status quiz.
       io.to(room.code).emit("tv:quiz-status", {
@@ -754,6 +960,12 @@ io.on("connection", (socket) => {
           ok: false,
           error: "Tidak ada quiz aktif."
         });
+        return;
+      }
+
+      if (Date.now() >= session.deadline) {
+        finishQuiz(room, player, session, true);
+        callback({ ok: true, timedOut: true });
         return;
       }
 
@@ -811,11 +1023,14 @@ io.on("connection", (socket) => {
         status: room.status,
         endsAt: room.endsAt,
         settings: room.settings,
+        course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, questionBoxes: COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
         players: publicLeaderboard(room),
         avatars: [...room.players.values()].map(publicPlayerPosition)
       });
 
       socket.emit("players:state", [...room.players.values()].map(publicPlayerPosition));
+      socket.emit("room:settings", room.settings);
+      socket.emit("room:status", { status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
       broadcastPlayerList(room);
       broadcastLeaderboard(room);
     }

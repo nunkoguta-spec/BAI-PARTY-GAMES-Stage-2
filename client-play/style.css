@@ -3,6 +3,10 @@
   font-family: "Press Start 2P", monospace, monospace;
   color: #f8fafc;
   background: #171324;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   image-rendering: pixelated;
   --bg: #171324;
   --panel: #20243b;
@@ -120,6 +124,170 @@ button:disabled {
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+/* Full-screen gameplay surface; joinscreen stays compact until player joins. */
+body:has(#gamePanel:not(.hidden)) {
+  overflow: hidden;
+  touch-action: none;
+}
+
+#gamePanel:not(.hidden) {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  width: 100vw;
+  width: var(--viewport-width, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  height: var(--viewport-height, 100dvh);
+  max-width: none;
+  min-height: 0;
+  overflow: hidden;
+  background: #171324;
+  display: block;
+}
+
+.game-container {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border: 0;
+  background: #171324;
+}
+
+.game-header {
+  position: absolute;
+  z-index: 20;
+  top: max(6px, var(--safe-top));
+  left: max(8px, var(--safe-left));
+  right: max(8px, var(--safe-right));
+  width: auto;
+  min-height: 48px;
+  padding: 6px 8px;
+  display: flex;
+  justify-content: space-around;
+  gap: 5px;
+  pointer-events: none;
+}
+.game-header > * { pointer-events: auto; }
+.game-header > div { min-width: 0; }
+.game-header strong { font-size: clamp(7px, 1.8vw, 10px); }
+.pixel-tag { font-size: clamp(5px, 1.4vw, 7px); }
+
+#playerStatus {
+  position: absolute;
+  z-index: 20;
+  top: calc(max(6px, var(--safe-top)) + 52px);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 5px 8px;
+  width: max-content;
+  max-width: min(92vw, 460px);
+  background: #111422eF;
+  border: 2px solid #000;
+  pointer-events: none;
+}
+
+#playerLeaderboardDrawer {
+  position: absolute;
+  z-index: 25;
+  top: calc(max(6px, var(--safe-top)) + 52px);
+  right: max(8px, var(--safe-right));
+  width: min(230px, 52vw);
+  max-height: 45vh;
+  overflow: auto;
+}
+
+.mobile-controls {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.control-button {
+  position: absolute;
+  bottom: max(14px, var(--safe-bottom));
+  width: clamp(58px, 9vw, 78px);
+  height: clamp(58px, 9vw, 78px);
+  padding: 4px;
+  font-size: clamp(14px, 3vw, 22px);
+  pointer-events: auto;
+  touch-action: none;
+}
+#leftButton { left: max(14px, var(--safe-left)); }
+#rightButton { left: calc(max(14px, var(--safe-left)) + clamp(66px, 10vw, 88px)); }
+.jump-button {
+  right: max(14px, var(--safe-right));
+  width: clamp(82px, 13vw, 116px);
+  background: #82d82c;
+  font-size: clamp(8px, 1.7vw, 10px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mobile-controls { display: none; }
+}
+
+#quizPanel, #resultPanel, #gameOverPanel {
+  z-index: 100;
+}
+
+#gameOverPanel {
+  max-height: min(92vh, 620px);
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  .game-header { min-height: 54px; padding: 5px 4px; }
+  .game-header > div { max-width: 19vw; }
+  .game-header strong { font-size: 6px; }
+  .game-header .pixel-btn { font-size: 6px; padding: 4px; }
+  #playerStatus { top: calc(max(6px, var(--safe-top)) + 58px); font-size: 6px; }
+  /* Canvas stretches with resize viewport while maintaining coordinate space via camera world bounds. */
+  #phoneGame canvas {
+    position: absolute;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none;
+    max-height: none;
+    inset: 0;
+    transform: none;
+    object-fit: fill;
+  }
+  .game-header { left: 5px; right: 5px; }
+  .control-button { bottom: max(12px, var(--safe-bottom)); }
+}
+
+/* Desktop game is a true canvas-first full-screen layout; HUD/control remain arcade overlays. */
+@media (hover: hover) and (pointer: fine) {
+  #gamePanel:not(.hidden) .mobile-controls { display: none; }
+  #gamePanel:not(.hidden) .game-header {
+    left: 50%;
+    right: auto;
+    width: min(760px, calc(100vw - 32px));
+    transform: translateX(-50%);
+    min-height: 58px;
+    padding: 8px 14px;
+  }
+  #gamePanel:not(.hidden) .game-header strong { font-size: 10px; }
+  #gamePanel:not(.hidden) #playerStatus { top: 72px; }
+  #gamePanel:not(.hidden) .pixel-modal { width: min(560px, 80vw); }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .game-header { min-height: 40px; }
+  #playerStatus { top: calc(max(4px, var(--safe-top)) + 43px); }
+  .control-button { bottom: max(8px, var(--safe-bottom)); width: 56px; height: 56px; }
+  #rightButton { left: calc(max(12px, var(--safe-left)) + 62px); }
+  .jump-button { width: 82px; }
 }
 #joinPanel {
   width: 100%;

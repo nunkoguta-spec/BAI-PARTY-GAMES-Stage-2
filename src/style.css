@@ -311,7 +311,7 @@ body {
 }
 
 .host-card {
-  width: 275px;
+  width: 290px;
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
   padding: 12px;
@@ -359,11 +359,12 @@ body {
 
 #host-qr {
   display: block;
-  width: 80px;
-  height: 80px;
+  width: 140px;
+  height: 140px;
   image-rendering: pixelated;
   background: #fff;
-  border: 3px solid #000;
+  border: 4px solid #000;
+  box-shadow: 4px 4px 0 #000;
 }
 
 .pixel-url {

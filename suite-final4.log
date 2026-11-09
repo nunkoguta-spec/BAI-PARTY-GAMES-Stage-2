@@ -1,0 +1,29 @@
+[SERVER] 
+[SERVER] ==================================
+ BAI PARTY GAMES MULTIPLAYER SERVER
+ http://localhost:3477
+ Health: http://localhost:3477/health
+==================================
+[SERVER] [CONNECT] zrr4NJTXQnkI-7LFAAAA
+[SERVER] [ROOM] Created E629FR (host: zrr4NJTXQnkI-7LFAAAA)
+[SERVER] [CONNECT] NiknoQCP7MI8I75eAAAB
+[SERVER] [JOIN] Alice joined E629FR
+[SERVER] [CONNECT] Pvp0t7PNK09scxxCAAAC
+TEST_STAGE: tvSubscribe
+[SERVER] [JOIN] Bob joined E629FR
+TEST_STAGE: settings
+TEST_STAGE: start
+TEST_STAGE: positionBroadcast
+TEST_STAGE: walkToQuizBox
+TEST_STAGE: quizRequest
+TEST_STAGE: quizAnswer { ok: true } 1 1
+[SERVER] [CONNECT] 9PYxDQTJmeWpN7M7AAAD
+[SERVER] [ROOM] Created FUAULL (host: 9PYxDQTJmeWpN7M7AAAD)
+[SERVER] [CONNECT] rycyF4MUbyaYUh0XAAAE
+[SERVER] [JOIN] Alice joined FUAULL
+[SERVER] [CONNECT] vcnX0eMjqdlBDafrAAAF
+[SERVER] [JOIN] Bob joined FUAULL
+[SERVER] [DISCONNECT] 9PYxDQTJmeWpN7M7AAAD
+[SERVER] [DISCONNECT] vcnX0eMjqdlBDafrAAAF
+[DISCONNECT] rycyF4MUbyaYUh0XAAAE
+[ROOM] Deleted FUAULL

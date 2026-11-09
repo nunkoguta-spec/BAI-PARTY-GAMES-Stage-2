@@ -1,0 +1,44 @@
+Course server test failed: TransportError: xhr poll error
+    at XHR.onError (file:///C:/Users/rhauf/Downloads/BAI-PARTY-GAMES-Stage-2/node_modules/engine.io-client/build/esm-debug/transport.js:41:37)
+    at Request.<anonymous> (file:///C:/Users/rhauf/Downloads/BAI-PARTY-GAMES-Stage-2/node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.js:58:18)
+    at Emitter.emit (C:\Users\rhauf\Downloads\BAI-PARTY-GAMES-Stage-2\node_modules\@socket.io\component-emitter\lib\cjs\index.js:143:20)
+    at Request._onError (file:///C:/Users/rhauf/Downloads/BAI-PARTY-GAMES-Stage-2/node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.js:166:14)
+    at Timeout._onTimeout (file:///C:/Users/rhauf/Downloads/BAI-PARTY-GAMES-Stage-2/node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.js:139:30)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7) {
+  description: 0,
+  context: XMLHttpRequest {
+    UNSENT: 0,
+    OPENED: 1,
+    HEADERS_RECEIVED: 2,
+    LOADING: 3,
+    DONE: 4,
+    readyState: 0,
+    onreadystatechange: [Function: empty],
+    responseText: '',
+    responseXML: '',
+    response: <Buffer >,
+    status: 0,
+    statusText: Error: connect ECONNREFUSED 127.0.0.1:3491
+        at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16) {
+      errno: -4078,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3491
+    },
+    open: [Function (anonymous)],
+    setDisableHeaderCheck: [Function (anonymous)],
+    setRequestHeader: [Function (anonymous)],
+    getResponseHeader: [Function (anonymous)],
+    getAllResponseHeaders: [Function (anonymous)],
+    getRequestHeader: [Function (anonymous)],
+    send: [Function (anonymous)],
+    handleError: [Function (anonymous)],
+    abort: [Function (anonymous)],
+    addEventListener: [Function (anonymous)],
+    removeEventListener: [Function (anonymous)],
+    dispatchEvent: [Function (anonymous)]
+  },
+  type: 'TransportError'
+}

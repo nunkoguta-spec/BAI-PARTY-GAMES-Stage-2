@@ -1,6 +1,7 @@
 ﻿
 import { io } from "socket.io-client";
 import { createPhoneGame } from "./phone-game.js";
+import { retroAudio } from "../src/audio/retroAudio.js";
 
 // =====================================================
 // SOCKET.IO
@@ -40,6 +41,7 @@ let quizInterval = null;
 let quizDeadline = 0;
 let quizActive = false;
 let gameStarted = false;
+let currentCourse = null;
 let joiningRoom = false;
 
 // =====================================================
@@ -60,23 +62,25 @@ function showMessage(message, isError = false) {
 
 async function requestGameDisplay() {
   const root = document.documentElement;
+  retroAudio.unlock();
 
+  // Chromium/Android fullscreen uses gesture; iOS uses standalone/status-bar + viewport CSS fallback.
   try {
     if (!document.fullscreenElement && root.requestFullscreen) {
-      await root.requestFullscreen({
-        navigationUI: "hide"
-      });
+      await root.requestFullscreen({ navigationUI: "hide" });
+    } else if (root.webkitRequestFullscreen && !document.webkitFullscreenElement) {
+      root.webkitRequestFullscreen();
+    } else if (root.webkitEnterFullscreen && !document.webkitFullscreenElement) {
+      root.webkitEnterFullscreen();
     }
   } catch (error) {
-    console.warn("[DISPLAY] Fullscreen:", error);
+    console.info("[DISPLAY] Browser fullscreen fallback:", error?.message || error);
   }
 
   try {
-    if (screen.orientation?.lock) {
-      await screen.orientation.lock("landscape");
-    }
+    if (screen.orientation?.lock) await screen.orientation.lock("landscape");
   } catch (error) {
-    console.warn("[DISPLAY] Landscape:", error);
+    console.info("[DISPLAY] Orientation lock unavailable:", error?.message || error);
   }
 }
 
@@ -89,11 +93,17 @@ function refreshGameSize() {
     if (!phoneGame) return;
 
     const container = $("phoneGame");
-    if (!container) return;
+    const gamePanel = $("gamePanel");
+    if (!container || !gamePanel || !gamePanel.isConnected) return;
 
-    if (container.clientWidth < 1 || container.clientHeight < 1) return;
+    const viewport = window.visualViewport;
+    const width = Math.max(1, Math.floor(viewport?.width || window.innerWidth));
+    const height = Math.max(1, Math.floor(viewport?.height || window.innerHeight));
+    gamePanel.style.setProperty("--viewport-width", `${width}px`);
+    gamePanel.style.setProperty("--viewport-height", `${height}px`);
+    // Keep Phaser world fixed at 480×270; Scale.FIT resizes presentation, not physics coordinates.
     phoneGame.scale.refresh();
-  }, 150);
+  }, 100);
 }
 
 // =====================================================
@@ -104,6 +114,9 @@ function setMobileInput(action, pressed) {
   if (!(action in mobileInput)) return;
 
   mobileInput[action] = pressed;
+  if (action === "jump" && pressed) {
+    retroAudio.playJump();
+  }
   if (phoneScene?.mobileInput && phoneScene.mobileInput !== mobileInput) {
     phoneScene.mobileInput[action] = pressed;
   }
@@ -122,7 +135,15 @@ function releaseAllMobileInput() {
 function enterRoom(data) {
   roomCode = data.roomCode;
   gameStarted = data.status === "playing";
-  if (phoneScene) phoneScene.gameStarted = true;
+  currentCourse = data.course || null;
+  if (currentCourse && phoneScene?.applyCourse) phoneScene.applyCourse(currentCourse);
+  if (phoneScene) {
+    phoneScene.gameStarted = true;
+    if (currentCourse?.startedAt) phoneScene.gameStartedAt = currentCourse.startedAt;
+  }
+
+  retroAudio.unlock();
+  retroAudio.startBGM();
 
   // ID disesuaikan dengan index.html.
   $("displayRoomCode").textContent = roomCode;
@@ -156,6 +177,7 @@ function startPhoneGame() {
         // Hubungkan kontrol HP ke Phaser.
         scene.mobileInput = mobileInput;
         scene.gameStarted = true;
+        if (currentCourse && scene.applyCourse) scene.applyCourse(currentCourse);
 
         $("playerStatus").textContent = gameStarted
           ? "Game berlangsung."
@@ -383,6 +405,24 @@ function renderTimer() {
 // QUIZ RECEIVED FROM SERVER
 // =====================================================
 
+socket.on("quiz:timer-pause", ({ remainingMs } = {}) => {
+  if (!quizActive) return;
+  quizDeadline = Date.now() + Math.max(0, Number(remainingMs) || 0);
+  stopQuizTimer();
+  renderTimer();
+  $("quizMessage").textContent = "Waktu kuis dijeda oleh host.";
+});
+
+socket.on("quiz:timer-resume", ({ deadline, serverNow } = {}) => {
+  if (!quizActive) return;
+  quizDeadline = Number(deadline) || Date.now();
+  if (serverNow) quizDeadline += Date.now() - Number(serverNow);
+  stopQuizTimer();
+  renderTimer();
+  quizInterval = setInterval(renderTimer, 100);
+  $("quizMessage").textContent = "Waktu kuis berjalan kembali.";
+});
+
 socket.on("quiz:show", (question) => {
   stopQuizTimer();
 
@@ -484,6 +524,12 @@ socket.on("quiz:result", (result) => {
   score = Number(result.totalScore) || 0;
   $("score").textContent = score;
 
+  if (result.correct) {
+    retroAudio.playCorrect();
+  } else {
+    retroAudio.playWrong();
+  }
+
   // Highlight choices with pixel styles
   const choices = $("choices")?.querySelectorAll("button") || [];
   choices.forEach((btn) => {
@@ -533,6 +579,39 @@ $("closeResultButton").addEventListener("click", () => {
 
 $("restartGameBtn")?.addEventListener("click", () => {
   $("gameOverPanel")?.classList.add("hidden");
+  phoneScene?.finishOverlay?.overlay?.setVisible(false);
+  phoneScene?.finishOverlay?.panel?.setVisible(false);
+});
+
+function showFinalResults(leaderboard = [], winner = null, reason = "selesai") {
+  updatePlayerGameTimer(null);
+  const gameOver = $("gameOverPanel");
+  if (!gameOver) return;
+  gameOver.classList.remove("hidden");
+  if (winner && $("winnerBanner")) {
+    const reasonLabel = reason === "timeout" ? "WAKTU HABIS" : "SESI SELESAI";
+    $("winnerBanner").textContent = `🏁 ${reasonLabel} · JUARA: ${winner.name} · ${winner.score} POIN`;
+  }
+  const rows = $("finalLeaderboardList");
+  const sorted = [...leaderboard].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  if (rows) {
+    rows.replaceChildren();
+    sorted.forEach((entry, index) => {
+      const row = document.createElement("div");
+      row.className = `pixel-player-row ${index === 0 ? "pixel-row-highlight" : ""}`;
+      const finishInfo = entry.finishedAt ? ` · FINISH +${entry.finishBonus || 0}` : " · BELUM FINISH";
+      row.textContent = `${index + 1}. ${entry.name} — ${entry.score} POIN${finishInfo}`;
+      rows.appendChild(row);
+    });
+  }
+}
+
+$("audioToggleBtn")?.addEventListener("click", () => {
+  retroAudio.unlock();
+  if (!retroAudio.isPlaying) retroAudio.startBGM();
+  const muted = retroAudio.toggleMute();
+  const btn = $("audioToggleBtn");
+  if (btn) btn.textContent = muted ? "🔈" : "🔊";
 });
 
 // =====================================================
@@ -584,13 +663,52 @@ function renderPlayerDrawer(players = []) {
     const row = document.createElement("div");
     row.className = `pixel-player-row ${p.playerId === socket.id ? "pixel-row-highlight" : ""}`;
     const rank = document.createElement("span");
-    rank.textContent = `${idx === 0 ? "👑 " : ""}${idx + 1}. ${p.name || "Player"}`;
+    const finishTag = p.finishedAt ? " 🏁" : "";
+    rank.textContent = `${idx === 0 ? "👑 " : ""}${idx + 1}. ${p.name || "Player"}${finishTag}`;
     const pts = document.createElement("span");
     pts.textContent = `${Number(p.score) || 0} PTS`;
     row.append(rank, pts);
     container.appendChild(row);
   });
 }
+
+socket.on("hazard:hit", (result) => {
+  if (!result) return;
+  score = Number(result.totalScore) || 0;
+  $("score").textContent = score;
+  $("playerStatus").textContent = `RINTANGAN! -${result.penalty} POIN`;
+  retroAudio.playWrong();
+  if (phoneScene) phoneScene.handleAuthoritativeHazardHit(result);
+  window.setTimeout(() => {
+    if (!quizActive && gameStarted && $("playerStatus").textContent.startsWith("RINTANGAN!")) {
+      $("playerStatus").textContent = "Game berlangsung.";
+    }
+  }, 1500);
+});
+
+socket.on("player:finished", (result) => {
+  if (!result) return;
+  if (result.playerId !== socket.id) {
+    phoneScene?.updateRemoteAvatar({ ...result, state: "idle", finished: true });
+    return;
+  }
+  score = Number(result.score) || score;
+  $("score").textContent = score;
+  $("playerStatus").textContent = `FINISH #${result.rank} · BONUS +${result.finishBonus}`;
+  phoneScene?.handleAuthoritativeFinish(result);
+  retroAudio.playCorrect();
+});
+
+socket.on("hazard:score", ({ playerId, score: nextScore } = {}) => {
+  if (playerId !== socket.id) return;
+  score = Number(nextScore) || 0;
+  $("score").textContent = score;
+});
+
+socket.on("tv:player-finished", (result) => {
+  if (!result || result.playerId === socket.id) return;
+  if (phoneScene) phoneScene.updateRemoteAvatar({ ...result, state: "idle" });
+});
 
 socket.on("game:ended", ({ leaderboard, winner, reason } = {}) => {
   stopQuizTimer();
@@ -620,14 +738,51 @@ socket.on("game:ended", ({ leaderboard, winner, reason } = {}) => {
   }
 });
 
+socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
+  quizActive = false;
+  if (phoneScene) {
+    phoneScene.finished = false;
+    phoneScene.finishRequestSent = false;
+    phoneScene.physics?.world?.resume?.();
+    phoneScene.player?.setPosition(Number(x) || 240, Number(y) || 208);
+    phoneScene.player?.body?.reset(Number(x) || 240, Number(y) || 208);
+    phoneScene.syncAvatarLayers?.();
+  }
+  if (Number.isFinite(Number(resetScore))) {
+    score = Number(resetScore);
+    $("score").textContent = score;
+  }
+  $("gameOverPanel")?.classList.add("hidden");
+  $("playerStatus").textContent = "Room diatur ulang. Menunggu host memulai.";
+});
+
 socket.on("player:kicked", ({ reason } = {}) => {
   alert(reason || "Anda telah dikeluarkan dari permainan oleh host.");
   location.reload();
 });
 
-socket.on("room:status", ({ status, endsAt, remainingMs } = {}) => {
+socket.on("room:status", ({ status, endsAt, startedAt, remainingMs, leaderboard, winner, reason } = {}) => {
   gameStarted = status === "playing";
-  if (phoneScene) phoneScene.gameStarted = true;
+  if (phoneScene) {
+    phoneScene.gameStarted = true;
+    if (startedAt) phoneScene.gameStartedAt = startedAt;
+    if (status === "ended") phoneScene.finished = true;
+  }
+  if (status === "ended") {
+    const gameOver = $("gameOverPanel");
+    gameOver?.classList.remove("hidden");
+    if (winner && $("winnerBanner")) $("winnerBanner").textContent = `🏁 SELESAI · JUARA: ${winner.name} · ${winner.score} POIN`;
+    const rows = $("finalLeaderboardList");
+    if (rows && Array.isArray(leaderboard)) {
+      rows.replaceChildren();
+      leaderboard.forEach((entry, index) => {
+        const row = document.createElement("div");
+        row.className = `pixel-player-row ${index === 0 ? "pixel-row-highlight" : ""}`;
+        row.textContent = `${index + 1}. ${entry.name} — ${entry.score} POIN${entry.finishedAt ? " · FINISH" : ""}`;
+        rows.appendChild(row);
+      });
+    }
+  }
   if (endsAt) updatePlayerGameTimer(endsAt);
   if (status === "paused") {
     if (playerGameTimerInterval) clearInterval(playerGameTimerInterval);
@@ -723,13 +878,18 @@ socket.on("connect_error", (error) => {
 // DISPLAY RESIZE EVENTS
 // =====================================================
 
-window.addEventListener("resize", refreshGameSize);
-window.addEventListener("orientationchange", refreshGameSize);
+window.addEventListener("resize", refreshGameSize, { passive: true });
+window.addEventListener("orientationchange", refreshGameSize, { passive: true });
+window.addEventListener("pageshow", refreshGameSize, { passive: true });
+window.addEventListener("visualViewport:resize", refreshGameSize, { passive: true });
+window.addEventListener("visualViewport:scroll", refreshGameSize, { passive: true });
 
 document.addEventListener("fullscreenchange", refreshGameSize);
+document.addEventListener("webkitfullscreenchange", refreshGameSize);
 
 if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", refreshGameSize);
+  window.visualViewport.addEventListener("resize", refreshGameSize, { passive: true });
+  window.visualViewport.addEventListener("scroll", refreshGameSize, { passive: true });
 }
 
 console.log("[CLIENT] Controller berhasil dimuat.");

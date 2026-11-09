@@ -1,6 +1,8 @@
 ﻿
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
+import { retroAudio } from "./audio/retroAudio.js";
+import { COURSE } from "./game/course.js";
 
 export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   const panel = document.createElement("section");
@@ -16,7 +18,10 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     <div id="host-card" class="pixel-box host-card">
       <div class="host-header-bar">
         <span class="pixel-heading">HOST DASHBOARD</span>
-        <button id="host-toggle-panel" class="pixel-btn pixel-btn-sm" type="button">◀ TUTUP</button>
+        <div style="display:flex;gap:4px">
+          <button id="host-audio-btn" class="pixel-btn pixel-btn-sm" type="button">🔊 BGM</button>
+          <button id="host-toggle-panel" class="pixel-btn pixel-btn-sm" type="button">◀ TUTUP</button>
+        </div>
       </div>
       <div id="host-connection" class="pixel-badge">Menghubungkan server...</div>
 
@@ -26,7 +31,8 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
           <span class="pixel-label">KODE:</span>
           <span id="host-room-code" class="pixel-value">------</span>
         </div>
-        <div class="host-qr-wrap"><canvas id="host-qr" width="80" height="80"></canvas></div>
+        <div class="host-qr-wrap"><canvas id="host-qr" width="140" height="140"></canvas></div>
+        <div class="pixel-meta-text" style="text-align:center;font-size:7px;color:#82d82c;margin:2px 0 6px">▲ SCAN QR UNTUK GABUNG ▲</div>
         <div id="host-controller-url" class="pixel-url"></div>
         <div class="pixel-btn-row">
           <button id="host-copy-code" class="pixel-btn" type="button">SALIN KODE</button>
@@ -43,6 +49,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
           <button id="host-pause-game" class="pixel-btn" type="button" disabled>PAUSE</button>
           <button id="host-resume-game" class="pixel-btn" type="button" disabled>RESUME</button>
           <button id="host-end-game" class="pixel-btn pixel-btn-danger" type="button" disabled>END GAME</button>
+          <button id="host-restart-game" class="pixel-btn" type="button" hidden>MULAI ULANG</button>
         </div>
       </div>
 
@@ -115,6 +122,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   const pauseGameButton = $("#host-pause-game");
   const resumeGameButton = $("#host-resume-game");
   const endGameButton = $("#host-end-game");
+  const restartGameButton = $("#host-restart-game");
   const quizSelect = $("#host-setting-quiz");
   const durationSelect = $("#host-setting-duration");
   const pointsSelect = $("#host-setting-points");
@@ -203,6 +211,25 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     });
   });
 
+  restartGameButton.addEventListener("click", () => {
+    if (!currentRoomCode) return;
+    socket.emit("room:restart", { roomCode: currentRoomCode, hostToken: currentHostToken }, (res) => {
+      if (!res?.ok) {
+        roomStatus.textContent = res?.error || "Gagal mengatur ulang room.";
+        return;
+      }
+      restartGameButton.hidden = true;
+      startGameButton.disabled = players.length === 0;
+      roomStatus.textContent = "Sesi baru siap. Pemain dapat bergerak ke garis start.";
+      const scene = getWorldScene();
+      scene?.resetLocalPlayer?.();
+      for (const p of players) {
+        const avatar = scene?.remoteAvatars?.get(p.playerId);
+        if (avatar) scene.updateRemoteAvatar({ ...p, x: COURSE.startX, y: COURSE.startY, state: "idle", finished: false, score: 0 });
+      }
+    });
+  });
+
   let hostGameTimerInterval = null;
   function updateHostTimer(endsAt) {
     if (hostGameTimerInterval) clearInterval(hostGameTimerInterval);
@@ -252,13 +279,21 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     });
   });
 
+  const hostAudioBtn = $("#host-audio-btn");
+  hostAudioBtn?.addEventListener("click", () => {
+    retroAudio.unlock();
+    if (!retroAudio.isPlaying) retroAudio.startBGM();
+    const muted = retroAudio.toggleMute();
+    hostAudioBtn.textContent = muted ? "🔈 MUTE" : "🔊 BGM";
+  });
+
   async function updateRoomQr() {
     controllerUrl = `${location.origin}/client-play/?room=${encodeURIComponent(currentRoomCode)}`;
     controllerUrlElement.textContent = controllerUrl;
     if (hostMinibarText) hostMinibarText.textContent = `⚙ HOST: ${currentRoomCode}`;
     try {
       await QRCode.toCanvas(qrCanvas, controllerUrl, {
-        width: 80,
+        width: 140,
         margin: 1,
         errorCorrectionLevel: "M",
         color: { dark: "#171324", light: "#ffffff" }

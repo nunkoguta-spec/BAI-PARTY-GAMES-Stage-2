@@ -19,8 +19,11 @@ if (!shell) {
 let game;
 
 function fitIntegerScale() {
-  shell.style.width = `${window.innerWidth}px`;
-  shell.style.height = `${window.innerHeight}px`;
+  const viewport = window.visualViewport;
+  const width = Math.max(1, Math.floor(viewport?.width || window.innerWidth));
+  const height = Math.max(1, Math.floor(viewport?.height || window.innerHeight));
+  shell.style.width = `${width}px`;
+  shell.style.height = `${height}px`;
   game?.scale.refresh();
 }
 

@@ -37,11 +37,11 @@ export class BootScene extends Phaser.Scene {
 
     // Dekorasi.
     const decorationFiles = [
-      "tree-1", "tree-2", "tree-3", "house",
+      "tree-1", "tree-2", "tree-3", "house", "wooden-shed", "laundry", "standing-torch",
       "flower-1", "flower-2", "flower-3",
       "flower-4", "flower-5",
       "grass-1", "grass-2", "grass-3", "grass-4",
-      "rock-1", "rock-2", "rock-3",
+      "rock-1", "rock-2", "rock-3", "rock-4", "rock-5",
       "stacked-rocks", "fence-1", "fence-2", "barrel"
     ];
 
