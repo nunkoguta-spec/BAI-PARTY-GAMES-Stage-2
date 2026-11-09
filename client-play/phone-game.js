@@ -9,6 +9,8 @@ export function createPhoneGame({
   parent,
   socket,
   roomCode,
+  avatar,
+  questionBoxPositions,
   onSceneReady,
   onQuizError
 }) {
@@ -39,9 +41,12 @@ export function createPhoneGame({
     }
 
     create() {
+      this.localAvatarSelection = avatar || null;
+      this.questionBoxPositions = questionBoxPositions || null;
       super.create();
       this.gameStarted = true;
       this.courseQuestionDefaults = COURSE.questionBoxes;
+      if (this.localAvatarSelection && this.player) this.applyAvatarSelection(this.localAvatarSelection);
 
       this.lastNetworkUpdate = 0;
 
@@ -110,6 +115,18 @@ export function createPhoneGame({
       // DAFTARKAN SOCKET LISTENERS
       // =====================================================
 
+      const handleQuestionBoxes = (positions) => {
+        if (!Array.isArray(positions) || !this.questionBoxes) return;
+        const byId = new Map(positions.map((pos) => [pos.id, pos]));
+        for (const box of this.questionBoxes) {
+          const pos = byId.get(box.getData("boxId"));
+          if (!pos) continue;
+          box.setPosition(pos.x, pos.y);
+          box.setData("originalY", pos.y);
+          box.refreshBody();
+        }
+      };
+      socket.on("room:question-boxes", handleQuestionBoxes);
       socket.on("players:state", handlePlayersState);
       socket.on("player:joined", handlePlayerJoined);
       socket.on("player:moved", handlePlayerMoved);
@@ -165,6 +182,7 @@ export function createPhoneGame({
       this.events.once(
         "shutdown",
         () => {
+          socket.off("room:question-boxes", handleQuestionBoxes);
           socket.off("players:state", handlePlayersState);
           socket.off("player:joined", handlePlayerJoined);
           socket.off("player:moved", handlePlayerMoved);

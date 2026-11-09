@@ -1,4 +1,4 @@
-﻿
+
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
 import { retroAudio } from "./audio/retroAudio.js";
@@ -148,7 +148,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   });
 
   const hostname = location.hostname || "localhost";
-  const serverUrl = `${location.protocol === "https:" ? "https:" : "http:"}//${hostname}:3001`;
+  const serverUrl = import.meta.env.VITE_SERVER_URL || `${location.protocol === "https:" ? "https:" : "http:"}//${hostname}:3001`;
   let controllerUrl = `${location.origin}/client-play/`;
 
   controllerUrlElement.textContent = controllerUrl;
@@ -530,6 +530,19 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   }
 
   // MULTIPLAYER AVATAR EVENTS ON HOST (TV SCREEN)
+  socket.on("room:question-boxes", (positions = []) => {
+    if (!Array.isArray(positions)) return;
+    const scene = getWorldScene();
+    const byId = new Map(positions.map((pos) => [pos.id, pos]));
+    for (const box of scene?.questionBoxes || []) {
+      const pos = byId.get(box.getData("boxId"));
+      if (!pos) continue;
+      box.setPosition(pos.x, pos.y);
+      box.setData("originalY", pos.y);
+      box.refreshBody?.();
+    }
+  });
+
   socket.on("players:state", (playerList = []) => {
     const scene = getWorldScene();
     if (!scene || !Array.isArray(playerList)) return;

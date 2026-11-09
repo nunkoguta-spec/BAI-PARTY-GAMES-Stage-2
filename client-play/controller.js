@@ -1,4 +1,4 @@
-﻿
+
 import { io } from "socket.io-client";
 import { createPhoneGame } from "./phone-game.js";
 import { retroAudio } from "../src/audio/retroAudio.js";
@@ -7,7 +7,8 @@ import { retroAudio } from "../src/audio/retroAudio.js";
 // SOCKET.IO
 // =====================================================
 
-const socket = io(`http://${location.hostname}:3001`, {
+const serverUrl = import.meta.env.VITE_SERVER_URL || `${location.protocol === "https:" ? "https:" : "http:"}//${location.hostname}:3001`;
+const socket = io(serverUrl, {
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,
@@ -26,6 +27,16 @@ const $ = (id) => document.getElementById(id);
 
 let roomCode = "";
 let playerName = "";
+const AVATAR_DEFAULT = { skin:0, bottoms:0, shoes:0, top:0, eyes:0, hair:0 };
+const AVATAR_LIMITS = { skin:5, bottoms:14, shoes:10, top:29, eyes:4, hair:25 };
+let avatarSelection = { ...AVATAR_DEFAULT };
+try {
+  const saved = JSON.parse(localStorage.getItem("bai-avatar") || "{}");
+  for (const [key, limit] of Object.entries(AVATAR_LIMITS)) {
+    const value = Number(saved[key]);
+    if (Number.isInteger(value) && value >= 0 && value < limit) avatarSelection[key] = value;
+  }
+} catch {}
 let score = 0;
 
 let phoneGame = null;
@@ -43,6 +54,61 @@ let quizActive = false;
 let gameStarted = false;
 let currentCourse = null;
 let joiningRoom = false;
+
+
+const AVATAR_PREVIEW_PARTS = [
+  ["skin", "/assets/avatar/Idle/Character/Character_Idle_Front-Sheet.png"],
+  ["bottoms", "/assets/avatar/Idle/Clothing/Clothing_Bottoms_Idle_Front-Sheet.png"],
+  ["shoes", "/assets/avatar/Idle/Clothing/Clothing_Shoes_Idle_Front-Sheet.png"],
+  ["top", "/assets/avatar/Idle/Clothing/Clothing_Tops_Idle_Front-Sheet.png"],
+  ["eyes", "/assets/avatar/Idle/Eyes/Eyes_Idle_Front-Sheet.png"],
+  ["hair", "/assets/avatar/Idle/Hair/Hair_Idle_Front-Sheet.png"]
+];
+const avatarPreviewImages = new Map();
+function renderAvatarPreview() {
+  const canvas = $("avatarPreview");
+  const ctx = canvas?.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+  for (const [key] of AVATAR_PREVIEW_PARTS) {
+    const image = avatarPreviewImages.get(key);
+    if (!image?.complete || !image.naturalWidth) continue;
+    const row = Math.max(0, Math.min(AVATAR_LIMITS[key] - 1, Number(avatarSelection[key]) || 0));
+    ctx.drawImage(image, 0, row * 32, 32, 32, 16, 8, 64, 64);
+  }
+}
+function setupAvatarCustomizer() {
+  const ids = { skin:"avatarSkin", bottoms:"avatarBottoms", shoes:"avatarShoes", top:"avatarTop", eyes:"avatarEyes", hair:"avatarHair" };
+  for (const [key, id] of Object.entries(ids)) {
+    const select = $(id);
+    if (!select) continue;
+    select.innerHTML = "";
+    for (let i = 0; i < AVATAR_LIMITS[key]; i++) {
+      const option = document.createElement("option");
+      option.value = String(i);
+      option.textContent = `${key === "skin" ? "Tone" : "Style"} ${i + 1}`;
+      select.append(option);
+    }
+    select.value = String(avatarSelection[key]);
+    select.addEventListener("change", () => {
+      avatarSelection[key] = Number(select.value);
+      try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
+      renderAvatarPreview();
+      // If customization is ever exposed during play, keep the local Phaser avatar in sync.
+      phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
+    });
+  }
+  for (const [key, src] of AVATAR_PREVIEW_PARTS) {
+    const image = new Image();
+    image.onload = renderAvatarPreview;
+    image.onerror = () => console.warn(`[AVATAR] Preview asset gagal dimuat: ${src}`);
+    image.src = src;
+    avatarPreviewImages.set(key, image);
+  }
+  renderAvatarPreview();
+}
+setupAvatarCustomizer();
 
 // =====================================================
 // MESSAGE
@@ -77,10 +143,14 @@ async function requestGameDisplay() {
     console.info("[DISPLAY] Browser fullscreen fallback:", error?.message || error);
   }
 
+  // iOS Safari generally does not support orientation.lock; keep responsive
+  // portrait/landscape layouts instead of forcing a broken pseudo-fullscreen.
   try {
-    if (screen.orientation?.lock) await screen.orientation.lock("landscape");
+    if (screen.orientation?.lock && matchMedia("(max-width: 900px)").matches) {
+      await screen.orientation.lock("landscape");
+    }
   } catch (error) {
-    console.info("[DISPLAY] Orientation lock unavailable:", error?.message || error);
+    console.info("[DISPLAY] Orientation lock unavailable; responsive layout active.");
   }
 }
 
@@ -96,12 +166,19 @@ function refreshGameSize() {
     const gamePanel = $("gamePanel");
     if (!container || !gamePanel || !gamePanel.isConnected) return;
 
+    if (container.clientWidth < 1 || container.clientHeight < 1) return;
     const viewport = window.visualViewport;
     const width = Math.max(1, Math.floor(viewport?.width || window.innerWidth));
-    const height = Math.max(1, Math.floor(viewport?.height || window.innerHeight));
+    const viewportHeight = viewport?.height || window.innerHeight;
+    const landscape = window.matchMedia("(orientation: landscape)").matches;
+    const targetHeight = landscape
+      ? Math.max(150, Math.min(container.clientWidth * 9 / 16, viewportHeight - 112))
+      : Math.max(180, Math.min(container.clientWidth * 9 / 16, viewportHeight * 0.46));
+    container.style.height = `${Math.floor(targetHeight)}px`;
+    container.style.minHeight = `${Math.floor(targetHeight)}px`;
     gamePanel.style.setProperty("--viewport-width", `${width}px`);
-    gamePanel.style.setProperty("--viewport-height", `${height}px`);
-    // Keep Phaser world fixed at 480×270; Scale.FIT resizes presentation, not physics coordinates.
+    gamePanel.style.setProperty("--viewport-height", `${Math.floor(viewportHeight)}px`);
+    phoneGame.scale.resize(container.clientWidth, Math.floor(targetHeight));
     phoneGame.scale.refresh();
   }, 100);
 }
@@ -170,6 +247,8 @@ function startPhoneGame() {
       parent: "phoneGame",
       socket,
       roomCode,
+      avatar: { ...avatarSelection },
+      questionBoxPositions: window.__roomQuestionBoxes || null,
 
       onSceneReady: (scene) => {
         phoneScene = scene;
@@ -230,7 +309,8 @@ function joinRoom(code) {
     "room:join",
     {
       roomCode: code,
-      name: playerName
+      name: playerName,
+      avatar: { ...avatarSelection }
     },
     (result) => {
       joiningRoom = false;
@@ -246,6 +326,7 @@ function joinRoom(code) {
 
       console.log("[PHONE] Berhasil masuk room:", result);
 
+      window.__roomQuestionBoxes = result.questionBoxes || null;
       enterRoom(result);
     }
   );
@@ -363,6 +444,9 @@ if (initialPlayerName) $("playerName").value = initialPlayerName.slice(0, 24);
 setupMobileControls();
 
 window.addEventListener("blur", releaseAllMobileInput);
+window.addEventListener("resize", refreshGameSize, { passive: true });
+window.addEventListener("orientationchange", () => window.setTimeout(refreshGameSize, 250), { passive: true });
+window.visualViewport?.addEventListener("resize", refreshGameSize, { passive: true });
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {

@@ -1,4 +1,4 @@
-﻿
+
 import Phaser from "phaser";
 import { DEFAULT_AVATAR } from "../avatar/defaultAvatar.js";
 import { retroAudio } from "../audio/retroAudio.js";
@@ -397,12 +397,14 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
   // QUESTION BOX
 
-  createQuestionBoxes() {
+  createQuestionBoxes(serverPositions = null) {
     this.questionBoxes = [];
 
-    // Place boxes only above clear floor columns. Skip any cell occupied by a solid tile.
-    const boxSource = this.questionDefinitions || COURSE.questionBoxes;
-    const boxPositions = boxSource.filter(pos => this.isSafeBoxPosition(pos));
+    // Prefer authoritative room positions; filter unsafe floor collisions on fallback course data.
+    const boxSource = Array.isArray(serverPositions) && serverPositions.length
+      ? serverPositions
+      : (this.questionDefinitions || COURSE.questionBoxes);
+    const boxPositions = boxSource.filter(pos => serverPositions?.length || this.isSafeBoxPosition(pos));
     this.safeQuestionBoxIds = new Set(boxPositions.map(pos => pos.id));
 
     for (const pos of boxPositions) {
@@ -786,41 +788,42 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createAvatar(x, y) {
+    const selected = this.localAvatarSelection || DEFAULT_AVATAR;
     const parts = [
       {
         name: "body",
         idleTexture: "avatar-body",
-        row: DEFAULT_AVATAR.skin,
+        row: selected.skin,
         depth: 20
       },
       {
         name: "bottoms",
         idleTexture: "avatar-bottoms",
-        row: DEFAULT_AVATAR.bottoms,
+        row: selected.bottoms,
         depth: 21
       },
       {
         name: "shoes",
         idleTexture: "avatar-shoes",
-        row: DEFAULT_AVATAR.shoes,
+        row: selected.shoes,
         depth: 22
       },
       {
         name: "top",
         idleTexture: "avatar-top",
-        row: DEFAULT_AVATAR.top,
+        row: selected.top,
         depth: 23
       },
       {
         name: "eyes",
         idleTexture: "avatar-eyes",
-        row: DEFAULT_AVATAR.eyes,
+        row: selected.eyes,
         depth: 24
       },
       {
         name: "hair",
         idleTexture: "avatar-hair",
-        row: DEFAULT_AVATAR.hair,
+        row: selected.hair,
         depth: 25
       }
     ];
@@ -832,7 +835,7 @@ export class WorldScene extends Phaser.Scene {
       x,
       y,
       "avatar-body",
-      DEFAULT_AVATAR.skin * FRAME_COUNT
+      (this.localAvatarSelection?.skin ?? DEFAULT_AVATAR.skin) * FRAME_COUNT
     );
 
     this.player.setOrigin(0.5, 0.5);
@@ -898,37 +901,37 @@ export class WorldScene extends Phaser.Scene {
       {
         name: "body",
         texture: "avatar-body",
-        row: DEFAULT_AVATAR.skin,
+        row: Number.isInteger(data.avatar?.skin) ? data.avatar.skin : DEFAULT_AVATAR.skin,
         depth: 26
       },
       {
         name: "bottoms",
         texture: "avatar-bottoms",
-        row: DEFAULT_AVATAR.bottoms,
+        row: Number.isInteger(data.avatar?.bottoms) ? data.avatar.bottoms : DEFAULT_AVATAR.bottoms,
         depth: 27
       },
       {
         name: "shoes",
         texture: "avatar-shoes",
-        row: DEFAULT_AVATAR.shoes,
+        row: Number.isInteger(data.avatar?.shoes) ? data.avatar.shoes : DEFAULT_AVATAR.shoes,
         depth: 28
       },
       {
         name: "top",
         texture: "avatar-top",
-        row: DEFAULT_AVATAR.top,
+        row: Number.isInteger(data.avatar?.top) ? data.avatar.top : DEFAULT_AVATAR.top,
         depth: 29
       },
       {
         name: "eyes",
         texture: "avatar-eyes",
-        row: DEFAULT_AVATAR.eyes,
+        row: Number.isInteger(data.avatar?.eyes) ? data.avatar.eyes : DEFAULT_AVATAR.eyes,
         depth: 30
       },
       {
         name: "hair",
         texture: "avatar-hair",
-        row: DEFAULT_AVATAR.hair,
+        row: Number.isInteger(data.avatar?.hair) ? data.avatar.hair : DEFAULT_AVATAR.hair,
         depth: 31
       }
     ];
@@ -986,6 +989,7 @@ export class WorldScene extends Phaser.Scene {
       vx: Number(data.vx) || 0,
       vy: Number(data.vy) || 0,
       grounded: data.grounded !== false,
+      avatarRows: { ...(data.avatar || DEFAULT_AVATAR) },
       lastUpdate: performance.now(),
       snapshots: [{ time: performance.now(), x, y }],
       serverNow: Number(data.serverNow) || Date.now()
@@ -1013,6 +1017,24 @@ export class WorldScene extends Phaser.Scene {
     if (!remote) {
       this.createRemoteAvatar(data);
       return;
+    }
+
+    // Costume data is carried with the authoritative server snapshot. Refresh
+    // sprite-sheet rows when it changes so TV and peer clients never keep stale clothes.
+    if (data.avatar && typeof data.avatar === "object") {
+      const limits = { skin:5, bottoms:14, shoes:10, top:29, eyes:4, hair:25 };
+      const keys = ["skin", "bottoms", "shoes", "top", "eyes", "hair"];
+      let changed = false;
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const value = Number(data.avatar[key]);
+        const safeValue = Number.isInteger(value) && value >= 0 && value < limits[key] ? value : DEFAULT_AVATAR[key];
+        if ((remote.avatarRows || {})[key] !== safeValue) {
+          remote.sprites[i]?.setFrame(safeValue * FRAME_COUNT + (remote.animFrame || 0));
+          changed = true;
+        }
+      }
+      if (changed) remote.avatarRows = { ...data.avatar };
     }
 
     const x = Number(data.x);
@@ -1164,12 +1186,12 @@ export class WorldScene extends Phaser.Scene {
     const frame = remote.animFrame || 0;
     const parts = ["body", "bottoms", "shoes", "top", "eyes", "hair"];
     const rows = [
-      DEFAULT_AVATAR.skin,
-      DEFAULT_AVATAR.bottoms,
-      DEFAULT_AVATAR.shoes,
-      DEFAULT_AVATAR.top,
-      DEFAULT_AVATAR.eyes,
-      DEFAULT_AVATAR.hair
+      remote.avatarRows?.skin ?? DEFAULT_AVATAR.skin,
+      remote.avatarRows?.bottoms ?? DEFAULT_AVATAR.bottoms,
+      remote.avatarRows?.shoes ?? DEFAULT_AVATAR.shoes,
+      remote.avatarRows?.top ?? DEFAULT_AVATAR.top,
+      remote.avatarRows?.eyes ?? DEFAULT_AVATAR.eyes,
+      remote.avatarRows?.hair ?? DEFAULT_AVATAR.hair
     ];
 
     remote.sprites.forEach((sprite, index) => {
@@ -1204,6 +1226,19 @@ export class WorldScene extends Phaser.Scene {
     this.avatarFrame = 0;
     this.avatarFrameTimer = 0;
 
+    this.applyAvatarFrame();
+  }
+
+  applyAvatarSelection(selection = {}) {
+    if (!this.avatarConfig || !this.player) return;
+    const limits = { skin:5, bottoms:14, shoes:10, top:29, eyes:4, hair:25 };
+    const keys = ["skin", "bottoms", "shoes", "top", "eyes", "hair"];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const value = Number(selection[key]);
+      this.avatarConfig[i].row = Number.isInteger(value) && value >= 0 && value < limits[key]
+        ? value : DEFAULT_AVATAR[key];
+    }
     this.applyAvatarFrame();
   }
 

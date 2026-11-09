@@ -1,9 +1,9 @@
-﻿
+
 <!DOCTYPE html>
 <html lang="id"> <!-- UI language follows local preference: id or de -->
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#111827">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -36,6 +36,26 @@
         placeholder="Nama pemain"
         autocomplete="nickname"
       >
+
+      <section id="avatarCustomizer" class="avatar-customizer pixel-box" aria-label="Kustomisasi karakter">
+        <h2 class="pixel-subheading">KUSTOMISASI KARAKTER</h2>
+        <div class="avatar-preview-wrap">
+          <div class="avatar-preview-stage">
+            <canvas id="avatarPreview" width="96" height="96" aria-label="Pratinjau avatar"></canvas>
+            <span class="avatar-preview-shadow"></span>
+          </div>
+          <div class="avatar-preview-copy"><strong>LIVE PREVIEW</strong><span>Perubahan kostum langsung terlihat</span></div>
+        </div>
+        <div class="avatar-custom-grid">
+          <label>Warna kulit<select id="avatarSkin" class="pixel-select"></select></label>
+          <label>Celana<select id="avatarBottoms" class="pixel-select"></select></label>
+          <label>Sepatu<select id="avatarShoes" class="pixel-select"></select></label>
+          <label>Baju<select id="avatarTop" class="pixel-select"></select></label>
+          <label>Mata<select id="avatarEyes" class="pixel-select"></select></label>
+          <label>Rambut<select id="avatarHair" class="pixel-select"></select></label>
+        </div>
+        <p class="pixel-tag">Kostum tersimpan otomatis di perangkat ini.</p>
+      </section>
 
       <label id="roomCodeLabel" for="roomCode"></label>
       <input

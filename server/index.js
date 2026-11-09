@@ -1,4 +1,4 @@
-﻿
+
 import express from "express";
 import http from "node:http";
 import { Server } from "socket.io";
@@ -10,9 +10,17 @@ const httpServer = http.createServer(app);
 
 const PORT = Number(process.env.PORT) || 3001;
 
+const allowedOrigins = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
+// Keep local development working while restricting hosted access to configured frontend URLs.
 const io = new Server(httpServer, {
   cors: {
-    origin: true,
+    origin: allowedOrigins.length
+      ? [...allowedOrigins, "http://localhost:5173", "http://127.0.0.1:5173"]
+      : true,
     methods: ["GET", "POST"]
   }
 });
@@ -154,6 +162,7 @@ function publicPlayerPosition(player) {
   return {
     playerId: player.id,
     name: player.name,
+    avatar: player.avatar || sanitizeAvatar(),
     x: player.x,
     y: player.y,
     facing: player.facing,
@@ -347,6 +356,16 @@ function removePlayer(room, playerId) {
   broadcastLeaderboard(room);
 }
 
+function sanitizeAvatar(input = {}) {
+  const limits = { skin:5, bottoms:14, shoes:10, top:29, eyes:4, hair:25 };
+  const output = {};
+  for (const [key, limit] of Object.entries(limits)) {
+    const value = Number(input?.[key]);
+    output[key] = Number.isInteger(value) && value >= 0 && value < limit ? value : 0;
+  }
+  return output;
+}
+
 // =====================================================
 // SOCKET CONNECTION
 // =====================================================
@@ -362,8 +381,20 @@ io.on("connection", (socket) => {
     const code = createRoomCode();
     const hostToken = randomInt(100000, 999999).toString(36) + "-" + Date.now().toString(36);
 
+    const boxIds = [...QUESTION_BOXES.keys()];
+    const shuffledPositions = [...QUESTION_BOXES.values()];
+    for (let i = shuffledPositions.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [shuffledPositions[i], shuffledPositions[j]] = [shuffledPositions[j], shuffledPositions[i]];
+    }
+    const questionBoxes = boxIds.map((id, index) => ({
+      id,
+      x: shuffledPositions[index].x,
+      y: shuffledPositions[index].y
+    }));
     const room = {
       code,
+      questionBoxes,
       hostId: socket.id,
       hostToken,
       members: new Set([socket.id]),
@@ -573,7 +604,8 @@ io.on("connection", (socket) => {
         ok: true,
         roomCode: code,
         playerId: socket.id,
-        status: room.status
+        status: room.status,
+        questionBoxes: room.questionBoxes
       });
       socket.emit("room:settings", room.settings);
       socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
@@ -583,6 +615,7 @@ io.on("connection", (socket) => {
     const player = {
       id: socket.id,
       name,
+      avatar: sanitizeAvatar(payload.avatar),
       score: 0,
       answeredQuestions: 0,
       activeQuiz: null,
@@ -613,9 +646,12 @@ io.on("connection", (socket) => {
       playerId: socket.id,
       playerName: name,
       status: room.status,
-      course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, questionBoxes: COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS }
+      course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, questionBoxes: room.questionBoxes || COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
+      questionBoxes: room.questionBoxes || COURSE.questionBoxes
     });
     socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
+    socket.emit("room:question-boxes", room.questionBoxes || COURSE.questionBoxes);
+    io.to(room.code).emit("room:question-boxes", room.questionBoxes || COURSE.questionBoxes);
 
     // Kirim posisi pemain lama ke HP pemain baru.
     socket.emit(
@@ -845,8 +881,8 @@ io.on("connection", (socket) => {
 
       const boxId = String(payload.boxId || "").trim();
 
-      const boxPosition = QUESTION_BOXES.get(boxId);
-      if (!boxPosition || !SAFE_QUESTION_IDS.has(boxId)) {
+      const boxPosition = room.questionBoxes?.find((box) => box.id === boxId) || QUESTION_BOXES.get(boxId);
+      if (!boxPosition || (!SAFE_QUESTION_IDS.has(boxId) && !room.questionBoxes?.some((box) => box.id === boxId))) {
         callback({
           ok: false,
           error: "Question Block tidak valid."
