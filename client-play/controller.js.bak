@@ -1,0 +1,242 @@
+﻿import { io } from "socket.io-client";
+
+const socket = io(`http://${location.hostname}:3001`, {
+  autoConnect: true,
+  reconnection: true
+});
+
+const $ = (id) => document.getElementById(id);
+
+let roomCode = "";
+let playerName = "";
+let score = 0;
+let quizInterval = null;
+let quizDeadline = 0;
+let quizActive = false;
+
+function showMessage(message, isError = false) {
+  $("joinMessage").textContent = message;
+  $("joinMessage").style.color = isError ? "#fb7185" : "#fbbf24";
+}
+
+function enterRoom(data) {
+  roomCode = data.roomCode;
+  $("activeRoom").textContent = roomCode;
+  $("activeName").textContent = playerName.toUpperCase();
+  $("joinPanel").classList.add("hidden");
+  $("gamePanel").classList.remove("hidden");
+  $("playerStatus").textContent = "Berhasil masuk ke room. Menunggu permainan.";
+}
+
+function joinRoom(code) {
+  playerName = $("playerName").value.trim() || "Player";
+
+  if (!code) {
+    showMessage("Masukkan kode room.", true);
+    return;
+  }
+
+  socket.emit("room:join", {
+    roomCode: code,
+    name: playerName
+  }, (result) => {
+    if (!result?.ok) {
+      showMessage(result?.error || "Gagal masuk room.", true);
+      return;
+    }
+
+    enterRoom(result);
+  });
+}
+
+$("joinButton").addEventListener("click", () => {
+  joinRoom($("roomCode").value.trim().toUpperCase());
+});
+
+$("createButton").addEventListener("click", () => {
+  if (!socket.connected) {
+    showMessage("Server belum terhubung.", true);
+    return;
+  }
+
+  playerName = $("playerName").value.trim() || "Player";
+
+  socket.emit("room:create", { name: playerName }, (result) => {
+    if (!result?.ok) {
+      showMessage("Gagal membuat room.", true);
+      return;
+    }
+
+    $("roomCode").value = result.roomCode;
+    joinRoom(result.roomCode);
+  });
+});
+
+socket.on("connect", () => {
+  $("connection").textContent = "● CONNECTED";
+  $("connection").className = "connection online";
+});
+
+socket.on("disconnect", () => {
+  $("connection").textContent = "● DISCONNECTED";
+  $("connection").className = "connection offline";
+  $("playerStatus").textContent = "Koneksi terputus. Mencoba menyambung kembali...";
+});
+
+socket.on("connect_error", () => {
+  $("connection").textContent = "● CONNECTION ERROR";
+  $("connection").className = "connection offline";
+});
+
+function sendInput(action, pressed) {
+  if (!roomCode || !socket.connected) return;
+
+  socket.emit("player:input", {
+    roomCode,
+    action,
+    pressed
+  });
+}
+
+for (const [id, action] of [
+  ["leftButton", "left"],
+  ["rightButton", "right"],
+  ["jumpButton", "jump"]
+]) {
+  const button = $(id);
+
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    sendInput(action, true);
+  });
+
+  const release = (event) => {
+    event.preventDefault();
+    sendInput(action, false);
+  };
+
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("lostpointercapture", () => sendInput(action, false));
+}
+
+function stopQuizTimer() {
+  if (quizInterval) {
+    clearInterval(quizInterval);
+    quizInterval = null;
+  }
+}
+
+function renderTimer() {
+  const remaining = Math.max(0, quizDeadline - Date.now());
+  const seconds = Math.ceil(remaining / 1000);
+
+  $("timer").textContent = seconds;
+  $("timerBar").style.width = `${Math.max(0, remaining / 15000 * 100)}%`;
+
+  if (remaining <= 0) {
+    stopQuizTimer();
+  }
+}
+
+socket.on("quiz:show", (question) => {
+  stopQuizTimer();
+  quizActive = true;
+
+  $("resultPanel").classList.add("hidden");
+  $("quizPanel").classList.remove("hidden");
+  $("questionText").textContent = question.question;
+  $("quizMessage").textContent = "";
+  $("choices").replaceChildren();
+
+  for (const letter of ["A", "B", "C", "D"]) {
+    const button = document.createElement("button");
+    button.className = "choice";
+
+    const prefix = document.createElement("span");
+    prefix.textContent = `${letter}.`;
+
+    button.append(prefix, document.createTextNode(question.choices[letter]));
+
+    button.addEventListener("click", () => {
+      if (!quizActive) return;
+
+      quizActive = false;
+
+      for (const choice of $("choices").querySelectorAll("button")) {
+        choice.disabled = true;
+      }
+
+      button.classList.add("selected");
+      $("quizMessage").textContent = "Jawaban dikirim ke server...";
+
+      socket.emit("quiz:answer", {
+        roomCode,
+        answer: letter
+      }, (result) => {
+        if (!result?.ok) {
+          $("quizMessage").textContent = result?.error || "Jawaban gagal dikirim.";
+        }
+      });
+    });
+
+    $("choices").append(button);
+  }
+
+  const duration = Math.max(1, Number(question.duration) || 15);
+  quizDeadline = Date.now() + duration * 1000;
+
+  renderTimer();
+  quizInterval = setInterval(renderTimer, 100);
+});
+
+socket.on("quiz:result", (result) => {
+  quizActive = false;
+  stopQuizTimer();
+
+  score = Number(result.totalScore) || 0;
+  $("score").textContent = score;
+
+  $("quizPanel").classList.add("hidden");
+  $("resultPanel").classList.remove("hidden");
+
+  $("resultTitle").textContent = result.timedOut
+    ? "WAKTU HABIS!"
+    : result.correct
+      ? "RICHTIG! BENAR!"
+      : "FALSCH! SALAH!";
+
+  $("resultDetail").textContent =
+    `Jawaban benar: ${result.correctAnswer} · ` +
+    `Perubahan skor: ${result.scoreChange > 0 ? "+" : ""}${result.scoreChange} · ` +
+    `Total skor: ${result.totalScore}`;
+
+  $("playerStatus").textContent = "Quiz selesai.";
+});
+
+$("testQuizButton").addEventListener("click", () => {
+  if (!roomCode) return;
+
+  $("playerStatus").textContent = "Meminta quiz dari server...";
+
+  socket.emit("quiz:request", {
+    roomCode,
+    boxId: `development-test-${Date.now()}`
+  }, (result) => {
+    if (!result?.ok) {
+      $("playerStatus").textContent = result?.error || "Quiz gagal dimulai.";
+    }
+  });
+});
+
+socket.on("room:players", (players) => {
+  const mine = players.find((player) => player.playerId === socket.id);
+
+  if (mine) {
+    score = mine.score;
+    $("score").textContent = score;
+  }
+
+  $("playerStatus").textContent = `${players.length} pemain di room.`;
+});

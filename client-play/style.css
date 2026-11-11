@@ -734,6 +734,7 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   .mobile-controls .control-button { flex-basis:52px; width:52px; }
   .mobile-controls .jump-button { flex-basis:86px; width:86px; }
 }
+<<<<<<< HEAD
 
 
 /* Character workshop: vertical category rail + live preview + selectable pixel tiles. */
@@ -821,3 +822,5 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   object-fit: contain;
   image-rendering: pixelated;
 }
+=======
+>>>>>>> 9d50e30d7c4301c8064254cef288197da15e9467
