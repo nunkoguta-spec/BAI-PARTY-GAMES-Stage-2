@@ -1,0 +1,183 @@
+/* BAI PARTY GAMES — reference UI theme for HP (customizer + quiz + header). Loaded after style.css. */
+:root { --bai-gold:#f0b92e; --bai-gold-lt:#ffe08a; --bai-ink:#0b0716; --bai-font:'Press Start 2P', monospace; }
+body { background:#1b1330; }
+.pixel-box {
+  background:transparent; box-shadow:none; border-style:solid; border-width:16px;
+  border-image:url(/assets/ui/panel-navy.png) 16 fill / 16px stretch; image-rendering:pixelated;
+}
+.pixel-btn {
+  border-style:solid; border-width:8px; border-image:url(/assets/ui/btn-gold.png) 8 fill / 8px stretch;
+  background:transparent; box-shadow:none; color:var(--bai-ink); image-rendering:pixelated;
+}
+.pixel-btn-primary { border-image-source:url(/assets/ui/btn-green.png); color:#fff; text-shadow:2px 2px 0 #1d5a0e; }
+.pixel-btn-danger { border-image-source:url(/assets/ui/btn-red.png); color:#fff; }
+.pixel-btn:active { transform:translateY(2px); }
+
+/* ---- Customizer: ribbon title, rail | stage | 4-col grid ---- */
+.avatar-customizer .pixel-subheading {
+  display:inline-block; margin:-6px auto 8px; padding:2px 14px; color:#fff; text-shadow:2px 2px 0 var(--bai-ink);
+  border-style:solid; border-width:12px; border-image:url(/assets/ui/ribbon.png) 12 fill / 12px stretch; image-rendering:pixelated;
+}
+.avatar-custom-layout { display:grid; grid-template-columns:96px 1fr; gap:10px; }
+.avatar-category-rail { display:flex; flex-direction:column; gap:6px; }
+.avatar-category {
+  display:flex; align-items:center; gap:6px; padding:3px 6px; color:#fff; font-family:var(--bai-font); font-size:7px;
+  background:#262a5c; border:2px solid #4a4f8c; border-radius:10px; cursor:pointer; text-align:left;
+}
+.avatar-category img { width:20px; height:20px; image-rendering:pixelated; }
+.avatar-category.active { background:linear-gradient(#ffe08a,#f0b92e); color:var(--bai-ink); border-color:#8a5a14; }
+.avatar-category small { font-size:7px; }
+.avatar-custom-main { display:grid; grid-template-columns:minmax(110px,0.8fr) 1.2fr; gap:10px; align-items:start; }
+.avatar-options-header { grid-column:1 / -1; display:flex; justify-content:space-between; color:var(--bai-gold-lt); font-size:7px; }
+.avatar-preview-stage {
+  background:radial-gradient(circle at 50% 35%, #2f5fd0 0%, #17163a 70%); border:2px solid #4a4f8c; padding:10px 6px 0;
+}
+.avatar-preview-stage::after { content:""; display:block; height:10px; margin:0 -6px; background:linear-gradient(#cfc6b0,#8a8472); border-top:2px solid #fff; }
+.avatar-item-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.avatar-item {
+  aspect-ratio:1; padding:0; border-style:solid; border-width:8px; border-image:url(/assets/ui/thumb.png) 8 fill / 8px stretch;
+  background:transparent; image-rendering:pixelated; position:relative;
+}
+.avatar-item.selected { border-image-source:url(/assets/ui/thumb-selected.png); }
+.avatar-item-check { position:absolute; right:-4px; bottom:-4px; background:#2fb34a; color:#fff; font-size:9px; padding:1px 3px; border:2px solid var(--bai-ink); }
+#avatarSaveButton { width:100%; margin-top:8px; font-family:var(--bai-font); font-size:11px; border-image-source:url(/assets/ui/btn-green.png); color:#fff; text-shadow:2px 2px 0 #1d5a0e; }
+@media (max-width:560px) { .avatar-custom-main { grid-template-columns:1fr; } .avatar-custom-layout { grid-template-columns:78px 1fr; } }
+
+/* ---- Game header: gold chips ---- */
+.game-header { background:transparent; }
+.game-header strong { color:var(--bai-gold-lt); text-shadow:2px 2px 0 var(--bai-ink); }
+
+/* ---- Quiz: pink timer bar, parchment question, A-D answers ---- */
+#quizPanel { border-image-source:url(/assets/ui/panel-navy.png); }
+.pixel-timer-info { display:flex; align-items:center; gap:8px; }
+.pixel-timer-info strong { color:#fff; font-size:20px; text-shadow:2px 2px 0 var(--bai-ink); }
+.pixel-progress-track { height:16px; background:#3a1630; border:3px solid #c8902c; border-radius:10px; overflow:hidden; }
+.pixel-progress-fill { height:100%; background:linear-gradient(#ff8fc0,#e0306e); }
+.pixel-question-text {
+  margin:10px 0; padding:14px 10px; text-align:center; color:#2a1a08; font-size:10px; line-height:1.6;
+  border-style:solid; border-width:16px; border-image:url(/assets/ui/panel-parchment.png) 16 fill / 16px stretch; image-rendering:pixelated;
+}
+.pixel-choices { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.pixel-choice-btn {
+  border-image-source:url(/assets/ui/btn-cream.png); color:#2a1a08; font-size:9px; text-align:left; display:flex; gap:6px; align-items:center;
+}
+.pixel-choice-badge { font-weight:bold; }
+.pixel-choice-btn:focus-visible, .pixel-choice-btn.pixel-choice-correct { border-image-source:url(/assets/ui/btn-green.png); color:#fff; }
+.pixel-choice-btn.pixel-choice-wrong { border-image-source:url(/assets/ui/btn-red.png); color:#fff; }
+.pixel-points-pill { color:var(--bai-gold-lt); }
+@media (max-width:420px) { .pixel-choices { grid-template-columns:1fr; } }
+
+/* ---- Customizer layout fix: stage left, header+grid right ---- */
+.avatar-preview-wrap { grid-column:1; grid-row:1 / span 2; display:flex; flex-direction:column; align-items:center; gap:6px; }
+.avatar-options-header { grid-column:2; grid-row:1; }
+.avatar-item-grid { grid-column:2; grid-row:2; align-self:start; }
+.avatar-preview-copy { text-align:center; display:flex; flex-direction:column; gap:4px; font-size:7px; color:#cfd3ff; }
+.avatar-preview-stage canvas { width:100%; max-width:140px; height:auto; image-rendering:pixelated; }
+@media (max-width:560px) {
+  .avatar-preview-wrap, .avatar-options-header, .avatar-item-grid { grid-column:1; grid-row:auto; }
+}
+.avatar-item .avatar-item-check { top:auto; left:auto; width:auto; height:auto; right:-4px; bottom:-4px; line-height:1; }
+
+/* ---- HP landscape: compact header so the playfield gets the screen ---- */
+@media (max-height: 480px) {
+  .game-header { min-height: 28px; padding: 2px 6px; border-width: 8px; }
+  .game-header .pixel-tag, .game-header .muted { display: none; }
+  .game-header strong { font-size: 8px; }
+  #playerStatus { top: 44px; font-size: 6px; }
+}
+
+/* 2026-11-11 FIX: wide controller layout for landscape phones/tablets and desktop preview.
+   The previous 480px app cap forced the whole character workshop into a narrow column. */
+@media (orientation: landscape) and (min-width: 700px) {
+  .app {
+    width: 100%;
+    max-width: 1120px;
+    min-height: 100dvh;
+    margin: 0 auto;
+    padding: 12px 18px;
+    justify-content: flex-start;
+  }
+  #joinPanel {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 18px 22px;
+  }
+  #joinPanel .brand { margin-bottom: 10px; }
+  #joinPanel .brand h1 { font-size: clamp(16px, 2.2vw, 24px); }
+  #joinPanel > #playerName,
+  #joinPanel > #roomCode,
+  #joinPanel > #joinButton,
+  #joinPanel > #joinMessage { max-width: 100%; }
+  .avatar-customizer {
+    margin-top: 12px;
+    padding: 16px 18px;
+  }
+  .avatar-custom-layout {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 18px;
+  }
+  .avatar-category-rail { gap: 8px; }
+  .avatar-category { min-height: 54px; padding: 7px; }
+  .avatar-custom-main {
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px 18px;
+    align-items: start;
+  }
+  .avatar-preview-wrap {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    min-height: 220px;
+    padding: 14px;
+    justify-content: center;
+    gap: 12px;
+  }
+  .avatar-preview-stage {
+    flex-basis: 148px;
+    width: 148px;
+    height: 148px;
+  }
+  #avatarPreview { width: 144px; height: 144px; }
+  .avatar-preview-copy strong { font-size: 10px; }
+  .avatar-preview-copy span { font-size: 8px; }
+  .avatar-options-header { grid-column: 2; grid-row: 1; font-size: 9px; }
+  .avatar-options-header span { font-size: 8px; }
+  .avatar-item-grid {
+    grid-column: 2;
+    grid-row: 2;
+    grid-template-columns: repeat(6, minmax(64px, 1fr));
+    gap: 9px;
+    max-height: 240px;
+  }
+  .avatar-item { min-height: 72px; }
+  .avatar-item-thumb { width: 44px; height: 44px; }
+  .avatar-item-number { font-size: 7px; }
+  #avatarSaveButton { min-height: 48px; margin-top: 12px; }
+}
+
+/* Compact but usable layout on real landscape phones (short viewport). */
+@media (orientation: landscape) and (max-height: 520px) {
+  .app { max-width: none; padding: 4px 8px; }
+  #joinPanel { max-width: none; padding: 8px 12px; }
+  #joinPanel .brand { margin: 0 0 5px; }
+  #joinPanel .brand h1 { font-size: 13px; }
+  #joinPanel .brand p { margin-top: 3px; font-size: 6px; }
+  #joinPanel label { margin: 6px 0 3px; }
+  #joinPanel input { height: 34px; }
+  .avatar-customizer { margin-top: 6px; padding: 8px 10px; }
+  .avatar-customizer .pixel-subheading { margin-bottom: 5px; }
+  .avatar-custom-layout { grid-template-columns: 88px minmax(0,1fr); gap: 10px; }
+  .avatar-category { min-height: 38px; }
+  .avatar-custom-main { grid-template-columns: 112px minmax(0,1fr); gap: 6px 10px; }
+  .avatar-preview-wrap { min-height: 138px; padding: 5px; }
+  .avatar-preview-stage { flex-basis: 92px; width: 92px; height: 92px; }
+  #avatarPreview { width: 96px; height: 96px; }
+  .avatar-preview-copy strong { font-size: 7px; }
+  .avatar-preview-copy span { font-size: 6px; }
+  .avatar-item-grid { grid-template-columns: repeat(6, minmax(0,1fr)); max-height: 116px; gap: 4px; }
+  .avatar-item { min-height: 48px; }
+  .avatar-item-thumb { width: 28px; height: 28px; }
+  #avatarSaveButton { min-height: 36px; margin-top: 6px; }
+}

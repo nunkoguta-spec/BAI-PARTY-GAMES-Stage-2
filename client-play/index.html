@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="id"> <!-- UI language follows local preference: id or de -->
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#111827">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>BAI PARTY GAMES - Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/client-play/style.css">
+  <link rel="stylesheet" href="/client-play/reference-ui.css">
+</head>
+
+<body>
+  <main class="app">
+
+    <!-- JOIN ROOM -->
+    <section id="joinPanel" class="pixel-box">
+      <div class="brand">
+        <h1>BAI PARTY GAMES</h1>
+        <p class="muted">PLAY • QUIZ • WIN • TOGETHER</p>
+      </div>
+      <div id="languageSelector" class="language-selector" aria-label="Language"></div>
+
+      <p id="joinInstruction" class="muted pixel-meta-text"></p>
+
+      <label id="playerNameLabel" for="playerName"></label>
+      <input
+        id="playerName"
+        class="pixel-input"
+        type="text"
+        maxlength="24"
+        placeholder="Nama pemain"
+        autocomplete="nickname"
+      >
+
+      <section id="avatarCustomizer" class="avatar-customizer pixel-box" aria-label="Kustomisasi karakter">
+        <h2 class="pixel-subheading">KUSTOMISASI KARAKTER</h2>
+        <div class="avatar-custom-layout">
+          <nav id="avatarCategoryRail" class="avatar-category-rail" aria-label="Kategori karakter"></nav>
+          <div class="avatar-custom-main">
+            <div class="avatar-preview-wrap">
+              <div class="avatar-preview-stage">
+                <canvas id="avatarPreview" width="96" height="96" aria-label="Pratinjau avatar"></canvas>
+                <span class="avatar-preview-shadow"></span>
+              </div>
+              <div class="avatar-preview-copy"><strong>LIVE PREVIEW</strong><span>Perubahan kostum langsung terlihat</span></div>
+            </div>
+            <div class="avatar-options-header">
+              <strong id="avatarCategoryTitle">WARNA KULIT</strong>
+              <span>PILIH STYLE</span>
+            </div>
+            <div id="avatarItemGrid" class="avatar-item-grid" aria-label="Pilihan style"></div>
+          </div>
+        </div>
+        <div class="avatar-hidden-selects" aria-hidden="true">
+          <select id="avatarSkin" class="pixel-select"></select>
+          <select id="avatarBottoms" class="pixel-select"></select>
+          <select id="avatarShoes" class="pixel-select"></select>
+          <select id="avatarTop" class="pixel-select"></select>
+          <select id="avatarEyes" class="pixel-select"></select>
+          <select id="avatarHair" class="pixel-select"></select>
+        </div>
+        <button id="avatarSaveButton" class="pixel-btn" type="button">SIMPAN</button>
+        <p class="pixel-tag">Kostum tersimpan otomatis di perangkat ini.</p>
+      </section>
+
+      <label id="roomCodeLabel" for="roomCode"></label>
+      <input
+        id="roomCode"
+        class="pixel-input"
+        type="text"
+        maxlength="8"
+        placeholder="Kode room"
+        autocomplete="off"
+      >
+
+      <button id="joinButton" class="pixel-btn pixel-btn-primary" type="button">
+        MASUK ROOM
+      </button>
+
+      <p id="joinMessage" class="message"></p>
+    </section>
+
+    <!-- GAME PANEL -->
+    <section id="gamePanel" class="hidden">
+
+      <header class="game-header pixel-box">
+        <div>
+          <div id="playerLabel" class="muted pixel-tag">PEMAIN</div>
+          <strong id="displayPlayerName">Player</strong>
+        </div>
+
+        <div>
+          <div class="muted pixel-tag">RANK</div>
+          <strong id="playerRank">#-</strong>
+        </div>
+
+        <div>
+          <div id="roomLabel" class="muted pixel-tag">ROOM</div>
+          <strong id="displayRoomCode">------</strong>
+        </div>
+
+        <div>
+          <div id="scoreLabel" class="muted pixel-tag">SKOR</div>
+          <strong id="score">0</strong>
+        </div>
+
+        <div>
+          <div class="muted pixel-tag">WAKTU</div>
+          <strong id="displayGameTimer">--:--</strong>
+        </div>
+
+        <div style="display:flex;gap:4px">
+          <button id="audioToggleBtn" class="pixel-btn pixel-btn-sm" type="button">🔊</button>
+          <button id="toggleLeaderboardBtn" class="pixel-btn pixel-btn-sm" type="button">TOP</button>
+        </div>
+      </header>
+
+      <div id="playerLeaderboardDrawer" class="pixel-box hidden">
+        <div class="pixel-subheading">KLASEMEN REAL-TIME</div>
+        <div id="playerLeaderboardList" class="pixel-player-list"></div>
+      </div>
+
+      <p id="playerStatus" class="status pixel-status-text">
+        Menghubungkan permainan...
+      </p>
+
+      <!-- PHASER GAME -->
+      <section class="game-container">
+        <div id="phoneGame"></div>
+      </section>
+
+      <!-- MOBILE CONTROLS -->
+      <section id="mobileControls" class="mobile-controls">
+        <button
+          id="leftButton"
+          class="control-button pixel-btn"
+          type="button"
+          aria-label="Bergerak ke kiri"
+        >
+          ◀
+        </button>
+
+        <button
+          id="rightButton"
+          class="control-button pixel-btn"
+          type="button"
+          aria-label="Bergerak ke kanan"
+        >
+          ▶
+        </button>
+
+        <button
+          id="jumpButton"
+          class="control-button jump-button pixel-btn"
+          type="button"
+          aria-label="Melompat"
+        >
+          LOMPAT
+        </button>
+      </section>
+
+      <!-- QUIZ PANEL -->
+      <section id="quizPanel" class="pixel-box pixel-modal hidden">
+        <div class="pixel-modal-header">
+          <span class="pixel-badge">QUIZ TIME</span>
+          <span id="quizQuestionNumber" class="pixel-tag">SOAL #1</span>
+        </div>
+
+        <div class="pixel-timer-wrap">
+          <div class="pixel-timer-info">
+            <span id="quizTimeLabel">SISA WAKTU</span>
+            <strong id="quizTimer">15</strong>
+          </div>
+          <div class="pixel-progress-track">
+            <div id="timerBar" class="pixel-progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="pixel-points-pill">POIN BENAR: +<span id="quizPointsValue">10</span></div>
+        <p id="questionText" class="pixel-question-text"></p>
+
+        <div id="choices" class="pixel-choices"></div>
+
+        <p id="quizMessage" class="pixel-message-text"></p>
+      </section>
+
+      <!-- QUIZ RESULT -->
+      <section id="resultPanel" class="pixel-box pixel-modal hidden">
+        <div id="resultSectionTitle" class="pixel-subheading">HASIL QUIZ</div>
+
+        <h2 id="resultTitle" class="pixel-result-banner">-</h2>
+
+        <p id="resultDetail" class="pixel-meta-text"></p>
+
+        <button
+          id="closeResultButton"
+          class="pixel-btn pixel-btn-primary"
+          type="button"
+        >
+          LANJUTKAN
+        </button>
+      </section>
+
+      <!-- GAME OVER FINAL MODAL -->
+      <section id="gameOverPanel" class="pixel-box pixel-modal hidden">
+        <div class="pixel-heading">★ GAME OVER ★</div>
+        <div id="winnerBanner" class="pixel-winner-banner">👑 PEMENANG: -</div>
+        <div id="podiumWrap" class="pixel-podium-wrap">
+          <div class="pixel-podium-col rank-2">
+            <div id="podiumName2" class="pixel-podium-name">-</div>
+            <div class="pixel-podium-step step-2">2</div>
+            <div id="podiumScore2" class="pixel-podium-score">-</div>
+          </div>
+          <div class="pixel-podium-col rank-1">
+            <div class="pixel-podium-crown">👑</div>
+            <div id="podiumName1" class="pixel-podium-name">-</div>
+            <div class="pixel-podium-step step-1">1</div>
+            <div id="podiumScore1" class="pixel-podium-score">-</div>
+          </div>
+          <div class="pixel-podium-col rank-3">
+            <div id="podiumName3" class="pixel-podium-name">-</div>
+            <div class="pixel-podium-step step-3">3</div>
+            <div id="podiumScore3" class="pixel-podium-score">-</div>
+          </div>
+        </div>
+        <div class="pixel-subheading" style="margin-top:10px">KLASEMEN AKHIR</div>
+        <div id="finalLeaderboardList" class="pixel-player-list"></div>
+        <button id="restartGameBtn" class="pixel-btn pixel-btn-primary" style="margin-top:10px; width:100%" type="button">TUTUP HASIL</button>
+      </section>
+
+    </section>
+  </main>
+
+  <script type="module" src="/client-play/controller.js"></script>
+</body>
+</html>

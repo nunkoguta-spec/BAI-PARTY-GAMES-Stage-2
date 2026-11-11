@@ -1,0 +1,19 @@
+[SERVER] 
+[SERVER] ==================================
+ BAI PARTY GAMES MULTIPLAYER SERVER
+ http://localhost:3477
+ Health: http://localhost:3477/health
+==================================
+[SERVER] [CONNECT] rL39cdT2iL7WPnyVAAAA
+[SERVER] [ROOM] Created NLH76N (host: rL39cdT2iL7WPnyVAAAA)
+[SERVER] [CONNECT] GMdI2dfK-S7_Mr40AAAB
+[SERVER] [JOIN] Alice joined NLH76N
+[SERVER] [CONNECT] xoxDBOHTTeltjc4CAAAC
+TEST_STAGE: tvSubscribe
+[SERVER] [JOIN] Bob joined NLH76N
+TEST_STAGE: settings
+TEST_STAGE: start
+TEST_STAGE: positionBroadcast
+TEST_STAGE: walkToQuizBox
+TEST_STAGE: quizRequest
+TEST_STAGE: quizAnswer { ok: true } 1 1
