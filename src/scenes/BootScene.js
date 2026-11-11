@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿import Phaser from "phaser";
+=======
+import Phaser from "phaser";
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
 const ASSET = "/assets";
 const FRAME = 32;
@@ -19,7 +23,25 @@ export class BootScene extends Phaser.Scene {
       `${ASSET}/tiles/mountains-tiles-bright.png`
     );
 
+<<<<<<< HEAD
     // Background.
+=======
+    // Stage 1 city backdrop: custom panoramic München town-square scene.
+    this.load.image("city-munich-gameplay", `${ASSET}/backgrounds/cities/munich-bg-v2.png`);
+    // Legacy city backdrops retained for the remaining chapters.
+    this.load.image("city-munich-custom", `${ASSET}/backgrounds/cities/munich-custom.svg`);
+    this.load.image("city-frankfurt-custom", `${ASSET}/backgrounds/cities/frankfurt-bg-v2.png`);
+    this.load.image("city-berlin-custom", `${ASSET}/backgrounds/cities/berlin-bg-v2.png`);
+    this.load.image("city-hamburg-custom", `${ASSET}/backgrounds/cities/hamburg-bg-v2.png`);
+    // Keep the previous Munich asset as a fallback for older builds.
+    this.load.image("munich-city-bg", `${ASSET}/backgrounds/cities/munich-marienplatz.png`);
+
+    // BAI asset pack (extracted from the supplied collage by tools/extract-pack.py)
+    for (const name of ["idle", "run", "jump", "victory", "hit"]) this.load.image(`hero-${name}`, `${ASSET}/pack/mascot-${name}.png`);
+    for (const name of ["tower", "building", "roof", "lamp", "stall", "tree", "bush", "train", "cobble"]) this.load.image(`pack-${name}`, `${ASSET}/pack/${name}.png`);
+
+    // Legacy mountain assets remain loaded for fallback/other stages.
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     const bg = `${ASSET}/backgrounds/mountains`;
 
     this.load.image("bg-sky", `${bg}/sky-bright.png`);

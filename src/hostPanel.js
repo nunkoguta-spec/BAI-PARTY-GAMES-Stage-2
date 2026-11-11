@@ -68,11 +68,17 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
           </label>
           <label>Durasi Game:
             <select id="host-setting-duration" class="pixel-select">
+<<<<<<< HEAD
               <option value="3">3 Menit</option>
               <option value="5">5 Menit</option>
               <option value="10" selected>10 Menit</option>
               <option value="15">15 Menit</option>
               <option value="20">20 Menit</option>
+=======
+              <option value="10">10 Menit</option>
+              <option value="12" selected>12 Menit</option>
+              <option value="15">15 Menit</option>
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
             </select>
           </label>
           <label>Poin Benar:
@@ -90,8 +96,13 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       <div class="pixel-section">
         <div class="pixel-subheading">LIVE SPECTATOR</div>
         <div class="pixel-btn-row">
+<<<<<<< HEAD
           <button id="host-auto-mode" class="pixel-btn active" type="button">AUTO</button>
           <button id="host-manual-mode" class="pixel-btn" type="button">MANUAL</button>
+=======
+          <button id="host-auto-mode" class="pixel-btn active" type="button">SEMUA PEMAIN</button>
+          <button id="host-manual-mode" class="pixel-btn" type="button">IKUTI PEMAIN</button>
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
         </div>
         <input id="host-player-search" class="pixel-input" type="search" placeholder="Cari pemain...">
         <div id="host-watching" class="pixel-meta-text">Kamera: Otomatis</div>
@@ -354,6 +365,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
   function chooseAutomaticPlayer() {
     if (mode !== "AUTO") return;
+<<<<<<< HEAD
 
     if (!players.length) {
       selectedPlayerId = "";
@@ -371,6 +383,15 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (currentStillExists) return;
 
     watchPlayer(players[0]);
+=======
+    selectedPlayerId = "";
+    selectedPlayerName = "";
+    watchingLabel.textContent = players.length
+      ? `SPECTATOR: SEMUA PEMAIN (${players.length})`
+      : "SPECTATOR: MENUNGGU PEMAIN";
+    const scene = getWorldScene();
+    scene?.hostShowAllPlayers?.();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   }
 
   function updateModeButtons() {
@@ -392,7 +413,42 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       : "Pilih pemain dari daftar.";
   });
 
+<<<<<<< HEAD
   function renderPlayers() {
+=======
+
+  // ---- TV spectator HUD (stage badge + live leaderboard), reference layout ----
+  const tvHud = document.createElement("div");
+  tvHud.id = "tv-hud";
+  tvHud.innerHTML = `
+    <div class="tv-stage"><div class="tv-stage-medal">★</div>
+      <div><div id="tv-stage-name" class="tv-stage-name">MÜNCHEN</div><div id="tv-stage-sub" class="tv-stage-sub">MARIENPLATZ</div></div></div>
+    <div class="tv-board" id="tv-board"></div>`;
+  document.body.appendChild(tvHud);
+  window.addEventListener("bai-stage", (event) => {
+    const stage = event.detail || {};
+    const n = document.getElementById("tv-stage-name"), sub = document.getElementById("tv-stage-sub");
+    if (n && stage.name) n.textContent = String(stage.name).toUpperCase();
+    if (sub && stage.landmark) sub.textContent = String(stage.landmark).toUpperCase();
+  });
+  function renderTvHud(list) {
+    const board = document.getElementById("tv-board");
+    if (!board) return;
+    board.replaceChildren();
+    [...list].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)).slice(0, 8).forEach((p, i) => {
+      const row = document.createElement("div"); row.className = "tv-row";
+      const chip = document.createElement("span"); chip.className = "tv-chip"; chip.textContent = `P${i + 1}`;
+      const name = document.createElement("span"); name.className = "tv-name";
+      name.textContent = (i === 0 ? "♛ " : "") + (p.name || "Player");
+      const score = document.createElement("span"); score.className = "tv-score"; score.textContent = String(Number(p.score) || 0);
+      row.append(chip, name, score); board.appendChild(row);
+    });
+    tvHud.hidden = list.length === 0 && !window.__baiHostActive;
+  }
+
+  function renderPlayers() {
+    renderTvHud(players);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     const search = searchInput.value.trim().toLowerCase();
 
     playerList.replaceChildren();
@@ -559,8 +615,13 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       scene.createRemoteAvatar(player);
       scene.showFloatingFeedback?.(player.x || 240, player.y || 208, `${player.name} BERGABUNG!`, "#82d82c");
     }
+<<<<<<< HEAD
     if (mode === "AUTO" && !selectedPlayerId) {
       watchPlayer(player);
+=======
+    if (mode === "AUTO") {
+      chooseAutomaticPlayer();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     }
   });
 
@@ -600,6 +661,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   socket.on("room:status", ({ status, endsAt, remainingMs, reason, leaderboard } = {}) => {
     const scene = getWorldScene();
     if (status === "playing") {
+<<<<<<< HEAD
+=======
+      // TV: collapse the dashboard once the game starts so the playfield is fully visible.
+      if (!hostCard.hidden && !window.__baiAutoCollapsed) { window.__baiAutoCollapsed = true; togglePanelBtn?.click(); }
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       roomStatus.textContent = "Game berlangsung";
       startGameButton.disabled = true;
       pauseGameButton.disabled = false;
@@ -622,6 +688,10 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       gameTimerElement.textContent = `⏱ SISA WAKTU: ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")} (PAUSED)`;
       if (scene) scene.setGameTimer(null, "paused", remainingMs);
     } else if (status === "ended") {
+<<<<<<< HEAD
+=======
+      window.__baiAutoCollapsed = false;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       roomStatus.textContent = `Game selesai (${reason || "selesai"}).`;
       startGameButton.disabled = true;
       pauseGameButton.disabled = true;
@@ -652,10 +722,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     scene.updateRemoteAvatar(data);
 
     if (mode === "AUTO") {
+<<<<<<< HEAD
       if (!selectedPlayerId || selectedPlayerId === data.playerId) {
         const remote = scene.remoteAvatars?.get(data.playerId);
         if (remote) scene.hostFollowPlayer?.(remote);
       }
+=======
+      scene.hostShowAllPlayers?.();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     } else if (mode === "MANUAL" && data.playerId === selectedPlayerId) {
       const remote = scene.remoteAvatars?.get(data.playerId);
       if (remote) scene.hostFollowPlayer?.(remote);
@@ -671,7 +745,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (playerId === selectedPlayerId) {
       selectedPlayerId = "";
       selectedPlayerName = "";
+<<<<<<< HEAD
       watchingLabel.textContent = "Kamera: Otomatis";
+=======
+      watchingLabel.textContent = "SPECTATOR: SEMUA PEMAIN";
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       scene?.hostClearFollow?.();
       if (mode === "AUTO") chooseAutomaticPlayer();
     }

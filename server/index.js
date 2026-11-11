@@ -29,7 +29,11 @@ app.use(express.json());
 
 const rooms = new Map();
 
+<<<<<<< HEAD
 const DEFAULT_SETTINGS = Object.freeze({ quizSeconds: 15, gameMinutes: 20, correctPoints: 10, questionLimit: 0, hazardPenalty: COURSE.hazardPenalty, finishBonusSeconds: COURSE.finishBonusSeconds, courseWidth: COURSE.width, finishX: COURSE.finishX });
+=======
+const DEFAULT_SETTINGS = Object.freeze({ quizSeconds: 15, gameMinutes: 12, correctPoints: 10, questionLimit: 0, hazardPenalty: COURSE.hazardPenalty, finishBonusSeconds: COURSE.finishBonusSeconds, courseWidth: COURSE.width, finishX: COURSE.finishX });
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 const WORLD_WIDTH = COURSE.width;
 const WORLD_HEIGHT = COURSE.height;
 const FINISH_X = COURSE.finishX;
@@ -516,7 +520,11 @@ io.on("connection", (socket) => {
     const gameMinutes = Number(settings.gameMinutes);
     const correctPoints = Number(settings.correctPoints);
     const hazardPenalty = settings.hazardPenalty === undefined ? room.settings.hazardPenalty : Number(settings.hazardPenalty);
+<<<<<<< HEAD
     if (![10, 15, 20, 30, 45, 60].includes(quizSeconds) || !Number.isInteger(gameMinutes) || gameMinutes < 1 || gameMinutes > 60 || !Number.isInteger(correctPoints) || correctPoints < 1 || correctPoints > 100 || !Number.isInteger(hazardPenalty) || hazardPenalty < 0 || hazardPenalty > 50) {
+=======
+    if (![10, 15, 20, 30, 45, 60].includes(quizSeconds) || ![10, 12, 15].includes(gameMinutes) || !Number.isInteger(correctPoints) || correctPoints < 1 || correctPoints > 100 || !Number.isInteger(hazardPenalty) || hazardPenalty < 0 || hazardPenalty > 50) {
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       callback({ ok: false, error: "Pengaturan waktu atau poin tidak valid." });
       return;
     }
@@ -646,7 +654,11 @@ io.on("connection", (socket) => {
       playerId: socket.id,
       playerName: name,
       status: room.status,
+<<<<<<< HEAD
       course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, questionBoxes: room.questionBoxes || COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
+=======
+      course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, stages: COURSE.stages, questionBoxes: room.questionBoxes || COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       questionBoxes: room.questionBoxes || COURSE.questionBoxes
     });
     socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
@@ -890,6 +902,7 @@ io.on("connection", (socket) => {
         return;
       }
 
+<<<<<<< HEAD
       // Validate reported position against actual box location (server authority).
       if (Math.abs(player.x - boxPosition.x) > 64 || Math.abs(player.y - boxPosition.y) > 64) {
         callback({ ok: false, error: "Pemain terlalu jauh dari Question Block." });
@@ -897,6 +910,38 @@ io.on("connection", (socket) => {
       }
       if (Math.abs(player.x - boxPosition.x) > 32 || player.y < boxPosition.y + 8 || player.y > boxPosition.y + 64) {
         callback({ ok: false, error: "Question Block hanya aktif saat dipukul dari bawah." });
+=======
+      // Reconcile the collision-frame position sent by the phone before validating.
+      // The physics collision can happen between the regular 50ms movement packets;
+      // validating only the previous packet incorrectly rejects a player standing
+      // directly under the block (especially on mobile networks).
+      const reportedX = Number(payload.x);
+      const reportedY = Number(payload.y);
+      const hasReportedPosition = Number.isFinite(reportedX) && Number.isFinite(reportedY);
+      if (hasReportedPosition) {
+        const reportedDistance = Math.hypot(reportedX - player.x, reportedY - player.y);
+        // A legitimate player can advance roughly 145px/sec. 240px is a bounded
+        // reconciliation window for delayed packets, not a free teleport.
+        if (reportedDistance <= 240 &&
+            Math.abs(reportedX - boxPosition.x) <= 48 &&
+            reportedY >= boxPosition.y + 8 &&
+            reportedY <= boxPosition.y + 72) {
+          player.x = Math.max(0, Math.min(WORLD_WIDTH, reportedX));
+          player.y = Math.max(0, Math.min(WORLD_HEIGHT, reportedY));
+          player.vx = 0;
+          player.vy = 0;
+          player.lastMoveAt = Date.now();
+        }
+      }
+
+      // Validate the latest reconciled position against the authoritative block.
+      if (Math.abs(player.x - boxPosition.x) > 64 || Math.abs(player.y - boxPosition.y) > 80) {
+        callback({ ok: false, error: "Dekati Question Block lalu pukul dari bawah." });
+        return;
+      }
+      if (Math.abs(player.x - boxPosition.x) > 40 || player.y < boxPosition.y + 8 || player.y > boxPosition.y + 72) {
+        callback({ ok: false, error: "Pukul Question Block dari bawah." });
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
         return;
       }
 
@@ -1059,7 +1104,11 @@ io.on("connection", (socket) => {
         status: room.status,
         endsAt: room.endsAt,
         settings: room.settings,
+<<<<<<< HEAD
         course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, questionBoxes: COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
+=======
+        course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, stages: COURSE.stages, questionBoxes: COURSE.questionBoxes, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
         players: publicLeaderboard(room),
         avatars: [...room.players.values()].map(publicPlayerPosition)
       });

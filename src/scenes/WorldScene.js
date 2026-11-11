@@ -12,12 +12,47 @@ const VIEW_H = 270;
 const MOVE_SPEED = 145;
 const JUMP_SPEED = 430;
 const VIEWPORT_PADDING = 24;
+<<<<<<< HEAD
+=======
+const HERO_SCALE = 0.62;   // mascot sprites are ~75px tall in the pack
+const HERO_FEET = 15;      // distance from avatar centre to the ground
+const SLOT_COLORS = ["#e03a3a", "#2f86e8", "#2fb34a", "#8a3fd0", "#e08a1e", "#1aa8a8", "#c0398a", "#667788"];
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
 export class WorldScene extends Phaser.Scene {
   constructor() {
     super("WorldScene");
   }
 
+<<<<<<< HEAD
+=======
+  getAvatarTextureColumns(textureKey) {
+    const texture = this.textures.exists(textureKey) ? this.textures.get(textureKey) : null;
+    const sourceWidth = Number(texture?.source?.[0]?.width) || FRAME_COUNT * 32;
+    const frameWidth = Number(texture?.getFrame?.(0)?.width) || 32;
+    return Math.max(1, Math.floor(sourceWidth / frameWidth));
+  }
+
+  getAvatarTextureRows(textureKey) {
+    const texture = this.textures.exists(textureKey) ? this.textures.get(textureKey) : null;
+    const sourceHeight = Number(texture?.source?.[0]?.height) || 32;
+    const frameHeight = Number(texture?.getFrame?.(0)?.height) || 32;
+    return Math.max(1, Math.floor(sourceHeight / frameHeight));
+  }
+
+  getAvatarFrameIndex(textureKey, row, frame = 0) {
+    // Sprite sheets are not uniform: Jump uses 3 columns while most other
+    // states use 4. Clothing sheets also have a different number of variant
+    // rows. Resolve both dimensions from the active texture to keep each
+    // selected costume layer on its own row during every animation state.
+    const columns = this.getAvatarTextureColumns(textureKey);
+    const rows = this.getAvatarTextureRows(textureKey);
+    const safeRow = Phaser.Math.Clamp(Math.floor(Number(row) || 0), 0, rows - 1);
+    const safeFrame = Phaser.Math.Clamp(Math.floor(Number(frame) || 0), 0, columns - 1);
+    return safeRow * columns + safeFrame;
+  }
+
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   create() {
     try {
       this.createWorld();
@@ -35,6 +70,14 @@ export class WorldScene extends Phaser.Scene {
     this.isHostMode = this.isHostMode || window.deutschHostMode === true;
 
     this.createParallaxBackground();
+<<<<<<< HEAD
+=======
+    // Each chapter has its own landmark layer: Frankfurt skyline, Berlin landmarks,
+    // and Hamburg harbour structures. This was authored but never called.
+    // Landmarks are now baked into the pixel-art panoramas (backgrounds/cities/*-bg-v2.png),
+    // so the old vector landmark layer is disabled to avoid drawing over them.
+    // this.createCityLandmarks();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
     // TILEMAP
     const map = this.make.tilemap({ key: "level-01" });
@@ -75,6 +118,14 @@ export class WorldScene extends Phaser.Scene {
 
     this.groundLayer.setDepth(5);
     this.platformLayer.setDepth(6);
+<<<<<<< HEAD
+=======
+    // Retain original tilemap collision while removing the mountain dirt visuals.
+    if (this.cityStage) {
+      this.groundLayer.setVisible(false);
+      this.platformLayer.setVisible(false);
+    }
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     this.worldWidth = map.widthInPixels || COURSE.width;
     this.worldHeight = map.heightInPixels || (map.height * map.tileHeight);
     // Keep arcade camera/physics bounds at the complete 300-column course size.
@@ -112,6 +163,10 @@ export class WorldScene extends Phaser.Scene {
     // Tilemap arrays are expanded before layer creation above.
     this.worldWidth = COURSE.width; // 9600px total course
     this.worldHeight = map.height * map.tileHeight;
+<<<<<<< HEAD
+=======
+    if (this.cityStage) { this.createReferenceStreet(); }
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
     this.physics.world.setBounds(
       0,
@@ -217,15 +272,63 @@ export class WorldScene extends Phaser.Scene {
       this.hostSpectatorTarget = null;
       this.hostFollowPlayer = (player) => {
         if (!player?.sprites?.[0]) return;
+<<<<<<< HEAD
+=======
+        camera.setZoom(1);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
         this.hostSpectatorTarget = player.sprites[0];
         camera.startFollow(this.hostSpectatorTarget, true, 0.12, 0.12);
       };
       this.hostClearFollow = () => {
         this.hostSpectatorTarget = null;
         camera.stopFollow();
+<<<<<<< HEAD
         camera.scrollX = 0;
         camera.scrollY = 0;
       };
+=======
+        camera.setZoom(1);
+        camera.scrollX = 0;
+        camera.scrollY = 0;
+      };
+
+      // TV spectator overview: dynamically fit every connected avatar into the
+      // 16:9 playfield instead of silently following only one participant.
+      this.hostShowAllPlayers = () => {
+        const active = [...(this.remoteAvatars?.values() || [])]
+          .filter((remote) => remote && Number.isFinite(remote.x) && Number.isFinite(remote.y));
+        camera.stopFollow();
+        this.hostSpectatorTarget = null;
+        if (!active.length) {
+          camera.setZoom(1);
+          camera.scrollX = 0;
+          camera.scrollY = 0;
+          return;
+        }
+        // Spectator view must stay at a useful gameplay scale. Fitting players
+        // across the entire 9,600px course made the city collapse into a thin
+        // strip and exposed the empty sky below it. Frame the active group,
+        // with a firm zoom floor; the host can still follow one player at 1x.
+        const sorted = [...active].sort((a, b) => a.x - b.x);
+        const anchorX = sorted[Math.floor((sorted.length - 1) / 2)].x;
+        const nearby = active.filter((player) => Math.abs(player.x - anchorX) <= 720);
+        const framed = nearby.length ? nearby : [sorted[Math.floor(sorted.length / 2)]];
+        const minX = Math.min(...framed.map((p) => p.x));
+        const maxX = Math.max(...framed.map((p) => p.x));
+        const minY = Math.min(...framed.map((p) => p.y));
+        const maxY = Math.max(...framed.map((p) => p.y));
+        const spanX = Math.max(220, maxX - minX + 150);
+        const spanY = Math.max(150, maxY - minY + 112);
+        const fitZoom = Math.min((VIEW_W - 72) / spanX, (VIEW_H - 76) / spanY);
+        const zoom = Phaser.Math.Clamp(fitZoom, 0.52, 0.9);
+        camera.setZoom(zoom);
+        const centerX = (minX + maxX) / 2;
+        // Keep the street/avatars in the lower half while preserving enough
+        // sky and landmark visibility at every supported spectator zoom.
+        const centerY = 224 - 0.24 * (VIEW_H / zoom);
+        camera.centerOn(centerX, centerY);
+      };
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       camera.scrollX = 0;
       camera.scrollY = 0;
     }
@@ -233,6 +336,169 @@ export class WorldScene extends Phaser.Scene {
     // LEADERBOARD HUD (in-game on all clients and host)
     this.createLeaderboardHUD();
     this.createGameTimerHUD();
+<<<<<<< HEAD
+=======
+    this.createStageHUD();
+  }
+
+  createStageHUD() {
+    this.stageLabel = this.add.text(8, 8, "MÜNCHEN", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "7px",
+      color: "#ffffff",
+      stroke: "#172033",
+      strokeThickness: 3
+    }).setScrollFactor(0).setDepth(110);
+    this.stageSubLabel = this.add.text(8, 19, "RATHAUS / MARIENPLATZ", {
+      fontFamily: "Arial, sans-serif",
+      fontSize: "8px",
+      fontStyle: "bold",
+      color: "#ffe49a",
+      stroke: "#172033",
+      strokeThickness: 2
+    }).setScrollFactor(0).setDepth(110);
+    if (this.isHostMode) { this.stageLabel.setVisible(false); this.stageSubLabel.setVisible(false); } // TV uses the DOM stage badge
+    this.updateStageHUD();
+  }
+
+  updateStageHUD() {
+    if (!this.stageLabel) return;
+    const camera = this.cameras.main;
+    const worldX = this.isHostMode
+      ? camera.scrollX + VIEW_W / (2 * Math.max(0.01, camera.zoom))
+      : (this.player?.x ?? COURSE.startX);
+    const stages = COURSE.stages || [];
+    const stage = stages.find((item) => worldX >= item.startX && worldX < item.endX) || stages[stages.length - 1];
+    if (stage && this.currentStageId !== stage.id) {
+      const previousStage = this.currentStageId;
+      this.currentStageId = stage.id;
+      this.stageLabel.setText(stage.name);
+      this.stageSubLabel.setText(stage.landmark.toUpperCase());
+      if (previousStage) this.showCityTransition(stage);
+      if (this.isHostMode) window.dispatchEvent(new CustomEvent("bai-stage", { detail: stage }));
+    }
+  }
+
+  showCityTransition(stage) {
+    if (!stage || !this.add || !this.tweens) return;
+    if (this.cityTransition) {
+      this.cityTransition.destroy(true);
+      this.cityTransition = null;
+    }
+    const index = (COURSE.stages || []).findIndex((item) => item.id === stage.id) + 1;
+    const card = this.add.container(VIEW_W / 2, VIEW_H / 2)
+      .setScrollFactor(0).setDepth(260).setAlpha(0).setScale(0.88);
+    const frame = this.add.graphics();
+    frame.fillStyle(0x111827, 0.94);
+    frame.fillRoundedRect(-154, -48, 308, 96, 7);
+    frame.lineStyle(4, 0x090d18, 1);
+    frame.strokeRoundedRect(-154, -48, 308, 96, 7);
+    frame.lineStyle(2, 0xf7c83b, 1);
+    frame.strokeRoundedRect(-148, -42, 296, 84, 5);
+    frame.lineStyle(1, 0xffe49a, 0.75);
+    frame.lineBetween(-132, -18, 132, -18);
+    const eyebrow = this.add.text(0, -32, `KOTA BERIKUTNYA  •  STAGE ${index}`, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "7px",
+      color: "#82d82c", stroke: "#000", strokeThickness: 2
+    }).setOrigin(0.5);
+    const title = this.add.text(0, 0, stage.name, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "17px",
+      color: "#f7c83b", stroke: "#000", strokeThickness: 4
+    }).setOrigin(0.5);
+    const subtitle = this.add.text(0, 25, String(stage.landmark || "").toUpperCase(), {
+      fontFamily: "Arial, sans-serif", fontSize: "10px", fontStyle: "bold",
+      color: "#fff4d6", stroke: "#000", strokeThickness: 2
+    }).setOrigin(0.5);
+    card.add([frame, eyebrow, title, subtitle]);
+    this.cityTransition = card;
+    this.tweens.add({
+      targets: card, alpha: 1, scale: 1, duration: 240,
+      ease: "Back.easeOut",
+      onComplete: () => this.time.delayedCall(1450, () => {
+        if (!card.active) return;
+        this.tweens.add({ targets: card, alpha: 0, y: card.y - 12, duration: 260,
+          ease: "Quad.easeIn", onComplete: () => {
+            if (this.cityTransition === card) this.cityTransition = null;
+            card.destroy(true);
+          }
+        });
+      })
+    });
+  }
+
+
+  // =====================================================
+  // BAI ASSET PACK — mascot poses + reference street
+  // =====================================================
+
+  heroKeyFor(state = "idle") {
+    if (state.startsWith("hurt")) return "hero-hit";
+    if (state.startsWith("interact")) return "hero-victory";
+    if (state.startsWith("jump") || state.startsWith("fall")) return "hero-jump";
+    if (state.startsWith("walk") || state === "left" || state === "right") return "hero-run";
+    return "hero-idle";
+  }
+
+  updateHero() {
+    // The extracted mascot pose sheets are decorative single-pose art, not
+    // modular costume layers. Returning false keeps the actual customizable
+    // body/clothing sprites visible on both phone and TV.
+    return false;
+  }
+
+
+  createReferenceStreet() {
+    if (!this.textures.exists("pack-cobble")) return;
+    const top = 224;
+    const ground = top - 3;
+    const put = (key, x, scale, depth, y = ground) =>
+      this.add.image(x, y, key).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
+
+    // Shared playable pavement. The skyline and city architecture above it are
+    // chapter-specific and must not be replaced by repeating Munich houses.
+    this.add.tileSprite(0, ground, COURSE.width, 46, "pack-cobble")
+      .setOrigin(0, 0).setDepth(7.5);
+    // Extend the visual pavement well beyond the physics map. On wide TV
+    // viewports the camera can expose more vertical pixels than the tilemap;
+    // stopping at worldHeight revealed the blue camera clear-color below it.
+    const visualGroundBottom = Math.max(this.worldHeight, 900);
+    this.add.tileSprite(0, ground + 46, COURSE.width, visualGroundBottom - ground - 46, "pack-cobble")
+      .setOrigin(0, 0).setDepth(7.4).setTint(0x8a90b0);
+
+    // City architecture is baked into each chapter's panoramic backdrop.
+    // Do not stamp repeating Munich houses over the other city scenes.
+
+    // Neutral street furniture repeats lightly without changing each city's silhouette.
+    // Disabled: lamps, trees and bushes are already part of the new panoramas.
+  }
+
+  createMunichStreetArt() {
+    const street = this.add.graphics().setDepth(7);
+    const top = 224;
+    street.fillStyle(0x45465b, 1);
+    // Visual-only extension: keep the cobblestone foreground continuous even
+    // when the spectator canvas is taller than the physics tilemap.
+    const visualGroundBottom = Math.max(this.worldHeight, 900);
+    street.fillRect(0, top, COURSE.width, visualGroundBottom - top);
+    street.fillStyle(0x9a9baa, 1);
+    street.fillRect(0, top, COURSE.width, 5);
+    street.fillStyle(0xd3c9b9, 1);
+    street.fillRect(0, top - 3, COURSE.width, 4);
+    street.lineStyle(1, 0x292d42, 0.95);
+    for (let x = 0; x <= COURSE.width; x += 32) {
+      street.lineBetween(x, top + 5, x, visualGroundBottom);
+      street.lineBetween(x + 16, top + 23, x + 16, visualGroundBottom);
+    }
+    for (let y = top + 24; y < visualGroundBottom; y += 24) {
+      street.lineBetween(0, y, COURSE.width, y);
+    }
+    street.fillStyle(0x77798b, 1);
+    for (let x = 8; x < COURSE.width; x += 64) {
+      street.fillRect(x, top + 10, 24, 2);
+      street.fillRect(x + 30, top + 31, 18, 2);
+    }
+    this.munichStreetArt = street;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   }
 
   createHazardVisuals() {
@@ -290,8 +556,13 @@ export class WorldScene extends Phaser.Scene {
     const startX = COURSE.finishX - 280;
     this.finishPlatformDecorations = [];
     for (let i = 0; i < 9; i++) {
+<<<<<<< HEAD
       const top = this.add.rectangle(startX + i * 32, platformY, 32, 6, 0x82d82c).setOrigin(0, 0).setDepth(7);
       const dirt = this.add.rectangle(startX + i * 32, platformY + 6, 32, 26, 0x8a4c28).setOrigin(0, 0).setDepth(6);
+=======
+      const top = this.add.rectangle(startX + i * 32, platformY, 32, 6, this.cityStage ? 0xb9b4b2 : 0x82d82c).setOrigin(0, 0).setDepth(7);
+      const dirt = this.add.rectangle(startX + i * 32, platformY + 6, 32, 26, this.cityStage ? 0x55566b : 0x8a4c28).setOrigin(0, 0).setDepth(6);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       this.finishPlatformDecorations.push(top, dirt);
     }
   }
@@ -526,6 +797,7 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createParallaxBackground() {
+<<<<<<< HEAD
     this.cameras.main.setBackgroundColor("#78bde8");
     if (!["bg-sky", "deco-cloud-1", "deco-cloud-2", "deco-cloud-3", "deco-cloud-5", "deco-cloud-6", "bg-snow-peaks", "bg-hills", "bg-forest", "deco-tree-2", "deco-tree-3"].every(key => this.textures.exists(key))) return;
 
@@ -623,6 +895,85 @@ export class WorldScene extends Phaser.Scene {
         .setScrollFactor(1, 1)
         .setDepth(4);
     }
+=======
+    // Stage 1 — München / Marienplatz. Shared world-space backdrop for TV and HP.
+    this.cityStage = true;
+    this.cameras.main.setBackgroundColor("#287fc8");
+    const cityChapters = [
+      ["city-munich-gameplay", 0],
+      ["city-frankfurt-custom", 2400],
+      ["city-berlin-custom", 4800],
+      ["city-hamburg-custom", 7200]
+    ];
+    this.cityBackdrops = [];
+    for (const [textureKey, x] of cityChapters) {
+      const key = this.textures.exists(textureKey) ? textureKey : "munich-city-bg";
+      if (!this.textures.exists(key)) continue;
+      const backdrop = this.add.image(x, 0, key)
+        .setOrigin(0, 0)
+        .setDisplaySize(2400, 224)
+        .setScrollFactor(1, 0)
+        .setDepth(-100);
+      this.cityBackdrops.push(backdrop);
+    }
+  }
+
+  createCityLandmarks() {
+    const g = this.add.graphics().setScrollFactor(1, 0).setDepth(-99);
+    const drawBuilding = (x, baseY, width, height, color, windowColor = 0xf7d98a) => {
+      g.fillStyle(0x17233c, 1);
+      g.fillRect(x - 2, baseY - height - 2, width + 4, height + 4);
+      g.fillStyle(color, 1);
+      g.fillRect(x, baseY - height, width, height);
+      g.fillStyle(windowColor, 0.9);
+      for (let wx = x + 5; wx < x + width - 3; wx += 13) {
+        for (let wy = baseY - height + 8; wy < baseY - 8; wy += 14) g.fillRect(wx, wy, 4, 6);
+      }
+      g.fillStyle(0x24314c, 1);
+      g.fillRect(x - 3, baseY - height, width + 6, 4);
+    };
+
+    // Frankfurt: modern Mainhattan skyline and river-side towers.
+    for (const b of [
+      [2520, 218, 78, 88, 0x8297b8], [2610, 218, 54, 126, 0x9aa9bf],
+      [2680, 218, 88, 156, 0x657b9e], [2780, 218, 62, 112, 0xb1b8c4],
+      [2860, 218, 92, 142, 0x748ba9], [2970, 218, 70, 98, 0x9aabc0],
+      [3060, 218, 64, 176, 0x607798], [3150, 218, 82, 120, 0x879bb7]
+    ]) drawBuilding(...b);
+    g.fillStyle(0x253e65, 1); g.fillRect(2500, 219, 760, 5);
+    g.fillStyle(0x42a6c6, 1); g.fillRect(2500, 224, 760, 3);
+
+    // Berlin: Fernsehturm, Brandenburg Gate and low city blocks.
+    for (const b of [
+      [4920, 218, 82, 70, 0xb99c83], [5020, 218, 72, 92, 0xc5a58a],
+      [5360, 218, 90, 76, 0xc7a98c], [5470, 218, 84, 60, 0xb8957b],
+      [5580, 218, 96, 82, 0xd0b294]
+    ]) drawBuilding(...b);
+    g.fillStyle(0x34415a, 1); g.fillRect(5140, 114, 8, 104);
+    g.fillStyle(0xe7e7e4, 1); g.fillCircle(5144, 126, 17);
+    g.fillStyle(0x34415a, 1); g.fillRect(5140, 142, 8, 76);
+    g.fillStyle(0xd6b17a, 1); g.fillRect(5220, 170, 118, 8);
+    for (let x = 5228; x < 5335; x += 25) {
+      g.fillStyle(0xd6b17a, 1); g.fillRect(x, 178, 8, 40);
+      g.fillStyle(0x34415a, 1); g.fillRect(x + 3, 183, 2, 35);
+    }
+    g.fillStyle(0xd6b17a, 1); g.fillRect(5212, 164, 134, 6);
+
+    // Hamburg: harbor warehouses, cranes and Elbphilharmonie silhouette.
+    for (const b of [
+      [7320, 218, 112, 76, 0xa76e58], [7450, 218, 98, 96, 0xb27b62],
+      [7565, 218, 124, 68, 0x98644f], [7710, 218, 88, 88, 0xb77d65],
+      [7830, 218, 108, 72, 0x9f6d59]
+    ]) drawBuilding(...b, 0xf3cf9a);
+    g.lineStyle(5, 0x283b57, 1);
+    g.lineBetween(7350, 220, 7350, 108); g.lineBetween(7350, 108, 7460, 108);
+    g.lineBetween(7460, 108, 7460, 220); g.lineBetween(7350, 108, 7405, 68);
+    g.lineBetween(7405, 68, 7460, 108);
+    g.lineBetween(7600, 220, 7600, 96); g.lineBetween(7600, 96, 7730, 96);
+    g.lineBetween(7730, 96, 7730, 220);
+    g.fillStyle(0x3c86a8, 1); g.fillRect(7200, 222, 1100, 3);
+    this.cityLandmarks = g;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   }
 
   // =====================================================
@@ -630,6 +981,10 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createWorldDecorations() {
+<<<<<<< HEAD
+=======
+    if (this.cityStage) return;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     // Ambient pond/water feature. Sits below walkable ground and repeats across long world.
     const pondPositions = [520, 1550, 2780, 3550];
     for (const x of pondPositions) {
@@ -835,7 +1190,11 @@ export class WorldScene extends Phaser.Scene {
       x,
       y,
       "avatar-body",
+<<<<<<< HEAD
       (this.localAvatarSelection?.skin ?? DEFAULT_AVATAR.skin) * FRAME_COUNT
+=======
+      this.getAvatarFrameIndex("avatar-body", this.localAvatarSelection?.skin ?? DEFAULT_AVATAR.skin, 0)
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     );
 
     this.player.setOrigin(0.5, 0.5);
@@ -853,7 +1212,11 @@ export class WorldScene extends Phaser.Scene {
         x,
         y,
         part.idleTexture,
+<<<<<<< HEAD
         part.row * FRAME_COUNT
+=======
+        this.getAvatarFrameIndex(part.idleTexture, part.row, 0)
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       );
 
       sprite.setOrigin(0.5, 0.5);
@@ -943,7 +1306,11 @@ export class WorldScene extends Phaser.Scene {
         x,
         y,
         part.texture,
+<<<<<<< HEAD
         part.row * FRAME_COUNT
+=======
+        this.getAvatarFrameIndex(part.texture, part.row, 0)
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       );
 
       sprite.setOrigin(0.5, 0.5);
@@ -970,6 +1337,13 @@ export class WorldScene extends Phaser.Scene {
       }
     );
 
+<<<<<<< HEAD
+=======
+    const slot = this.remoteAvatars.size;
+    nameLabel.setText(`P${slot + 1} ${String(data.name || "Player").slice(0, 14)}`);
+    nameLabel.setBackgroundColor(SLOT_COLORS[slot % SLOT_COLORS.length]);
+    nameLabel.setPadding(3, 1, 3, 1);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     nameLabel.setOrigin(0.5, 1);
     nameLabel.setDepth(32);
     nameLabel.setVisible(true);
@@ -979,6 +1353,10 @@ export class WorldScene extends Phaser.Scene {
       name: data.name || "Player",
       sprites,
       nameLabel,
+<<<<<<< HEAD
+=======
+      slot,
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       x,
       y,
       targetX: x,
@@ -1030,7 +1408,12 @@ export class WorldScene extends Phaser.Scene {
         const value = Number(data.avatar[key]);
         const safeValue = Number.isInteger(value) && value >= 0 && value < limits[key] ? value : DEFAULT_AVATAR[key];
         if ((remote.avatarRows || {})[key] !== safeValue) {
+<<<<<<< HEAD
           remote.sprites[i]?.setFrame(safeValue * FRAME_COUNT + (remote.animFrame || 0));
+=======
+          const activeTexture = remote.sprites[i]?.texture?.key || `avatar-${key === "skin" ? "body" : key}`;
+          remote.sprites[i]?.setFrame(this.getAvatarFrameIndex(activeTexture, safeValue, remote.animFrame || 0));
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
           changed = true;
         }
       }
@@ -1068,7 +1451,11 @@ export class WorldScene extends Phaser.Scene {
 
     if (data.name) {
       remote.name = String(data.name).slice(0, 24);
+<<<<<<< HEAD
       remote.nameLabel.setText(remote.name);
+=======
+      remote.nameLabel.setText(`P${(remote.slot ?? 0) + 1} ${String(remote.name || "Player").slice(0, 14)}`);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     }
   }
 
@@ -1089,6 +1476,10 @@ export class WorldScene extends Phaser.Scene {
 
     remote.finishBanner?.destroy();
     remote.nameLabel.destroy();
+<<<<<<< HEAD
+=======
+    remote.hero?.destroy();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
     this.remoteAvatars.delete(playerId);
 
@@ -1126,6 +1517,10 @@ export class WorldScene extends Phaser.Scene {
       const x = Math.round(remote.x);
       const y = Math.round(remote.y);
       for (const sprite of remote.sprites) sprite.setPosition(x, y);
+<<<<<<< HEAD
+=======
+      for (const sprite of remote.sprites) sprite.setVisible(true);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       remote.nameLabel.setPosition(x, y - 25);
       if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 40);
     }
@@ -1180,9 +1575,22 @@ export class WorldScene extends Phaser.Scene {
     if (remote.animTimer >= frameDuration) {
       const steps = Math.floor(remote.animTimer / frameDuration);
       remote.animTimer -= steps * frameDuration;
+<<<<<<< HEAD
       remote.animFrame = ((remote.animFrame || 0) + steps) % FRAME_COUNT;
     }
 
+=======
+      const bodyKey = anim === "jump" ? `avatar-body-jump-${direction}` : anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : "avatar-body";
+      const frameTexture = this.textures.exists(bodyKey) ? bodyKey : "avatar-body";
+      const activeColumns = this.getAvatarTextureColumns(frameTexture);
+      if (remote.lastAnim !== anim || remote.lastDirection !== direction) remote.animFrame = 0;
+      else remote.animFrame = ((remote.animFrame || 0) + steps) % activeColumns;
+      remote.lastAnim = anim;
+      remote.lastDirection = direction;
+    }
+
+    remote.heroState = `${anim === "walk" ? "walk" : anim}-${direction}`;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     const frame = remote.animFrame || 0;
     const parts = ["body", "bottoms", "shoes", "top", "eyes", "hair"];
     const rows = [
@@ -1208,7 +1616,11 @@ export class WorldScene extends Phaser.Scene {
       }
 
       if (sprite.texture.key !== textureKey) sprite.setTexture(textureKey);
+<<<<<<< HEAD
       sprite.setFrame(rows[index] * FRAME_COUNT + frame);
+=======
+      sprite.setFrame(this.getAvatarFrameIndex(textureKey, rows[index], frame));
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       sprite.setFlipX(false);
     });
   }
@@ -1257,7 +1669,11 @@ export class WorldScene extends Phaser.Scene {
 
     const bodyConfig = this.avatarConfig[0];
     const bodyTexture = this.getAvatarTexture(bodyConfig, state);
+<<<<<<< HEAD
     const bodyFrame = bodyConfig.row * FRAME_COUNT + frame;
+=======
+    const bodyFrame = this.getAvatarFrameIndex(bodyTexture, bodyConfig.row, frame);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
     this.player.setTexture(bodyTexture);
     this.player.setFrame(bodyFrame);
@@ -1265,7 +1681,11 @@ export class WorldScene extends Phaser.Scene {
     for (const part of this.avatarParts) {
       const config = part.config;
       const texture = this.getAvatarTexture(config, state);
+<<<<<<< HEAD
       const frameIndex = config.row * FRAME_COUNT + frame;
+=======
+      const frameIndex = this.getAvatarFrameIndex(texture, config.row, frame);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
       part.sprite.setTexture(texture);
       part.sprite.setFrame(frameIndex);
@@ -1285,8 +1705,14 @@ export class WorldScene extends Phaser.Scene {
 
       this.avatarFrameTimer -= steps * frameDuration;
 
+<<<<<<< HEAD
       this.avatarFrame =
         (this.avatarFrame + steps) % FRAME_COUNT;
+=======
+      const bodyTexture = this.getAvatarTexture(this.avatarConfig[0], this.avatarState === "idle" ? "idle" : this.avatarState.startsWith("jump") || this.avatarState.startsWith("fall") ? `jump-${this.avatarState.endsWith("left") ? "left" : "right"}` : this.avatarState);
+      const columns = this.getAvatarTextureColumns(bodyTexture);
+      this.avatarFrame = (this.avatarFrame + steps) % columns;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
       this.applyAvatarFrame();
     }
@@ -1303,6 +1729,11 @@ export class WorldScene extends Phaser.Scene {
     for (const part of this.avatarParts) {
       part.sprite.setPosition(x, y);
     }
+<<<<<<< HEAD
+=======
+
+    for (const part of this.avatarParts) part.sprite.setVisible(true);
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   }
 
   // =====================================================
@@ -1346,8 +1777,14 @@ export class WorldScene extends Phaser.Scene {
     const width = Math.max(1, gameSize?.width || this.scale.width || VIEW_W);
     const height = Math.max(1, gameSize?.height || this.scale.height || VIEW_H);
     const camera = this.cameras.main;
+<<<<<<< HEAD
     camera.setViewport(0, 0, width, height);
     camera.setSize(width, height);
+=======
+    // Phaser.Scale.FIT owns the canvas scaling. Keep the world camera in
+    // logical game coordinates (480x270); resizing it to browser pixels
+    // makes the camera see far beyond the world and leaves a large empty sky.
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     if (this.player) {
       this.player.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, this.worldWidth, this.worldHeight));
     }
@@ -1462,6 +1899,10 @@ export class WorldScene extends Phaser.Scene {
 
     // UPDATE AVATAR PEMAIN LAIN
     this.updateRemoteAvatars(delta);
+<<<<<<< HEAD
+=======
+    this.updateStageHUD();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 
     if (this.isHostMode || !this.player || !this.avatarParts) {
       return;
@@ -1507,6 +1948,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   setLeaderboardData(players) {
+<<<<<<< HEAD
+=======
+    if (this.isHostMode) { this.leaderboardTitle?.setVisible(false); return; } // TV uses the DOM leaderboard HUD
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
     if (!Array.isArray(players)) return;
     this.leaderboardData = [...players]
       .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
@@ -1595,7 +2040,11 @@ export class WorldScene extends Phaser.Scene {
     this.gameTimerText = this.add.text(
       VIEW_W / 2,
       8,
+<<<<<<< HEAD
       "⏱ 10:00",
+=======
+      "⏱ 12:00",
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
       {
         fontFamily: "'Press Start 2P', monospace, sans-serif",
         fontSize: "8px",

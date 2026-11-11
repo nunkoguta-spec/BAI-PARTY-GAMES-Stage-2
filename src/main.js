@@ -1,5 +1,11 @@
+<<<<<<< HEAD
 ﻿
 import "./style.css";
+=======
+
+import "./style.css";
+import "./reference-ui.css";
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 import Phaser from "phaser";
 import { THEME } from "./theme.js";
 import { BootScene } from "./scenes/BootScene.js";
@@ -73,6 +79,51 @@ const gameContainer = document.getElementById("game");
 const menuMessage = document.getElementById("menu-message");
 const menuForm = document.getElementById("menu-form");
 const settingsPanel = document.getElementById("menu-settings-panel");
+<<<<<<< HEAD
+=======
+const playOptions = document.getElementById("menu-play-options");
+const infoPanel = document.getElementById("menu-info-panel");
+
+// Draw the same layered pixel-avatar assets used by the phone customizer so
+// the title screen uses real in-game characters rather than emoji placeholders.
+function renderMenuAvatars() {
+  const layers = [
+    ["skin", "/assets/avatar/Idle/Character/Character_Idle_Front-Sheet.png"],
+    ["bottoms", "/assets/avatar/Idle/Clothing/Clothing_Bottoms_Idle_Front-Sheet.png"],
+    ["shoes", "/assets/avatar/Idle/Clothing/Clothing_Shoes_Idle_Front-Sheet.png"],
+    ["top", "/assets/avatar/Idle/Clothing/Clothing_Tops_Idle_Front-Sheet.png"],
+    ["eyes", "/assets/avatar/Idle/Eyes/Eyes_Idle_Front-Sheet.png"],
+    ["hair", "/assets/avatar/Idle/Hair/Hair_Idle_Front-Sheet.png"]
+  ];
+  const variants = [
+    {skin:0,bottoms:2,shoes:1,top:8,eyes:1,hair:3},
+    {skin:1,bottoms:5,shoes:3,top:12,eyes:2,hair:8},
+    {skin:2,bottoms:8,shoes:5,top:17,eyes:0,hair:14},
+    {skin:3,bottoms:10,shoes:7,top:21,eyes:3,hair:19}
+  ];
+  const loaded = new Map();
+  for (const [key, src] of layers) {
+    const image = new Image();
+    image.onload = () => {
+      loaded.set(key, image);
+      document.querySelectorAll(".menu-avatar").forEach((canvas, index) => {
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = false;
+        for (const [part] of layers) {
+          const sprite = loaded.get(part);
+          if (!sprite?.complete || !sprite.naturalWidth) continue;
+          const row = variants[index][part];
+          ctx.drawImage(sprite, 0, row * 32, 32, 32, 32, 24, 64, 64);
+        }
+      });
+    };
+    image.src = src;
+  }
+}
+renderMenuAvatars();
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
 let hostPanel = null;
 let activeRoom = false;
 let bootReady = false;
@@ -112,10 +163,19 @@ function renderMenu() {
   }
   document.getElementById("menu-tagline").textContent = t("brand.tagline");
   const playBtn = document.getElementById("menu-play");
+<<<<<<< HEAD
   if (playBtn) playBtn.textContent = t("menu.play");
   document.getElementById("menu-host").textContent = t("menu.host");
   document.getElementById("menu-join").textContent = t("menu.join");
   document.getElementById("menu-settings").textContent = t("menu.settings");
+=======
+  if (playBtn) playBtn.textContent = `▶ ${t("menu.play")}`;
+  const hostBtn = document.getElementById("menu-host");
+  const joinBtn = document.getElementById("menu-join");
+  if (hostBtn) hostBtn.textContent = t("menu.host");
+  if (joinBtn) joinBtn.textContent = t("menu.join");
+  document.getElementById("menu-settings").textContent = `⚙ ${t("menu.settings")}`;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   document.getElementById("settings-title").textContent = t("settings.title");
   document.getElementById("settings-language-label").textContent = t("settings.languageLabel");
   document.getElementById("settings-back").textContent = t("settings.back");
@@ -149,12 +209,21 @@ function startGame() {
 }
 
 function showMainMenu() {
+<<<<<<< HEAD
   document.getElementById("menu-title").textContent = "Deutsch Adventure";
+=======
+  document.getElementById("menu-title").textContent = "BAI PARTY GAMES";
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   menu.hidden = false;
   gameContainer.hidden = true;
   shell.classList.remove("game-active");
   menuForm.hidden = true;
   settingsPanel.hidden = true;
+<<<<<<< HEAD
+=======
+  playOptions.hidden = true;
+  infoPanel.hidden = true;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   document.getElementById("menu-actions").hidden = false;
   menuMessage.textContent = "";
 }
@@ -176,6 +245,10 @@ function hostRoom() {
 }
 
 function showJoinForm() {
+<<<<<<< HEAD
+=======
+  playOptions.hidden = true;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   menuForm.dataset.mode = "join";
   menuForm.innerHTML = `
     <label id="menu-player-label" for="menu-player-name"></label>
@@ -199,9 +272,39 @@ function showJoinForm() {
   });
 }
 
+<<<<<<< HEAD
 document.getElementById("menu-host").addEventListener("click", hostRoom);
 document.getElementById("menu-join").addEventListener("click", showJoinForm);
 document.getElementById("menu-settings").addEventListener("click", () => {
+=======
+document.getElementById("menu-play").addEventListener("click", () => {
+  document.getElementById("menu-actions").hidden = true;
+  playOptions.hidden = false;
+  menuMessage.textContent = "Pilih buat room di TV atau gabung melalui HP.";
+});
+document.getElementById("menu-play-back").addEventListener("click", showMainMenu);
+document.getElementById("menu-host").addEventListener("click", hostRoom);
+document.getElementById("menu-join").addEventListener("click", showJoinForm);
+document.getElementById("menu-customize").addEventListener("click", () => {
+  infoPanel.hidden = false;
+  document.getElementById("menu-info-title").textContent = "CUSTOMIZATION";
+  document.getElementById("menu-info-copy").textContent = "Buka link controller di HP dan pilih kostum sebelum masuk room. Semua pilihan tersimpan dan disinkronkan ke TV.";
+  document.getElementById("menu-actions").hidden = true;
+});
+document.getElementById("menu-leaderboard").addEventListener("click", () => {
+  infoPanel.hidden = false;
+  document.getElementById("menu-info-title").textContent = "LEADERBOARD";
+  document.getElementById("menu-info-copy").textContent = "Peringkat pemain akan tampil selama permainan dan pada Ranking Akhir setelah petualangan Hamburg.";
+  document.getElementById("menu-actions").hidden = true;
+});
+document.getElementById("menu-info-back").addEventListener("click", showMainMenu);
+document.getElementById("menu-quit").addEventListener("click", () => {
+  menuMessage.textContent = "Terima kasih sudah bermain BAI PARTY GAMES!";
+  try { window.close(); } catch {}
+});
+document.getElementById("menu-settings").addEventListener("click", () => {
+  playOptions.hidden = true;
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   settingsPanel.hidden = false;
   menuForm.hidden = true;
   document.getElementById("menu-actions").hidden = true;
