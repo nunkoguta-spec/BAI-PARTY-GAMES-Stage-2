@@ -12,15 +12,6 @@ export const COURSE = Object.freeze({
   worldColumns: 300,
   startPlatformRow: 4,
   finishGraceMs: 180000,
-<<<<<<< HEAD
-=======
-  stages: Object.freeze([
-    Object.freeze({ id: "munich", name: "MÜNCHEN", startX: 0, endX: 2400, landmark: "Rathaus / Marienplatz" }),
-    Object.freeze({ id: "frankfurt", name: "FRANKFURT", startX: 2400, endX: 4800, landmark: "Skyline am Main" }),
-    Object.freeze({ id: "berlin", name: "BERLIN", startX: 4800, endX: 7200, landmark: "Brandenburger Tor" }),
-    Object.freeze({ id: "hamburg", name: "HAMBURG", startX: 7200, endX: 9600, landmark: "Hafen / Elbphilharmonie" })
-  ]),
->>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
   startX: 240,
   startY: 208,
   questionBoxes: Object.freeze([

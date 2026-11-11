@@ -261,16 +261,7 @@ export function createPhoneGame({
 
         socket.emit(
           "quiz:request",
-<<<<<<< HEAD
           { roomCode, boxId },
-=======
-          {
-            roomCode,
-            boxId,
-            x: this.player?.x,
-            y: this.player?.y
-          },
->>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
           (result) => {
             console.log(
               "[PHONE QUIZ] Hasil request:",

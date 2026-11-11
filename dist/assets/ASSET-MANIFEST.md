@@ -53,3 +53,16 @@ Dibuat dengan `python3 tools/make-bright-assets.py` (hanya pemetaan palet piksel
 - `tiles/mountains-tiles-bright.png` ← mountains-tiles.png (rumput hijau terang, tanah cokelat)
 - Awan putih asli `cloud-1/2/3/5/6` dipakai kembali (sebelumnya salah dikira puncak gunung), bergerak pelan.
 - Kamera dikunci vertikal (scrollY=20); `main.js` menghitung skala integer sebelum Phaser dibuat (memperbaiki canvas yang membesar & terpotong).
+<<<<<<< HEAD
+=======
+
+## BAI PARTY GAMES custom city environment set (2026-11-10)
+- `backgrounds/cities/munich-custom.svg`: custom 16-bit pixel-art Marienplatz/Rathaus environment.
+- `backgrounds/cities/frankfurt-custom.svg`: custom Mainhattan skyline environment.
+- `backgrounds/cities/berlin-custom.svg`: custom Fernsehturm and Brandenburg Gate environment.
+- `backgrounds/cities/hamburg-custom.svg`: custom harbor, cranes, and Elbphilharmonie environment.
+- All four scenes use a shared 2400x224 world-space canvas and crisp-edge SVG rendering.
+- Runtime loads one distinct backdrop per 2400px chapter; legacy Munich PNG remains as fallback.
+- Main menu uses the custom Munich scene art as its city background.
+- Artwork is newly authored for this project; it is not a purchased third-party asset pack.
+>>>>>>> 11f10904e9719236a7a7f89e4b6421c8ce05a5e9
