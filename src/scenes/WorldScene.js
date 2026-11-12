@@ -63,6 +63,20 @@ export class WorldScene extends Phaser.Scene {
     // Host mode flag — set by HostPanel to skip player spawn
     this.isHostMode = this.isHostMode || window.deutschHostMode === true;
 
+    // One stage = one city. The stage remains in the same global coordinate
+    // space so multiplayer/network positions stay compatible with the existing
+    // server, but the camera and playable collision are locked to this city.
+    const requestedStage = Number(this.scene.settings?.data?.stageIndex ?? window.baiStageIndex ?? 0);
+    this.stageIndex = Phaser.Math.Clamp(
+      Number.isFinite(requestedStage) ? Math.floor(requestedStage) : 0,
+      0,
+      Math.max(0, COURSE.stages.length - 1)
+    );
+    this.currentStage = COURSE.stages[this.stageIndex] || COURSE.stages[0];
+    this.stageStartX = this.currentStage.startX;
+    this.stageEndX = this.currentStage.endX;
+    this.stageWidth = this.stageEndX - this.stageStartX;
+
     this.createParallaxBackground();
     // Each chapter has its own landmark layer: Frankfurt skyline, Berlin landmarks,
     // and Hamburg harbour structures. This was authored but never called.
@@ -73,84 +87,31 @@ export class WorldScene extends Phaser.Scene {
     // TILEMAP
     const map = this.make.tilemap({ key: "level-01" });
 
-    const tileset = map.addTilesetImage(
-      "Mountains Platformer",
-      "mountains-tiles",
-      32,
-      32,
-      0,
+    // OLD TILEMAP GROUND/PLATFORM REMOVED.
+    // The previous Ground + Platforms layers contained solid terrain tiles that
+    // could make the avatar enter walls or appear to float above the street.
+    // Keep the map only as a data source (PlayerSpawn/Objects); do not create
+    // the legacy visual/collision layers.
+    this.groundLayer = null;
+    this.platformLayer = null;
+
+    // One invisible Arcade Physics floor for THIS CITY ONLY. Its top edge is
+    // y=224, exactly aligned with the visible cobblestone street and avatar feet.
+    this.worldWidth = COURSE.width; // keep global coordinate space for multiplayer
+    this.worldHeight = 384;
+    this.groundCollider = this.add.rectangle(
+      this.stageStartX + this.stageWidth / 2,
+      232,
+      this.stageWidth,
+      16,
+      0xffffff,
       0
     );
+    this.groundCollider.setVisible(false);
+    this.physics.add.existing(this.groundCollider, true);
+    this.groundCollider.body.setSize(this.stageWidth, 16);
+    this.groundCollider.body.setOffset(0, 0);
 
-    if (!tileset) {
-      throw new Error("Tileset Mountains Platformer tidak berhasil dipasang.");
-    }
-
-    // Extend tile data before creating TilemapLayer; Phaser layer snapshots need full route dimensions.
-    const originalWidth = map.width;
-    const extendedWidth = COURSE.worldColumns;
-    for (const layerData of map.layers) {
-      if (layerData.type !== "tilelayer" || !Array.isArray(layerData.data)) continue;
-      const originalData = layerData.data.slice(0, originalWidth * map.height);
-      layerData.data = Array.from({ length: map.height }, (_, row) => {
-        const sourceRow = originalData.slice(row * originalWidth, (row + 1) * originalWidth);
-        return Array.from({ length: extendedWidth }, (_, col) => sourceRow[col % originalWidth]);
-      }).flat();
-      layerData.width = extendedWidth;
-    }
-    map.width = extendedWidth;
-
-    this.groundLayer = map.createLayer("Ground", tileset, 0, 0);
-    this.platformLayer = map.createLayer("Platforms", tileset, 0, 0);
-
-    if (!this.groundLayer || !this.platformLayer) {
-      throw new Error("Layer Ground atau Platforms tidak ditemukan.");
-    }
-
-    this.groundLayer.setDepth(5);
-    this.platformLayer.setDepth(6);
-    // Retain original tilemap collision while removing the mountain dirt visuals.
-    if (this.cityStage) {
-      this.groundLayer.setVisible(false);
-      this.platformLayer.setVisible(false);
-    }
-    this.worldWidth = map.widthInPixels || COURSE.width;
-    this.worldHeight = map.heightInPixels || (map.height * map.tileHeight);
-    // Keep arcade camera/physics bounds at the complete 300-column course size.
-
-    // COLLISION TILEMAP
-    const firstTileIndex = 0;
-    const lastTileIndex = 143;
-
-    this.groundLayer.setCollisionBetween(
-      firstTileIndex,
-      lastTileIndex,
-      true
-    );
-
-    this.platformLayer.setCollisionBetween(
-      firstTileIndex,
-      lastTileIndex,
-      true
-    );
-
-    this.groundLayer.calculateFacesWithin(
-      0,
-      0,
-      map.width,
-      map.height
-    );
-
-    this.platformLayer.calculateFacesWithin(
-      0,
-      0,
-      map.width,
-      map.height
-    );
-
-    // Tilemap arrays are expanded before layer creation above.
-    this.worldWidth = COURSE.width; // 9600px total course
-    this.worldHeight = map.height * map.tileHeight;
     if (this.cityStage) { this.createReferenceStreet(); }
 
     this.physics.world.setBounds(
@@ -168,10 +129,12 @@ export class WorldScene extends Phaser.Scene {
 
     // SPAWN — skip for host mode
     if (!this.isHostMode) {
-      const spawn = map.findObject(
-        "Objects",
-        (object) => object.name === "PlayerSpawn"
-      ) || { x: 240, y: 208 };
+      // Every city has its own spawn. Stage 1 starts at 240px; later cities
+      // start 240px after their own left edge.
+      const spawn = {
+        x: this.stageStartX + 240,
+        y: 208
+      };
 
       this.createAvatar(
         Math.round(spawn.x),
@@ -185,34 +148,23 @@ export class WorldScene extends Phaser.Scene {
         this
       );
 
-      // COLLISION PLAYER
+      // COLLISION PLAYER — ground only. All gameplay obstacles are disabled.
       this.finished = false;
-      this.physics.add.collider(this.player, this.groundLayer);
-      this.physics.add.collider(this.player, this.platformLayer);
-      this.createFinishPlatformDecor();
-      this.createFinishTrigger();
+      this.stageTransitioning = false;
+      this.physics.add.collider(this.player, this.groundCollider);
 
-      // COLLISION QUESTION BOX
-      for (const box of this.questionBoxes) {
-        this.physics.add.collider(
-          this.player,
-          box,
-          (player, target) => {
-            this.onQuestionBoxCollision(player, target);
-          }
-        );
-      }
+      this.createBahnhof();
+      this.createStageTravelTrigger();
 
-      // KONTROL
+      // KONTROL — unchanged.
       this.setupControls();
 
-      // KAMERA — follow player with proper X and Y lerp
+      // KAMERA — locked to this city only.
       const camera = this.cameras.main;
-
       camera.setBounds(
+        this.stageStartX,
         0,
-        0,
-        this.worldWidth,
+        this.stageWidth,
         this.worldHeight
       );
       this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
@@ -222,31 +174,25 @@ export class WorldScene extends Phaser.Scene {
       camera.startFollow(this.player, true, 0.12, 0.12);
       this.handleViewportResize();
 
-      this.createHazardVisuals();
-      for (const hazardItem of this.gameHazards) {
-        this.physics.add.overlap(this.player, hazardItem.hazard, () => {
-          if (hazardItem.isSlug) this.onSlugHit(hazardItem.id);
-          else this.onHazardHit(hazardItem.id);
-        });
-      }
+      // No hazards, spikes, slugs, or obstacle overlap handlers.
+      this.gameHazards = [];
 
-      this.createFinishGate(false);
-      this.createFinishPlatformDecor();
-      this.createFinishTrigger();
+      if (this.stageIndex === COURSE.stages.length - 1) {
+        this.createFinishGate(false);
+      }
     } else {
       // Host mode: set camera bounds and draw spectator-only finish gate without spawning a player.
       const camera = this.cameras.main;
 
       this.gameStarted = true;
-      this.hazardDefinitions = COURSE.hazards;
-      this.createFinishGate(false);
-      this.createHazardVisuals();
-      this.createFinishPlatformDecor();
+      this.hazardDefinitions = [];
+      this.gameHazards = [];
+      this.createBahnhof();
 
       camera.setBounds(
+        this.stageStartX,
         0,
-        0,
-        this.worldWidth,
+        this.stageWidth,
         this.worldHeight
       );
 
@@ -316,14 +262,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createStageHUD() {
-    this.stageLabel = this.add.text(8, 8, "MÜNCHEN", {
+    const stage = this.currentStage || COURSE.stages[0];
+    this.stageLabel = this.add.text(8, 8, stage.name, {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "7px",
       color: "#ffffff",
       stroke: "#172033",
       strokeThickness: 3
     }).setScrollFactor(0).setDepth(110);
-    this.stageSubLabel = this.add.text(8, 19, "RATHAUS / MARIENPLATZ", {
+    this.stageSubLabel = this.add.text(8, 19, String(stage.landmark || "").toUpperCase(), {
       fontFamily: "Arial, sans-serif",
       fontSize: "8px",
       fontStyle: "bold",
@@ -331,25 +278,21 @@ export class WorldScene extends Phaser.Scene {
       stroke: "#172033",
       strokeThickness: 2
     }).setScrollFactor(0).setDepth(110);
-    if (this.isHostMode) { this.stageLabel.setVisible(false); this.stageSubLabel.setVisible(false); } // TV uses the DOM stage badge
-    this.updateStageHUD();
+    if (this.isHostMode) {
+      this.stageLabel.setVisible(false);
+      this.stageSubLabel.setVisible(false);
+    }
+    if (this.isHostMode) {
+      window.dispatchEvent(new CustomEvent("bai-stage", { detail: stage }));
+    }
   }
 
   updateStageHUD() {
-    if (!this.stageLabel) return;
-    const camera = this.cameras.main;
-    const worldX = this.isHostMode
-      ? camera.scrollX + VIEW_W / (2 * Math.max(0.01, camera.zoom))
-      : (this.player?.x ?? COURSE.startX);
-    const stages = COURSE.stages || [];
-    const stage = stages.find((item) => worldX >= item.startX && worldX < item.endX) || stages[stages.length - 1];
-    if (stage && this.currentStageId !== stage.id) {
-      const previousStage = this.currentStageId;
-      this.currentStageId = stage.id;
-      this.stageLabel.setText(stage.name);
-      this.stageSubLabel.setText(stage.landmark.toUpperCase());
-      if (previousStage) this.showCityTransition(stage);
-      if (this.isHostMode) window.dispatchEvent(new CustomEvent("bai-stage", { detail: stage }));
+    if (!this.stageLabel || !this.currentStage) return;
+    this.stageLabel.setText(this.currentStage.name);
+    this.stageSubLabel.setText(String(this.currentStage.landmark || "").toUpperCase());
+    if (this.isHostMode) {
+      window.dispatchEvent(new CustomEvent("bai-stage", { detail: this.currentStage }));
     }
   }
 
@@ -424,19 +367,22 @@ export class WorldScene extends Phaser.Scene {
   createReferenceStreet() {
     if (!this.textures.exists("pack-cobble")) return;
     const top = 224;
-    const ground = top - 3;
+    // The visual street and the solid tilemap begin on the same world-space
+    // row. The previous -3px offset made the pavement lip and collision seam
+    // disagree, which looked like characters were walking into the wall.
+    const ground = top;
     const put = (key, x, scale, depth, y = ground) =>
       this.add.image(x, y, key).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
 
     // Shared playable pavement. The skyline and city architecture above it are
     // chapter-specific and must not be replaced by repeating Munich houses.
-    this.add.tileSprite(0, ground, COURSE.width, 46, "pack-cobble")
+    this.add.tileSprite(this.stageStartX, ground, this.stageWidth, 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.5);
     // Extend the visual pavement well beyond the physics map. On wide TV
     // viewports the camera can expose more vertical pixels than the tilemap;
     // stopping at worldHeight revealed the blue camera clear-color below it.
     const visualGroundBottom = Math.max(this.worldHeight, 900);
-    this.add.tileSprite(0, ground + 46, COURSE.width, visualGroundBottom - ground - 46, "pack-cobble")
+    this.add.tileSprite(this.stageStartX, ground + 46, this.stageWidth, visualGroundBottom - ground - 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.4).setTint(0x8a90b0);
 
     // City architecture is baked into each chapter's panoramic backdrop.
@@ -474,59 +420,148 @@ export class WorldScene extends Phaser.Scene {
     this.munichStreetArt = street;
   }
 
+  createBahnhof() {
+    const stage = this.currentStage || COURSE.stages[0];
+    const stationX = this.stageEndX - 360;
+    this.bahnhofGroup?.destroy(true);
+    this.bahnhofGroup = this.add.container(stationX, 224).setDepth(12);
+
+    // Bahnhof layout: building at the back, platform canopy and train to the
+    // right, with small pieces of station furniture as foreground detail.
+    // Keep source pixel-art at native scale to avoid blurry/stretchy edges.
+    const add = (name, x, y = 0, depth = 1, scale = 1, flip = false) => {
+      const key = `bhf-${name}`;
+      if (!this.textures.exists(key)) return null;
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      const sprite = this.add.image(x, y, key)
+        .setOrigin(0.5, 1)
+        .setScale(scale)
+        .setDepth(depth)
+        .setFlipX(flip);
+      this.bahnhofGroup.add(sprite);
+      return sprite;
+    };
+
+    // Main station façade and covered boarding platform.
+    add("station", -78, 0, 1, 1.12);
+    add("platform-b", 220, 0, 2, 1.12);
+
+    // Train sits at platform level; tracks remain a separate foreground layer.
+    add("train", 258, 7, 3, 1.08);
+    const track = this.add.graphics().setDepth(2);
+    track.lineStyle(3, 0x343b4b, 1);
+    track.lineBetween(112, 2, 390, 2);
+    track.lineBetween(112, 9, 390, 9);
+    track.lineStyle(1, 0xb7a98a, 0.95);
+    for (let x = 116; x <= 390; x += 16) track.lineBetween(x, 0, x, 11);
+    this.bahnhofGroup.add(track);
+
+    // Readable wayfinding: one departure board, no duplicate floating title.
+    add("board-abfahrt", 155, -82, 4, 1.15);
+    add("direction-sign", -280, 0, 3, 0.9);
+    add("lamp-b", -330, 0, 3, 1);
+    add("lamp-a", 390, 0, 3, 1);
+
+    // A restrained set of props gives the station scale without cluttering
+    // the player's path or the train trigger.
+    add("bench", -245, 0, 4, 1);
+    add("ticket-machine", -185, 0, 4, 1);
+    add("plant", 8, 0, 4, 1);
+    add("plant", 52, 0, 4, 1);
+    add("trash", -145, 0, 4, 1);
+
+    const destination = stage.next
+      ? `NÄCHSTER ZUG  ·  ${stage.next.toUpperCase()}`
+      : "ENDSTATION  ·  HAMBURG HBF";
+    const routePanel = this.add.container(220, -112).setDepth(5);
+    const panel = this.add.rectangle(0, 0, 172, 23, 0x101a2a, 0.94)
+      .setStrokeStyle(1, 0xf2c34b, 1);
+    const routeText = this.add.text(0, 0, destination, {
+      fontFamily: "Arial, sans-serif",
+      fontSize: "8px",
+      fontStyle: "bold",
+      color: "#fff4d6",
+      align: "center",
+      padding: { x: 4, y: 2 }
+    }).setOrigin(0.5);
+    routePanel.add([panel, routeText]);
+    this.bahnhofGroup.add(routePanel);
+  }
+
+  createStageTravelTrigger() {
+    const triggerX = this.stageEndX - 155;
+    this.stageTravelTrigger = this.add.zone(triggerX, WORLD_DECOR_Y - 18, 110, 60);
+    this.physics.add.existing(this.stageTravelTrigger, true);
+
+    if (!this.player) return;
+
+    this.physics.add.overlap(this.player, this.stageTravelTrigger, () => {
+      if (this.stageTransitioning || !this.player) return;
+      if (this.player.x < triggerX - 25) return;
+      this.startTrainTravel();
+    });
+  }
+
+  startTrainTravel() {
+    if (this.stageTransitioning) return;
+    this.stageTransitioning = true;
+    this.player.body.setVelocity(0, 0);
+    this.setAvatarAnimation("idle");
+    const nextIndex = this.stageIndex + 1;
+
+    if (nextIndex >= COURSE.stages.length) {
+      // Hamburg is the final city; keep the existing finish flow here.
+      this.finished = true;
+      this.finishGate?.setAlpha(0.75);
+      this.showFloatingFeedback(
+        this.player.x,
+        this.player.y,
+        "HAMBURG HBF • ENDSTATION!",
+        "#f7c83b"
+      );
+      return;
+    }
+
+    window.baiStageIndex = nextIndex;
+    try {
+      sessionStorage.setItem("baiStageIndex", String(nextIndex));
+    } catch {}
+
+    // Fade the current city out before changing scenes. This prevents the
+    // previous camera/frame from flashing while TrainTravelScene initializes.
+    const transition = this.add.rectangle(
+      this.cameras.main.scrollX + VIEW_W / 2,
+      this.cameras.main.scrollY + VIEW_H / 2,
+      VIEW_W,
+      VIEW_H,
+      0x000000,
+      0
+    ).setScrollFactor(0).setDepth(300);
+    this.tweens.add({
+      targets: transition,
+      alpha: 1,
+      duration: 180,
+      onComplete: () => {
+        this.scene.start("TrainTravelScene", {
+          fromIndex: this.stageIndex,
+          toIndex: nextIndex,
+          isHostMode: this.isHostMode,
+          avatarSelection: this.localAvatarSelection || DEFAULT_AVATAR
+        });
+      }
+    });
+  }
+
   createHazardVisuals() {
+    // Intentionally empty: this build has no gameplay obstacles.
     this.gameHazards = [];
     this.hitCooldown = false;
-    for (const hazardData of COURSE.hazards) {
-      const marsh = this.add.container(hazardData.x, WORLD_DECOR_Y - 5).setDepth(3).setScrollFactor(1);
-      const bog = this.add.graphics();
-      bog.fillStyle(0x194b43, 1);
-      bog.fillRect(-30, -3, 60, 9);
-      bog.fillStyle(0x28776a, 1);
-      bog.fillRect(-24, -5, 45, 3);
-      bog.fillStyle(0xa7dc71, 0.9);
-      bog.fillRect(-15, -6, 7, 1);
-      bog.fillRect(10, -6, 8, 1);
-      marsh.add(bog);
-      for (const reedX of [-23, -3, 19]) {
-        const reed = this.add.rectangle(reedX, -12, 2, 13, 0x82d82c).setOrigin(0.5, 1);
-        const leaf = this.add.rectangle(reedX + 3, -17, 6, 2, 0x469a1b).setOrigin(0.5, 1);
-        marsh.add([reed, leaf]);
-      }
-
-      if (!hazardData.id.startsWith("hazard")) continue;
-      const shadow = this.add.ellipse(hazardData.x, hazardData.y + 4, 34, 8, 0x111820, 0.7).setDepth(17);
-      const hazard = this.add.container(hazardData.x, hazardData.y).setDepth(18);
-      const base = this.add.rectangle(0, 4, 26, 8, 0x8f2828).setStrokeStyle(2, 0x171324);
-      const spikes = [-9, 0, 9].map(x => this.add.triangle(x, -2, 0, 16, 6, 0, 12, 16, 0xf1d16b).setStrokeStyle(1, 0x7d302b));
-      const glint = this.add.rectangle(-5, 1, 2, 3, 0xffffff).setAlpha(0.8);
-      hazard.add([base, ...spikes, glint]);
-      this.physics.add.existing(hazard, true);
-      hazard.body.setSize(20, 12).setOffset(-10, -6);
-      hazard.setData("hazardId", hazardData.id);
-      const warning = this.add.text(hazardData.x, hazardData.y - 22, "!", { fontFamily: "monospace", fontSize: "11px", fontStyle: "bold", color: "#fff2aa", backgroundColor: "#842f32", padding: { x: 3, y: 1 } }).setOrigin(0.5).setDepth(20);
-      this.tweens.add({ targets: warning, y: warning.y - 2, duration: 420, yoyo: true, repeat: -1 });
-      this.gameHazards.push({ hazard, shadow, warning, id: hazardData.id });
-    }
-    for (const slugData of COURSE.slugs) {
-      const slug = this.add.container(slugData.x, slugData.y).setDepth(20);
-      const shell = this.add.rectangle(0, 0, 24, 10, 0x82d82c).setStrokeStyle(2, 0x171324);
-      const eye = this.add.rectangle(5, -3, 3, 3, 0xffffff);
-      const pupil = this.add.rectangle(6, -3, 1, 2, 0x171324);
-      slug.add([shell, eye, pupil]);
-      slug.setData("slugId", slugData.id);
-      const zone = this.add.zone(slugData.x, slugData.y, 28, 16);
-      this.physics.add.existing(zone, true);
-      zone.body.setSize(28, 16);
-      this.gameHazards.push({ hazard: zone, slug, id: slugData.id, isSlug: true });
-      this.tweens.add({ targets: slug, x: slugData.x + 32, duration: 900, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
-    }
   }
 
   createFinishPlatformDecor() {
     // Visual cover for end-of-course ground tiles; physics remains the original solid TilemapLayer.
     const platformY = 224;
-    const startX = COURSE.finishX - 280;
+    const startX = this.stageEndX - 280;
     this.finishPlatformDecorations = [];
     for (let i = 0; i < 9; i++) {
       const top = this.add.rectangle(startX + i * 32, platformY, 32, 6, this.cityStage ? 0xb9b4b2 : 0x82d82c).setOrigin(0, 0).setDepth(7);
@@ -536,19 +571,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createFinishTrigger() {
-    const finishX = COURSE.finishX;
+    if (this.stageIndex !== COURSE.stages.length - 1 || !this.player) return;
+    const finishX = this.stageEndX - 120;
     this.finishTrigger = this.add.zone(finishX, WORLD_DECOR_Y - 15, 72, 60);
     this.physics.add.existing(this.finishTrigger, true);
     this.physics.add.overlap(this.player, this.finishTrigger, () => {
-      if (this.player.x >= COURSE.finishX - 100 && !this.finishWarningShown) {
+      if (this.player.x >= finishX - 80 && !this.finishWarningShown) {
         this.finishWarningShown = true;
-        this.showFloatingFeedback(this.player.x, this.player.y, "GARIS FINISH!", "#f7c83b");
+        this.showFloatingFeedback(this.player.x, this.player.y, "HAMBURG HBF • ENDSTATION!", "#f7c83b");
       }
     });
   }
 
   createFinishGate(withTrigger = false) {
-    const finishX = COURSE.finishX;
+    const finishX = this.stageEndX - 120;
     if (this.finishGate) this.finishGate.destroy(true);
     this.finishGate = this.add.container(finishX, WORLD_DECOR_Y - 32).setDepth(14);
     const gateBack = this.add.rectangle(0, 0, 18, 64, 0xf7c83b).setStrokeStyle(4, 0x171324);
@@ -636,33 +672,11 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
   // QUESTION BOX
 
-  createQuestionBoxes(serverPositions = null) {
+  createQuestionBoxes() {
+    // Question Boxes are intentionally disabled for this build.
     this.questionBoxes = [];
-
-    // Prefer authoritative room positions; filter unsafe floor collisions on fallback course data.
-    const boxSource = Array.isArray(serverPositions) && serverPositions.length
-      ? serverPositions
-      : (this.questionDefinitions || COURSE.questionBoxes);
-    const boxPositions = boxSource.filter(pos => serverPositions?.length || this.isSafeBoxPosition(pos));
-    this.safeQuestionBoxIds = new Set(boxPositions.map(pos => pos.id));
-
-    for (const pos of boxPositions) {
-      const box = this.physics.add.staticImage(
-        pos.x,
-        pos.y,
-        "question-box"
-      );
-
-      box.setDepth(15);
-      box.setOrigin(0.5, 0.5);
-      box.refreshBody();
-
-      box.setData("used", false);
-      box.setData("boxId", pos.id);
-      box.setData("originalY", box.y);
-
-      this.questionBoxes.push(box);
-    }
+    this.safeQuestionBoxIds = new Set();
+    this.activeQuestionBoxId = null;
   }
 
   isSafeBoxPosition(pos) {
@@ -765,25 +779,28 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createParallaxBackground() {
-    // Stage 1 — München / Marienplatz. Shared world-space backdrop for TV and HP.
+    // One panoramic city per scene. The next city is not rendered beside it;
+    // it is reached through the Bahnhof + train travel scene.
     this.cityStage = true;
     this.cameras.main.setBackgroundColor("#287fc8");
-    const cityChapters = [
-      ["city-munich-gameplay", 0],
-      ["city-frankfurt-custom", 2400],
-      ["city-berlin-custom", 4800],
-      ["city-hamburg-custom", 7200]
-    ];
-    this.cityBackdrops = [];
-    for (const [textureKey, x] of cityChapters) {
-      const key = this.textures.exists(textureKey) ? textureKey : "munich-city-bg";
-      if (!this.textures.exists(key)) continue;
-      const backdrop = this.add.image(x, 0, key)
-        .setOrigin(0, 0)
-        .setDisplaySize(2400, 224)
-        .setScrollFactor(1, 0)
-        .setDepth(-100);
-      this.cityBackdrops.push(backdrop);
+    const stage = this.currentStage || COURSE.stages[0];
+    const textureMap = {
+      munich: "city-munich-gameplay",
+      frankfurt: "city-frankfurt-custom",
+      berlin: "city-berlin-custom",
+      hamburg: "city-hamburg-custom"
+    };
+    const key = textureMap[stage.id] || "city-munich-gameplay";
+    if (this.textures.exists(key)) {
+      this.cityBackdrops = [
+        this.add.image(stage.startX, 0, key)
+          .setOrigin(0, 0)
+          .setDisplaySize(this.stageWidth, 224)
+          .setScrollFactor(1, 0)
+          .setDepth(-100)
+      ];
+    } else {
+      this.cityBackdrops = [];
     }
   }
 
@@ -1064,8 +1081,11 @@ export class WorldScene extends Phaser.Scene {
 
     this.physics.add.existing(this.player);
 
-    this.player.body.setSize(18, 24);
-    this.player.body.setOffset(7, 6);
+    // Match the lower edge of the physics body to the visible shoe baseline.
+    // Avatar frames are 32px tall; this keeps the feet on the street surface
+    // instead of letting the lower pixels appear embedded in the cobblestone.
+    this.player.body.setSize(18, 22);
+    this.player.body.setOffset(7, 10);
     this.player.body.setCollideWorldBounds(true);
 
     for (const part of parts.slice(1)) {
@@ -1708,6 +1728,34 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.updatePlayerMovement();
+
+    // Never let a player walk out of the current city. Entering the Bahnhof
+    // triggers the train scene before the boundary is crossed.
+    if (this.player) {
+      const minX = this.stageStartX + 24;
+      const maxX = this.stageEndX - 70;
+      if (this.player.x < minX) {
+        this.player.setX(minX);
+        this.player.body.velocity.x = Math.max(0, this.player.body.velocity.x);
+      }
+      if (this.player.x > maxX && !this.stageTransitioning) {
+        this.player.setX(maxX);
+        this.player.body.velocity.x = 0;
+        if (this.stageIndex < COURSE.stages.length - 1) {
+          this.startTrainTravel();
+        } else if (!this.finished) {
+          this.finished = true;
+          this.finishGate?.setAlpha(0.7);
+          this.showFloatingFeedback(
+            this.player.x,
+            this.player.y,
+            "HAMBURG HBF • ENDSTATION!",
+            "#f7c83b"
+          );
+        }
+      }
+    }
+
     this.updateAvatarAnimation(delta);
   }
 

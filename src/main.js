@@ -5,6 +5,7 @@ import Phaser from "phaser";
 import { THEME } from "./theme.js";
 import { BootScene } from "./scenes/BootScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
+import { TrainTravelScene } from "./scenes/TrainTravelScene.js";
 import { setupHostPanel } from "./hostPanel.js";
 import { t, getLang, setLang, onLangChange, SUPPORTED_LANGUAGES } from "./i18n/index.js";
 
@@ -65,7 +66,8 @@ const config = {
 
   scene: [
     BootScene,
-    WorldScene
+    WorldScene,
+    TrainTravelScene
   ]
 };
 
@@ -177,6 +179,9 @@ function renderMenu() {
 }
 
 function startGame() {
+  // A new game always begins at Stage 1 / München.
+  window.baiStageIndex = 0;
+  try { sessionStorage.setItem("baiStageIndex", "0"); } catch {}
   activeRoom = true;
   menu.hidden = true;
   gameContainer.hidden = false;

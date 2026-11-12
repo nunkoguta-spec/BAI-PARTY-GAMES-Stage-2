@@ -1,0 +1,13 @@
+{
+  "project": "BAI PARTY GAMES",
+  "updated": "2026-11-11",
+  "source_archive": "BAI_PARTY_GAMES_NEW_CITY_BACKGROUNDS_2026-11-11.zip",
+  "imported_asset_packs": [
+    "berlin",
+    "characters",
+    "city-environment",
+    "hamburg-reference",
+    "medieval-town"
+  ],
+  "notes": "See ASSET-PACK-INTEGRATION.md before wiring imported sprites into Phaser runtime."
+}

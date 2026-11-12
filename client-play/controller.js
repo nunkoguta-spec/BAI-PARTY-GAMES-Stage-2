@@ -79,7 +79,6 @@ function renderAvatarPreview() {
   }
 }
 function setupAvatarCustomizer() {
-<<<<<<< HEAD
   const saveBtn = document.getElementById("avatarSaveButton");
   if (saveBtn) saveBtn.addEventListener("click", () => { saveBtn.textContent = "TERSIMPAN ✓"; setTimeout(() => { saveBtn.textContent = "SIMPAN"; }, 1200); });
   const ids = { skin:"avatarSkin", bottoms:"avatarBottoms", shoes:"avatarShoes", top:"avatarTop", eyes:"avatarEyes", hair:"avatarHair" };
@@ -100,13 +99,6 @@ function setupAvatarCustomizer() {
     const select = $(id);
     if (!select) continue;
     select.replaceChildren();
-=======
-  const ids = { skin:"avatarSkin", bottoms:"avatarBottoms", shoes:"avatarShoes", top:"avatarTop", eyes:"avatarEyes", hair:"avatarHair" };
-  for (const [key, id] of Object.entries(ids)) {
-    const select = $(id);
-    if (!select) continue;
-    select.innerHTML = "";
->>>>>>> 9d50e30d7c4301c8064254cef288197da15e9467
     for (let i = 0; i < AVATAR_LIMITS[key]; i++) {
       const option = document.createElement("option");
       option.value = String(i);
@@ -116,7 +108,6 @@ function setupAvatarCustomizer() {
     select.value = String(avatarSelection[key]);
     select.addEventListener("change", () => {
       avatarSelection[key] = Number(select.value);
-<<<<<<< HEAD
       persistAvatarSelection();
       renderAvatarPreview();
       phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
@@ -130,22 +121,10 @@ function setupAvatarCustomizer() {
       renderAvatarPreview();
       renderAvatarItemGrid();
     };
-=======
-      try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
-      renderAvatarPreview();
-      // If customization is ever exposed during play, keep the local Phaser avatar in sync.
-      phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
-    });
-  }
-  for (const [key, src] of AVATAR_PREVIEW_PARTS) {
-    const image = new Image();
-    image.onload = renderAvatarPreview;
->>>>>>> 9d50e30d7c4301c8064254cef288197da15e9467
     image.onerror = () => console.warn(`[AVATAR] Preview asset gagal dimuat: ${src}`);
     image.src = src;
     avatarPreviewImages.set(key, image);
   }
-<<<<<<< HEAD
 
   function persistAvatarSelection() {
     try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
@@ -218,9 +197,6 @@ function setupAvatarCustomizer() {
 
   renderAvatarPreview();
   renderAvatarItemGrid();
-=======
-  renderAvatarPreview();
->>>>>>> 9d50e30d7c4301c8064254cef288197da15e9467
 }
 setupAvatarCustomizer();
 

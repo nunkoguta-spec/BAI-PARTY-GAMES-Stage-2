@@ -33,6 +33,33 @@ export class BootScene extends Phaser.Scene {
     for (const name of ["idle", "run", "jump", "victory", "hit"]) this.load.image(`hero-${name}`, `${ASSET}/pack/mascot-${name}.png`);
     for (const name of ["tower", "building", "roof", "lamp", "stall", "tree", "bush", "train", "cobble"]) this.load.image(`pack-${name}`, `${ASSET}/pack/${name}.png`);
 
+    // Bahnhof / train travel assets.
+    const bahnhof = `${ASSET}/bahnhof`;
+    for (const [key, file] of [
+      ["bahnhof-clean-scene", "bahnhof-clean-scene.png"],
+      ["bahnhof-train-clean", "train-clean.png"],
+      ["bahnhof-train", "train.png"],
+      ["bahnhof-platform", "platform-path.png"],
+      ["bahnhof-road", "station-road.png"],
+      ["bahnhof-clock", "clock-tower.png"],
+      ["bahnhof-wing", "station-wing.png"],
+      ["bahnhof-main", "station-main.png"],
+      ["bahnhof-props", "station-props.png"],
+      ["bahnhof-trees", "trees-greenery.png"],
+      ["bahnhof-sign", "bahnhof-sign.png"]
+    ]) {
+      this.load.image(key, `${bahnhof}/${file}`);
+    }
+    // Individually extracted, transparent side-view Bahnhof sprites (Bahnhof Asset Pack v2 sheet).
+    for (const name of [
+      "station", "train", "track-tile", "platform-a", "platform-b",
+      "board-abfahrt", "board-ankunft", "direction-sign", "ticket-machine",
+      "bench", "trash", "fence", "lamp-a", "lamp-b", "clocks", "kiosk",
+      "stairs", "officer", "traveler", "warning-sign", "plant", "crates"
+    ]) {
+      this.load.image(`bhf-${name}`, `${bahnhof}/sprites/${name}.png`);
+    }
+
     // Legacy mountain assets remain loaded for fallback/other stages.
     const bg = `${ASSET}/backgrounds/mountains`;
 

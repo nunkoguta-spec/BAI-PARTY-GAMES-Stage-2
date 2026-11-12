@@ -3,6 +3,7 @@ import Phaser from "phaser";
 import { THEME } from "../src/theme.js";
 import { BootScene } from "../src/scenes/BootScene.js";
 import { WorldScene } from "../src/scenes/WorldScene.js";
+import { TrainTravelScene } from "../src/scenes/TrainTravelScene.js";
 import { COURSE } from "../src/game/course.js";
 
 export function createPhoneGame({
@@ -261,16 +262,12 @@ export function createPhoneGame({
 
         socket.emit(
           "quiz:request",
-<<<<<<< HEAD
           {
             roomCode,
             boxId,
             x: this.player?.x,
             y: this.player?.y
           },
-=======
-          { roomCode, boxId },
->>>>>>> 9d50e30d7c4301c8064254cef288197da15e9467
           (result) => {
             console.log(
               "[PHONE QUIZ] Hasil request:",
@@ -380,9 +377,14 @@ export function createPhoneGame({
       }
     },
 
+    // The controller runs its own Phaser instance, separate from main.js.
+    // Register the travel scene here as well; otherwise WorldScene can request
+    // TrainTravelScene at the Bahnhof but the controller has no such scene and
+    // remains on the plain blue camera background.
     scene: [
       PhoneBootScene,
-      PhoneWorldScene
+      PhoneWorldScene,
+      TrainTravelScene
     ]
   });
 }
