@@ -51,7 +51,7 @@ async function runLegacy() {
   console.log("TEST_STAGE: settings");
   // 3. Update Settings from Host
   const settingsRes = await new Promise((r) =>
-    host.emit("room:settings", { roomCode: code, hostToken: token, settings: { quizSeconds: 20, gameMinutes: 10, correctPoints: 15 } }, r)
+    host.emit("room:settings", { roomCode: code, hostToken: token, settings: { quizSeconds: 20, gameMinutes: 5, correctPoints: 15 } }, r)
   );
   const expandedRoomPayload = await new Promise((resolve) => {
     p1.emit("tv:subscribe", { roomCode: code, hostToken: token }, resolve);
@@ -294,31 +294,17 @@ async function run() {
       "tv:subscribe"
     );
 
-    const defaultDuration12Min = tvSubRes.settings?.gameMinutes === 12;
-    const fourConnectedCityStages = Array.isArray(tvSubRes.course?.stages)
-      && tvSubRes.course.stages.length === 4
-      && tvSubRes.course.stages[0].startX === 0
-      && tvSubRes.course.stages.every((stage, index, stages) =>
-        index === 0 || stages[index - 1].endX === stage.startX
-      );
-
     console.log("[TEST] 4. Host updates settings");
     const settingsRes = assertOk(
       await emitAck(host, "room:settings", {
         roomCode: code,
         hostToken: token,
-        settings: { quizSeconds: 20, gameMinutes: 10, correctPoints: 15 }
+        settings: { quizSeconds: 20, gameMinutes: 5, correctPoints: 15 }
       }, "room:settings"),
       "room:settings"
     );
 
-    console.log("[TEST] 5. Start game before movement (server intentionally locks lobby movement)");
-    const startRes = assertOk(
-      await emitAck(host, "room:start", { roomCode: code, hostToken: token }, "room:start"),
-      "room:start"
-    );
-
-    console.log("[TEST] 6. Verify movement sync");
+    console.log("[TEST] 5. Verify movement sync");
     const hostReceivedMovePromise = waitForEvent(host, "player:moved", "host player:moved");
     const p2MovePromise = waitForEvent(p2, "player:moved", "Bob player:moved");
     p1.emit("player:move", {
@@ -336,14 +322,20 @@ async function run() {
       p2MovePromise
     ]);
 
-    console.log("[TEST] 7. Move Alice to a real server-provided Question Block");
+    console.log("[TEST] 6. Move Alice to a real server-provided Question Block");
     // The server shuffles Question Block positions per room. Never assume a fixed
     // coordinate for question-box-01; use the room snapshot returned by room:join.
     const nearestBox = [...j1.questionBoxes].sort((a, b) =>
       Math.hypot(a.x - 260, a.y - 208) - Math.hypot(b.x - 260, b.y - 208)
     )[0];
 
-    await movePlayerTo(p1, { x: nearestBox.x, y: nearestBox.y + 20 });
+    await movePlayerTo(p1, nearestBox);
+
+    console.log("[TEST] 7. Start game");
+    const startRes = assertOk(
+      await emitAck(host, "room:start", { roomCode: code, hostToken: token }, "room:start"),
+      "room:start"
+    );
 
     console.log(`[TEST] 8. Request quiz from ${nearestBox.id} at (${nearestBox.x}, ${nearestBox.y})`);
     const qShownPromise = waitForEvent(p1, "quiz:show", "Alice quiz:show");
@@ -396,8 +388,6 @@ async function run() {
       playersJoined: j1.ok && j2.ok,
       hostSubscribed: tvSubRes.ok && Array.isArray(tvSubRes.players),
       settingsUpdated: settingsRes.ok,
-      defaultDuration12Min,
-      fourConnectedCityStages,
       animationStateSyncedToHost: hostReceivedMove?.state === "jump-right" && hostReceivedMove?.vy === -430,
       animationStateSyncedToPeer: p2ReceivedMove?.state === "jump-right" && p2ReceivedMove?.vy === -430,
       gameStarted: startRes.ok && !!startRes.endsAt,

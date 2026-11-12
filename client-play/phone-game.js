@@ -262,12 +262,7 @@ export function createPhoneGame({
 
         socket.emit(
           "quiz:request",
-          {
-            roomCode,
-            boxId,
-            x: this.player?.x,
-            y: this.player?.y
-          },
+          { roomCode, boxId },
           (result) => {
             console.log(
               "[PHONE QUIZ] Hasil request:",

@@ -79,26 +79,11 @@ function renderAvatarPreview() {
   }
 }
 function setupAvatarCustomizer() {
-  const saveBtn = document.getElementById("avatarSaveButton");
-  if (saveBtn) saveBtn.addEventListener("click", () => { saveBtn.textContent = "TERSIMPAN ✓"; setTimeout(() => { saveBtn.textContent = "SIMPAN"; }, 1200); });
   const ids = { skin:"avatarSkin", bottoms:"avatarBottoms", shoes:"avatarShoes", top:"avatarTop", eyes:"avatarEyes", hair:"avatarHair" };
-  const categories = [
-    { key:"skin", label:"Wajah", title:"WAJAH", icon:"face" },
-    { key:"eyes", label:"Mata", title:"MATA", icon:"eyes" },
-    { key:"hair", label:"Rambut", title:"RAMBUT", icon:"hair" },
-    { key:"top", label:"Baju", title:"ATASAN", icon:"top" },
-    { key:"bottoms", label:"Celana", title:"BAWAHAN", icon:"bottoms" },
-    { key:"shoes", label:"Sepatu", title:"SEPATU", icon:"shoes" }
-  ];
-  let activeCategory = "skin";
-  const rail = $("avatarCategoryRail");
-  const grid = $("avatarItemGrid");
-  const title = $("avatarCategoryTitle");
-
   for (const [key, id] of Object.entries(ids)) {
     const select = $(id);
     if (!select) continue;
-    select.replaceChildren();
+    select.innerHTML = "";
     for (let i = 0; i < AVATAR_LIMITS[key]; i++) {
       const option = document.createElement("option");
       option.value = String(i);
@@ -108,95 +93,20 @@ function setupAvatarCustomizer() {
     select.value = String(avatarSelection[key]);
     select.addEventListener("change", () => {
       avatarSelection[key] = Number(select.value);
-      persistAvatarSelection();
+      try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
       renderAvatarPreview();
+      // If customization is ever exposed during play, keep the local Phaser avatar in sync.
       phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
-      renderAvatarItemGrid();
     });
   }
-
   for (const [key, src] of AVATAR_PREVIEW_PARTS) {
     const image = new Image();
-    image.onload = () => {
-      renderAvatarPreview();
-      renderAvatarItemGrid();
-    };
+    image.onload = renderAvatarPreview;
     image.onerror = () => console.warn(`[AVATAR] Preview asset gagal dimuat: ${src}`);
     image.src = src;
     avatarPreviewImages.set(key, image);
   }
-
-  function persistAvatarSelection() {
-    try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
-  }
-
-  function renderAvatarItemGrid() {
-    if (!grid) return;
-    const category = categories.find((item) => item.key === activeCategory) || categories[0];
-    if (title) title.textContent = category.title;
-    grid.replaceChildren();
-    const image = avatarPreviewImages.get(activeCategory);
-    for (let i = 0; i < AVATAR_LIMITS[activeCategory]; i++) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `avatar-item${Number(avatarSelection[activeCategory]) === i ? " selected" : ""}`;
-      button.setAttribute("aria-label", `${category.label} style ${i + 1}`);
-      button.setAttribute("aria-pressed", String(Number(avatarSelection[activeCategory]) === i));
-      const thumb = document.createElement("canvas");
-      thumb.width = 32;
-      thumb.height = 32;
-      thumb.className = "avatar-item-thumb";
-      const context = thumb.getContext("2d");
-      if (context && image?.complete && image.naturalWidth) {
-        context.imageSmoothingEnabled = false;
-        context.drawImage(image, 0, i * 32, 32, 32, 0, 0, 32, 32);
-      }
-      const number = document.createElement("span");
-      number.className = "avatar-item-number";
-      number.textContent = String(i + 1).padStart(2, "0");
-      button.append(thumb, number);
-      if (Number(avatarSelection[activeCategory]) === i) {
-        const check = document.createElement("span");
-        check.className = "avatar-item-check";
-        check.textContent = "✓";
-        button.append(check);
-      }
-      button.addEventListener("click", () => {
-        avatarSelection[activeCategory] = i;
-        const select = $(ids[activeCategory]);
-        if (select) select.value = String(i);
-        persistAvatarSelection();
-        renderAvatarPreview();
-        renderAvatarItemGrid();
-        phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
-      });
-      grid.append(button);
-    }
-  }
-
-  if (rail) {
-    rail.replaceChildren();
-    for (const category of categories) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `avatar-category${category.key === activeCategory ? " active" : ""}`;
-      button.innerHTML = `<img src="/assets/ui/icon-${category.icon}.png" alt="" aria-hidden="true"><small>${category.label}</small>`;
-      button.setAttribute("aria-pressed", String(category.key === activeCategory));
-      button.addEventListener("click", () => {
-        activeCategory = category.key;
-        rail.querySelectorAll(".avatar-category").forEach((item) => {
-          const selected = item === button;
-          item.classList.toggle("active", selected);
-          item.setAttribute("aria-pressed", String(selected));
-        });
-        renderAvatarItemGrid();
-      });
-      rail.append(button);
-    }
-  }
-
   renderAvatarPreview();
-  renderAvatarItemGrid();
 }
 setupAvatarCustomizer();
 
