@@ -56,6 +56,10 @@ let currentCourse = null;
 let joiningRoom = false;
 
 
+// =====================================================
+// AVATAR PREVIEW & VISUAL CUSTOMIZER
+// =====================================================
+
 const AVATAR_PREVIEW_PARTS = [
   ["skin", "/assets/avatar/Idle/Character/Character_Idle_Front-Sheet.png"],
   ["bottoms", "/assets/avatar/Idle/Clothing/Clothing_Bottoms_Idle_Front-Sheet.png"],
@@ -64,13 +68,26 @@ const AVATAR_PREVIEW_PARTS = [
   ["eyes", "/assets/avatar/Idle/Eyes/Eyes_Idle_Front-Sheet.png"],
   ["hair", "/assets/avatar/Idle/Hair/Hair_Idle_Front-Sheet.png"]
 ];
+
+const CATEGORY_NAMES = {
+  skin: "Warna Kulit / Wajah",
+  hair: "Gaya Rambut",
+  top: "Baju / Pakaian",
+  bottoms: "Celana",
+  shoes: "Sepatu",
+  eyes: "Bentuk Mata"
+};
+
+let activeCategory = "skin";
 const avatarPreviewImages = new Map();
+
 function renderAvatarPreview() {
   const canvas = $("avatarPreview");
   const ctx = canvas?.getContext("2d");
   if (!ctx) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
+
   for (const [key] of AVATAR_PREVIEW_PARTS) {
     const image = avatarPreviewImages.get(key);
     if (!image?.complete || !image.naturalWidth) continue;
@@ -78,35 +95,93 @@ function renderAvatarPreview() {
     ctx.drawImage(image, 0, row * 32, 32, 32, 16, 8, 64, 64);
   }
 }
-function setupAvatarCustomizer() {
-  const ids = { skin:"avatarSkin", bottoms:"avatarBottoms", shoes:"avatarShoes", top:"avatarTop", eyes:"avatarEyes", hair:"avatarHair" };
-  for (const [key, id] of Object.entries(ids)) {
-    const select = $(id);
-    if (!select) continue;
-    select.innerHTML = "";
-    for (let i = 0; i < AVATAR_LIMITS[key]; i++) {
-      const option = document.createElement("option");
-      option.value = String(i);
-      option.textContent = `${key === "skin" ? "Tone" : "Style"} ${i + 1}`;
-      select.append(option);
+
+function renderCategoryTiles() {
+  const container = $("avatarItemTiles");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const titleEl = $("activeCategoryTitle");
+  const descEl = $("activeSelectionDesc");
+  if (titleEl) titleEl.textContent = CATEGORY_NAMES[activeCategory] || activeCategory;
+  if (descEl) descEl.textContent = `Model #${avatarSelection[activeCategory] + 1}`;
+
+  const count = AVATAR_LIMITS[activeCategory] || 0;
+  const image = avatarPreviewImages.get(activeCategory);
+  const isLoaded = image?.complete && image.naturalWidth;
+
+  for (let i = 0; i < count; i++) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = `avatar-tile ${avatarSelection[activeCategory] === i ? "selected" : ""}`;
+    tile.setAttribute("aria-label", `${CATEGORY_NAMES[activeCategory]} #${i + 1}`);
+
+    const thumbCanvas = document.createElement("canvas");
+    thumbCanvas.width = 32;
+    thumbCanvas.height = 32;
+    thumbCanvas.className = "avatar-tile-canvas";
+    const tctx = thumbCanvas.getContext("2d");
+    if (tctx) {
+      tctx.imageSmoothingEnabled = false;
+      // If choosing clothes/hair/eyes, draw base skin 0 underneath so thumbnail is clear
+      if (activeCategory !== "skin") {
+        const baseSkin = avatarPreviewImages.get("skin");
+        if (baseSkin?.complete) {
+          tctx.drawImage(baseSkin, 0, (avatarSelection.skin || 0) * 32, 32, 32, 0, 0, 32, 32);
+        }
+      }
+      if (isLoaded) {
+        tctx.drawImage(image, 0, i * 32, 32, 32, 0, 0, 32, 32);
+      }
     }
-    select.value = String(avatarSelection[key]);
-    select.addEventListener("change", () => {
-      avatarSelection[key] = Number(select.value);
+
+    const badge = document.createElement("span");
+    badge.className = "avatar-tile-num";
+    badge.textContent = `#${i + 1}`;
+
+    tile.append(thumbCanvas, badge);
+
+    tile.addEventListener("click", () => {
+      avatarSelection[activeCategory] = i;
       try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
+      retroAudio.playCoin?.();
       renderAvatarPreview();
-      // If customization is ever exposed during play, keep the local Phaser avatar in sync.
+      renderCategoryTiles();
       phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
     });
+
+    container.appendChild(tile);
   }
+}
+
+function setupAvatarCustomizer() {
+  const tabs = document.querySelectorAll(".avatar-tab");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabs.forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      activeCategory = tab.dataset.category || "skin";
+      renderCategoryTiles();
+    });
+  });
+
+  let loadedCount = 0;
   for (const [key, src] of AVATAR_PREVIEW_PARTS) {
     const image = new Image();
-    image.onload = renderAvatarPreview;
-    image.onerror = () => console.warn(`[AVATAR] Preview asset gagal dimuat: ${src}`);
+    image.onload = () => {
+      loadedCount++;
+      renderAvatarPreview();
+      if (loadedCount >= AVATAR_PREVIEW_PARTS.length) {
+        renderCategoryTiles();
+      }
+    };
+    image.onerror = () => console.warn(`[AVATAR] Preview asset gagal: ${src}`);
     image.src = src;
     avatarPreviewImages.set(key, image);
   }
+
   renderAvatarPreview();
+  renderCategoryTiles();
 }
 setupAvatarCustomizer();
 
@@ -166,21 +241,25 @@ function refreshGameSize() {
     const gamePanel = $("gamePanel");
     if (!container || !gamePanel || !gamePanel.isConnected) return;
 
-    if (container.clientWidth < 1 || container.clientHeight < 1) return;
     const viewport = window.visualViewport;
     const width = Math.max(1, Math.floor(viewport?.width || window.innerWidth));
-    const viewportHeight = viewport?.height || window.innerHeight;
-    const landscape = window.matchMedia("(orientation: landscape)").matches;
-    const targetHeight = landscape
-      ? Math.max(150, Math.min(container.clientWidth * 9 / 16, viewportHeight - 112))
-      : Math.max(180, Math.min(container.clientWidth * 9 / 16, viewportHeight * 0.46));
-    container.style.height = `${Math.floor(targetHeight)}px`;
-    container.style.minHeight = `${Math.floor(targetHeight)}px`;
+    const viewportHeight = Math.max(1, Math.floor(viewport?.height || window.innerHeight));
+    const isTouchMobile = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+    const portrait = window.matchMedia("(orientation: portrait)").matches;
+
+    if (isTouchMobile && portrait) {
+      const targetHeight = Math.max(180, Math.min(width * 9 / 16, viewportHeight * 0.48));
+      container.style.height = `${Math.floor(targetHeight)}px`;
+      container.style.minHeight = `${Math.floor(targetHeight)}px`;
+    } else {
+      container.style.height = "100%";
+      container.style.minHeight = "100%";
+    }
+
     gamePanel.style.setProperty("--viewport-width", `${width}px`);
-    gamePanel.style.setProperty("--viewport-height", `${Math.floor(viewportHeight)}px`);
-    phoneGame.scale.resize(container.clientWidth, Math.floor(targetHeight));
+    gamePanel.style.setProperty("--viewport-height", `${viewportHeight}px`);
     phoneGame.scale.refresh();
-  }, 100);
+  }, 60);
 }
 
 // =====================================================
@@ -213,6 +292,8 @@ function enterRoom(data) {
   roomCode = data.roomCode;
   gameStarted = data.status === "playing";
   currentCourse = data.course || null;
+  window.baiStageIndex = 0;
+  try { sessionStorage.setItem("baiStageIndex", "0"); } catch {}
   if (currentCourse && phoneScene?.applyCourse) phoneScene.applyCourse(currentCourse);
   if (phoneScene) {
     phoneScene.gameStarted = true;
@@ -690,6 +771,14 @@ function showFinalResults(leaderboard = [], winner = null, reason = "selesai") {
   }
 }
 
+$("fullscreenToggleBtn")?.addEventListener("click", () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  } else {
+    document.exitFullscreen?.().catch(() => {});
+  }
+});
+
 $("audioToggleBtn")?.addEventListener("click", () => {
   retroAudio.unlock();
   if (!retroAudio.isPlaying) retroAudio.startBGM();
@@ -824,10 +913,13 @@ socket.on("game:ended", ({ leaderboard, winner, reason } = {}) => {
 
 socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
   quizActive = false;
+  window.baiStageIndex = 0;
+  try { sessionStorage.setItem("baiStageIndex", "0"); } catch {}
   if (phoneScene) {
     phoneScene.finished = false;
     phoneScene.finishRequestSent = false;
     phoneScene.physics?.world?.resume?.();
+    phoneScene.setStage?.(0);
     phoneScene.player?.setPosition(Number(x) || 240, Number(y) || 208);
     phoneScene.player?.body?.reset(Number(x) || 240, Number(y) || 208);
     phoneScene.syncAvatarLayers?.();

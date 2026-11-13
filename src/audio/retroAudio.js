@@ -140,6 +140,30 @@ class RetroAudioSystem {
     } catch {}
   }
 
+  playTrainWhistle() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      // Dual harmonic European train horn ("Tuuut-tuuut!")
+      [587.33, 739.99].forEach((freq) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.setValueAtTime(freq * 1.01, now + 0.15);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+        gain.gain.setValueAtTime(0.18, now + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(now);
+        osc.stop(now + 0.56);
+      });
+    } catch {}
+  }
+
   startBGM() {
     if (this.isPlaying) return;
     this.unlock();

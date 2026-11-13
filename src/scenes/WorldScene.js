@@ -9,7 +9,7 @@ const WORLD_DECOR_Y = 224;
 const VIEW_W = 480;
 const VIEW_H = 270;
 
-const MOVE_SPEED = 145;
+const MOVE_SPEED = 185;
 const JUMP_SPEED = 430;
 const VIEWPORT_PADDING = 24;
 const HERO_SCALE = 0.62;   // mascot sprites are ~75px tall in the pack
@@ -47,16 +47,46 @@ export class WorldScene extends Phaser.Scene {
     return safeRow * columns + safeFrame;
   }
 
-  create() {
+  init(data = {}) {
+    const rawStage = data?.stageIndex ??
+      this.sys?.settings?.data?.stageIndex ??
+      window.baiStageIndex ??
+      (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("baiStageIndex") : 0);
+    this.stageIndex = Phaser.Math.Clamp(
+      Number.isFinite(Number(rawStage)) ? Math.floor(Number(rawStage)) : 0,
+      0,
+      COURSE.stages.length - 1
+    );
+    if (typeof data?.isHostMode === "boolean") {
+      this.isHostMode = data.isHostMode;
+    }
+    window.baiStageIndex = this.stageIndex;
+    try { sessionStorage.setItem("baiStageIndex", String(this.stageIndex)); } catch {}
+  }
+
+  setStage(targetStageIndex) {
+    const stageIndex = Phaser.Math.Clamp(
+      Math.floor(Number(targetStageIndex) || 0),
+      0,
+      COURSE.stages.length - 1
+    );
+    if (this.stageIndex === stageIndex) return;
+    this.stageIndex = stageIndex;
+    window.baiStageIndex = stageIndex;
+    try { sessionStorage.setItem("baiStageIndex", String(stageIndex)); } catch {}
+    this.scene.restart({ stageIndex, isHostMode: this.isHostMode });
+  }
+
+  create(data = {}) {
     try {
-      this.createWorld();
+      this.createWorld(data);
     } catch (error) {
       window.deutschWorldError = error;
       throw error;
     }
   }
 
-  createWorld() {
+  createWorld(data = {}) {
     // DATA AVATAR MULTIPLAYER
     this.remoteAvatars = new Map();
 
@@ -66,18 +96,30 @@ export class WorldScene extends Phaser.Scene {
     // One stage = one city. The stage remains in the same global coordinate
     // space so multiplayer/network positions stay compatible with the existing
     // server, but the camera and playable collision are locked to this city.
-    const requestedStage = Number(this.scene.settings?.data?.stageIndex ?? window.baiStageIndex ?? 0);
+    const requestedStage = Number(
+      data?.stageIndex ??
+      this.stageIndex ??
+      this.sys?.settings?.data?.stageIndex ??
+      window.baiStageIndex ??
+      (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("baiStageIndex") : 0) ??
+      0
+    );
     this.stageIndex = Phaser.Math.Clamp(
       Number.isFinite(requestedStage) ? Math.floor(requestedStage) : 0,
       0,
       Math.max(0, COURSE.stages.length - 1)
     );
+    window.baiStageIndex = this.stageIndex;
+    try { sessionStorage.setItem("baiStageIndex", String(this.stageIndex)); } catch {}
     this.currentStage = COURSE.stages[this.stageIndex] || COURSE.stages[0];
     this.stageStartX = this.currentStage.startX;
     this.stageEndX = this.currentStage.endX;
     this.stageWidth = this.stageEndX - this.stageStartX;
 
+    this.showCityTransition(this.currentStage);
+
     this.createParallaxBackground();
+    this.createSnowAtmosphere();
     // Each chapter has its own landmark layer: Frankfurt skyline, Berlin landmarks,
     // and Hamburg harbour structures. This was authored but never called.
     // Landmarks are now baked into the pixel-art panoramas (backgrounds/cities/*-bg-v2.png),
@@ -98,7 +140,7 @@ export class WorldScene extends Phaser.Scene {
     // One invisible Arcade Physics floor for THIS CITY ONLY. Its top edge is
     // y=224, exactly aligned with the visible cobblestone street and avatar feet.
     this.worldWidth = COURSE.width; // keep global coordinate space for multiplayer
-    this.worldHeight = 384;
+    this.worldHeight = 270;
     this.groundCollider = this.add.rectangle(
       this.stageStartX + this.stageWidth / 2,
       232,
@@ -129,10 +171,10 @@ export class WorldScene extends Phaser.Scene {
 
     // SPAWN — skip for host mode
     if (!this.isHostMode) {
-      // Every city has its own spawn. Stage 1 starts at 240px; later cities
-      // start 240px after their own left edge.
+      // Player spawns at the arrival station entrance doors
+      const spawnX = this.stageIndex > 0 ? (this.stageStartX + 120) : (this.stageStartX + 160);
       const spawn = {
-        x: this.stageStartX + 240,
+        x: spawnX,
         y: 208
       };
 
@@ -153,8 +195,30 @@ export class WorldScene extends Phaser.Scene {
       this.stageTransitioning = false;
       this.physics.add.collider(this.player, this.groundCollider);
 
+      this.createArrivalStation();
       this.createBahnhof();
       this.createStageTravelTrigger();
+
+      // When arriving from a train journey, player steps out from the Bahnhof doors onto the city street!
+      if (this.stageIndex > 0) {
+        this.player.setAlpha(0);
+        for (const p of this.avatarParts || []) p.sprite.setAlpha(0);
+        this.tweens.add({
+          targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+          alpha: 1,
+          x: this.stageStartX + 175,
+          duration: 650,
+          ease: "Sine.easeOut"
+        });
+        this.time.delayedCall(400, () => {
+          this.showFloatingFeedback(
+            this.stageStartX + 170,
+            160,
+            `KELUAR DARI ${this.currentStage.name} HBF`,
+            "#82d82c"
+          );
+        });
+      }
 
       // KONTROL — unchanged.
       this.setupControls();
@@ -165,20 +229,20 @@ export class WorldScene extends Phaser.Scene {
         this.stageStartX,
         0,
         this.stageWidth,
-        this.worldHeight
+        270
       );
       this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
 
       camera.setRoundPixels(true);
       camera.setDeadzone(VIEW_W * 0.45, VIEW_H * 0.35);
-      camera.startFollow(this.player, true, 0.12, 0.12);
+      camera.startFollow(this.player, true, 0.12, 0);
       this.handleViewportResize();
 
       // No hazards, spikes, slugs, or obstacle overlap handlers.
       this.gameHazards = [];
 
       if (this.stageIndex === COURSE.stages.length - 1) {
-        this.createFinishGate(false);
+        this.createFinishGate(true);
       }
     } else {
       // Host mode: set camera bounds and draw spectator-only finish gate without spawning a player.
@@ -187,7 +251,11 @@ export class WorldScene extends Phaser.Scene {
       this.gameStarted = true;
       this.hazardDefinitions = [];
       this.gameHazards = [];
+      this.createArrivalStation();
       this.createBahnhof();
+      if (this.stageIndex === COURSE.stages.length - 1) {
+        this.createFinishGate(false);
+      }
 
       camera.setBounds(
         this.stageStartX,
@@ -385,6 +453,14 @@ export class WorldScene extends Phaser.Scene {
     this.add.tileSprite(this.stageStartX, ground + 46, this.stageWidth, visualGroundBottom - ground - 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.4).setTint(0x8a90b0);
 
+    // Subtle frost/snow dusting along the top edge of the pavement (winter vibe in background)
+    const snowDust = this.add.graphics().setDepth(7.6);
+    snowDust.fillStyle(0xffffff, 0.38);
+    for (let x = this.stageStartX; x < this.stageEndX; x += 14) {
+      const len = ((x * 7) % 8) + 4;
+      snowDust.fillRect(x, ground - 1, len, 1.5);
+    }
+
     // City architecture is baked into each chapter's panoramic backdrop.
     // Do not stamp repeating Munich houses over the other city scenes.
 
@@ -420,15 +496,52 @@ export class WorldScene extends Phaser.Scene {
     this.munichStreetArt = street;
   }
 
+  createArrivalStation() {
+    const stage = this.currentStage || COURSE.stages[0];
+    const stationX = this.stageStartX + 120;
+    this.arrivalStationGroup?.destroy(true);
+    this.arrivalStationGroup = this.add.container(stationX, 224).setDepth(6);
+
+    // Hauptbahnhof building façade behind the player from which they just stepped out
+    if (this.textures.exists("bhf-station")) {
+      const station = this.add.image(0, 0, "bhf-station")
+        .setOrigin(0.5, 1)
+        .setDepth(1);
+      this.arrivalStationGroup.add(station);
+    }
+
+    // Station exit sign (e.g. "FRANKFURT HBF • AUSGANG")
+    const signBox = this.add.rectangle(0, -118, 148, 18, 0x101c2b, 0.95)
+      .setStrokeStyle(1.5, 0xf6c84a);
+    const signText = this.add.text(0, -118, `${stage.name} HBF • AUSGANG`, {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "6px",
+      color: "#fff3c5"
+    }).setOrigin(0.5);
+    this.arrivalStationGroup.add([signBox, signText]);
+
+    // Station entrance street furniture: lamps, clock, bench, plants
+    if (this.textures.exists("bhf-lamp-b")) {
+      this.arrivalStationGroup.add(this.add.image(-120, 0, "bhf-lamp-b").setOrigin(0.5, 1).setDepth(2));
+      this.arrivalStationGroup.add(this.add.image(120, 0, "bhf-lamp-b").setOrigin(0.5, 1).setDepth(2));
+    }
+    if (this.textures.exists("bhf-bench")) {
+      this.arrivalStationGroup.add(this.add.image(75, 0, "bhf-bench").setOrigin(0.5, 1).setDepth(2));
+    }
+    if (this.textures.exists("bhf-plant")) {
+      this.arrivalStationGroup.add(this.add.image(-65, 0, "bhf-plant").setOrigin(0.5, 1).setDepth(2));
+    }
+    if (this.textures.exists("bhf-clocks")) {
+      this.arrivalStationGroup.add(this.add.image(0, -68, "bhf-clocks").setOrigin(0.5, 1).setDepth(2));
+    }
+  }
+
   createBahnhof() {
     const stage = this.currentStage || COURSE.stages[0];
-    const stationX = this.stageEndX - 360;
+    const stationX = this.stageEndX - 200;
     this.bahnhofGroup?.destroy(true);
     this.bahnhofGroup = this.add.container(stationX, 224).setDepth(12);
 
-    // Bahnhof layout: building at the back, platform canopy and train to the
-    // right, with small pieces of station furniture as foreground detail.
-    // Keep source pixel-art at native scale to avoid blurry/stretchy edges.
     const add = (name, x, y = 0, depth = 1, scale = 1, flip = false) => {
       const key = `bhf-${name}`;
       if (!this.textures.exists(key)) return null;
@@ -442,55 +555,68 @@ export class WorldScene extends Phaser.Scene {
       return sprite;
     };
 
-    // Main station façade and covered boarding platform.
-    add("station", -78, 0, 1, 1.12);
-    add("platform-b", 220, 0, 2, 1.12);
+    // The grand Hauptbahnhof building facade at the end of the street
+    add("station", 0, 0, 1, 1);
+    add("clocks", 0, -68, 2, 1);
 
-    // Train sits at platform level; tracks remain a separate foreground layer.
-    add("train", 258, 7, 3, 1.08);
-    const track = this.add.graphics().setDepth(2);
-    track.lineStyle(3, 0x343b4b, 1);
-    track.lineBetween(112, 2, 390, 2);
-    track.lineBetween(112, 9, 390, 9);
-    track.lineStyle(1, 0xb7a98a, 0.95);
-    for (let x = 116; x <= 390; x += 16) track.lineBetween(x, 0, x, 11);
-    this.bahnhofGroup.add(track);
+    // Entrance wayfinding sign above the station doors
+    const nextCity = stage.next ? stage.next.toUpperCase() : "HAMBURG";
+    const signBox = this.add.rectangle(0, -118, 210, 18, 0x101c2b, 0.95)
+      .setStrokeStyle(1.5, 0xf6c84a);
+    const signText = this.add.text(0, -118, `${stage.name} HBF • EINGANG ➔ ${nextCity}`, {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "6px",
+      color: "#ffdc72"
+    }).setOrigin(0.5);
+    this.bahnhofGroup.add([signBox, signText]);
 
-    // Readable wayfinding: one departure board, no duplicate floating title.
-    add("board-abfahrt", 155, -82, 4, 1.15);
-    add("direction-sign", -280, 0, 3, 0.9);
-    add("lamp-b", -330, 0, 3, 1);
-    add("lamp-a", 390, 0, 3, 1);
+    // Entrance street furniture: lamps, ticket machine, bench, plants
+    add("lamp-b", -130, 0, 2, 1);
+    add("lamp-a", 130, 0, 2, 1);
+    add("ticket-machine", -75, 0, 3, 1);
+    add("bench", 75, 0, 3, 1);
+    add("plant", -40, 0, 3, 1);
+    add("trash", -105, 0, 3, 1);
+    add("direction-sign", 105, 0, 3, 1);
 
-    // A restrained set of props gives the station scale without cluttering
-    // the player's path or the train trigger.
-    add("bench", -245, 0, 4, 1);
-    add("ticket-machine", -185, 0, 4, 1);
-    add("plant", 8, 0, 4, 1);
-    add("plant", 52, 0, 4, 1);
-    add("trash", -145, 0, 4, 1);
+    // Hamburg HBF is the Grand Terminal / Endstation of the entire journey.
+    // Decorate the station platform with red VIP carpet, conductor, and travelers.
+    const isHamburgEndstation = this.stageIndex === COURSE.stages.length - 1;
+    if (isHamburgEndstation) {
+      const carpet = this.add.rectangle(0, 2, 180, 5, 0xb82633).setDepth(4);
+      const carpetGold1 = this.add.rectangle(0, -1, 180, 1, 0xf6c84a).setDepth(4);
+      const carpetGold2 = this.add.rectangle(0, 5, 180, 1, 0xf6c84a).setDepth(4);
+      this.bahnhofGroup.add([carpet, carpetGold1, carpetGold2]);
+
+      // Station master / conductor welcoming at the terminal doors
+      add("officer", 35, 0, 5, 1);
+      // Cheering travelers
+      add("traveler", -45, 0, 5, 1);
+      add("traveler", 65, 0, 5, 1, true);
+    }
 
     const destination = stage.next
-      ? `NÄCHSTER ZUG  ·  ${stage.next.toUpperCase()}`
+      ? `NÄCHSTER HALT  ·  ${stage.next.toUpperCase()} HBF`
       : "ENDSTATION  ·  HAMBURG HBF";
-    const routePanel = this.add.container(220, -112).setDepth(5);
-    const panel = this.add.rectangle(0, 0, 172, 23, 0x101a2a, 0.94)
+    // Screen-fixed, under the stage label. A world-space banner covered the door.
+    this.routeBanner?.destroy(true);
+    const routePanel = this.add.container(VIEW_W / 2, 40).setScrollFactor(0).setDepth(120);
+    const panel = this.add.rectangle(0, 0, 248, 16, 0x101c2b, 0.94)
       .setStrokeStyle(1, 0xf2c34b, 1);
     const routeText = this.add.text(0, 0, destination, {
       fontFamily: "Arial, sans-serif",
       fontSize: "8px",
       fontStyle: "bold",
       color: "#fff4d6",
-      align: "center",
-      padding: { x: 4, y: 2 }
+      align: "center"
     }).setOrigin(0.5);
     routePanel.add([panel, routeText]);
-    this.bahnhofGroup.add(routePanel);
+    this.routeBanner = routePanel;
   }
 
   createStageTravelTrigger() {
-    const triggerX = this.stageEndX - 155;
-    this.stageTravelTrigger = this.add.zone(triggerX, WORLD_DECOR_Y - 18, 110, 60);
+    const triggerX = this.stageEndX - 200;
+    this.stageTravelTrigger = this.add.zone(triggerX, WORLD_DECOR_Y - 18, 90, 60);
     this.physics.add.existing(this.stageTravelTrigger, true);
 
     if (!this.player) return;
@@ -498,19 +624,116 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.stageTravelTrigger, () => {
       if (this.stageTransitioning || !this.player) return;
       if (this.player.x < triggerX - 25) return;
+      if (this.stageIndex >= COURSE.stages.length - 1) {
+        this.triggerEndstationFinish();
+        return;
+      }
       this.startTrainTravel();
     });
   }
 
-  startTrainTravel() {
-    if (this.stageTransitioning) return;
+  triggerEndstationFinish() {
+    if (this.finished) return;
+    this.finished = true;
     this.stageTransitioning = true;
     this.player.body.setVelocity(0, 0);
     this.setAvatarAnimation("idle");
-    const nextIndex = this.stageIndex + 1;
+    retroAudio.playCorrect?.();
 
-    if (nextIndex >= COURSE.stages.length) {
-      // Hamburg is the final city; keep the existing finish flow here.
+    // 1. Victory Hop & Cheer
+    this.tweens.add({
+      targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+      y: this.player.y - 20,
+      duration: 220,
+      yoyo: true,
+      ease: "Sine.easeOut"
+    });
+
+    // 2. Confetti Explosion!
+    this.spawnCelebrationConfetti(this.player.x, this.player.y - 30);
+
+    // 3. Floating Announcement
+    this.showFloatingFeedback(
+      this.player.x,
+      this.player.y - 36,
+      "🏆 HAMBURG HBF • REISE SELESAI! 🏆",
+      "#f7c83b"
+    );
+
+    // 4. Character walks onto red carpet and boards the final victory train
+    const trainDoorX = this.stageEndX - 110;
+    this.time.delayedCall(450, () => {
+      this.playerFacing = "right";
+      this.setAvatarAnimation("right");
+      this.tweens.add({
+        targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+        x: trainDoorX,
+        duration: 900,
+        ease: "Linear",
+        onComplete: () => {
+          this.setAvatarAnimation("idle");
+          this.tweens.add({
+            targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+            alpha: 0,
+            scale: 0.85,
+            duration: 280,
+            onComplete: () => {
+              retroAudio.playTrainWhistle?.();
+              const victoryTrain = this.bahnhofGroup?.list?.find(c => c.texture?.key?.includes("train"));
+              if (victoryTrain) {
+                this.tweens.add({
+                  targets: victoryTrain,
+                  x: victoryTrain.x + 650,
+                  duration: 1300,
+                  ease: "Cubic.easeIn"
+                });
+              }
+              this.time.delayedCall(450, () => {
+                this.createFinishResultOverlay({
+                  finishBonus: 25,
+                  rank: 1,
+                  elapsedMs: Math.max(0, Date.now() - (this.gameStartedAt || Date.now()))
+                });
+              });
+            }
+          });
+        }
+      });
+    });
+  }
+
+  spawnCelebrationConfetti(x, y) {
+    const colors = [0xf7c83b, 0xf24b4b, 0x82d82c, 0x4aa3f0, 0xffffff, 0xec4899];
+    for (let i = 0; i < 36; i++) {
+      const color = colors[i % colors.length];
+      const p = this.add.rectangle(
+        x + Phaser.Math.Between(-15, 15),
+        y + Phaser.Math.Between(-10, 10),
+        Phaser.Math.Between(4, 7),
+        Phaser.Math.Between(3, 5),
+        color
+      ).setDepth(200);
+
+      const vx = Phaser.Math.Between(-140, 140);
+      const vy = Phaser.Math.Between(-180, -70);
+      const rot = Phaser.Math.Between(-180, 180);
+
+      this.tweens.add({
+        targets: p,
+        x: p.x + vx,
+        y: p.y + vy + Phaser.Math.Between(120, 200),
+        angle: rot,
+        alpha: { from: 1, to: 0 },
+        duration: Phaser.Math.Between(1200, 2000),
+        ease: "Cubic.easeOut",
+        onComplete: () => p.destroy()
+      });
+    }
+  }
+
+  startTrainTravel() {
+    if (this.stageTransitioning) return;
+    if (this.stageIndex >= COURSE.stages.length - 1) {
       this.finished = true;
       this.finishGate?.setAlpha(0.75);
       this.showFloatingFeedback(
@@ -521,6 +744,10 @@ export class WorldScene extends Phaser.Scene {
       );
       return;
     }
+    this.stageTransitioning = true;
+    this.player.body.setVelocity(0, 0);
+    this.setAvatarAnimation("idle");
+    const nextIndex = this.stageIndex + 1;
 
     window.baiStageIndex = nextIndex;
     try {
@@ -552,6 +779,67 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
+  animatePlayerBoardTrain(data) {
+    if (!data?.playerId) return;
+    const remote = this.remoteAvatars?.get(data.playerId);
+    const destination = COURSE.stages[data.toIndex] || COURSE.stages[0];
+
+    // Show floating celebratory route text
+    const displayX = remote?.sprites?.[0]?.x || (this.stageEndX - 200);
+    this.showFloatingFeedback(
+      displayX,
+      155,
+      `${data.name || "PEMAIN"} MASUK BAHNHOF ➔ ${destination.name}!`,
+      "#82d82c"
+    );
+
+    retroAudio.playTrainWhistle?.();
+
+    if (remote?.sprites) {
+      // Remote character walks towards the Bahnhof entrance doors and enters
+      const doorX = this.stageEndX - 200;
+      this.tweens.add({
+        targets: remote.sprites,
+        x: doorX,
+        duration: 550,
+        ease: "Linear",
+        onComplete: () => {
+          this.tweens.add({
+            targets: remote.sprites,
+            alpha: 0,
+            scaleY: 0.8,
+            duration: 200,
+            onComplete: () => {
+              if (remote.nameLabel) remote.nameLabel.setVisible(false);
+            }
+          });
+        }
+      });
+    }
+  }
+
+  spawnSteamPuff(x, y) {
+    for (let i = 0; i < 6; i++) {
+      const p = this.add.circle(
+        x + Phaser.Math.Between(-8, 8),
+        y + Phaser.Math.Between(-3, 3),
+        Phaser.Math.Between(3, 6),
+        0xffffff,
+        0.8
+      ).setDepth(20);
+      this.tweens.add({
+        targets: p,
+        x: p.x - Phaser.Math.Between(15, 35),
+        y: p.y - Phaser.Math.Between(15, 30),
+        alpha: 0,
+        scale: 1.8,
+        duration: Phaser.Math.Between(450, 750),
+        ease: "Sine.easeOut",
+        onComplete: () => p.destroy()
+      });
+    }
+  }
+
   createHazardVisuals() {
     // Intentionally empty: this build has no gameplay obstacles.
     this.gameHazards = [];
@@ -572,26 +860,30 @@ export class WorldScene extends Phaser.Scene {
 
   createFinishTrigger() {
     if (this.stageIndex !== COURSE.stages.length - 1 || !this.player) return;
-    const finishX = this.stageEndX - 120;
-    this.finishTrigger = this.add.zone(finishX, WORLD_DECOR_Y - 15, 72, 60);
+    const finishX = this.stageEndX - 180;
+    this.finishTrigger = this.add.zone(finishX, WORLD_DECOR_Y - 15, 120, 60);
     this.physics.add.existing(this.finishTrigger, true);
     this.physics.add.overlap(this.player, this.finishTrigger, () => {
-      if (this.player.x >= finishX - 80 && !this.finishWarningShown) {
-        this.finishWarningShown = true;
-        this.showFloatingFeedback(this.player.x, this.player.y, "HAMBURG HBF • ENDSTATION!", "#f7c83b");
-      }
+      this.triggerEndstationFinish();
     });
   }
 
   createFinishGate(withTrigger = false) {
-    const finishX = this.stageEndX - 120;
+    const finishX = this.stageEndX - 180;
     if (this.finishGate) this.finishGate.destroy(true);
-    this.finishGate = this.add.container(finishX, WORLD_DECOR_Y - 32).setDepth(14);
-    const gateBack = this.add.rectangle(0, 0, 18, 64, 0xf7c83b).setStrokeStyle(4, 0x171324);
-    const gateBanner = this.add.rectangle(0, -36, 116, 22, 0x20243b).setStrokeStyle(3, 0x000000);
-    const gateText = this.add.text(0, -40, "FINISH", { fontFamily: "'Press Start 2P', monospace", fontSize: "8px", color: "#f7c83b" }).setOrigin(0.5);
-    this.finishGate.add([gateBack, gateBanner, gateText]);
-    this.finishGate.setScrollFactor(1);
+
+    // Grand celebratory Endstation Terminal Archway
+    const arch = this.add.container(finishX, WORLD_DECOR_Y - 48).setDepth(15);
+    const archBanner = this.add.rectangle(0, 0, 196, 26, 0x111c2e, 0.95).setStrokeStyle(2, 0xf7c83b, 1);
+    const archTitle = this.add.text(0, -5, "★ ENDSTATION · FINISH ★", { fontFamily: "'Press Start 2P', monospace", fontSize: "7px", color: "#f7c83b" }).setOrigin(0.5);
+    const archSub = this.add.text(0, 7, "HAMBURG HBF", { fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "bold", color: "#ffffff" }).setOrigin(0.5);
+    const leftPole = this.add.rectangle(-94, 26, 4, 52, 0xf7c83b).setStrokeStyle(1, 0x000);
+    const rightPole = this.add.rectangle(94, 26, 4, 52, 0xf7c83b).setStrokeStyle(1, 0x000);
+    // Golden finish line tape across the platform
+    const ribbon = this.add.rectangle(0, 48, 188, 5, 0xf6c84a).setStrokeStyle(1, 0x000);
+    arch.add([leftPole, rightPole, archBanner, archTitle, archSub, ribbon]);
+    arch.setScrollFactor(1);
+    this.finishGate = arch;
 
     if (withTrigger && this.player) this.createFinishTrigger();
   }
@@ -645,38 +937,99 @@ export class WorldScene extends Phaser.Scene {
       this.finishOverlay.overlay.destroy();
       this.finishOverlay.panel.destroy();
     }
-    const overlay = this.add.rectangle(0, 0, VIEW_W, VIEW_H, 0x111422, 0.88)
+    const overlay = this.add.rectangle(0, 0, VIEW_W, VIEW_H, 0x111422, 0.90)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(350);
     const panel = this.add.container(VIEW_W / 2, VIEW_H / 2)
       .setScrollFactor(0)
       .setDepth(351);
+
     const frame = this.add.graphics();
-    frame.fillStyle(0x20243b, 1);
-    frame.fillRect(-155, -76, 310, 152);
+    frame.fillStyle(0x1a2238, 1);
+    frame.fillRect(-165, -84, 330, 168);
     frame.lineStyle(4, 0x000000, 1);
-    frame.strokeRect(-155, -76, 310, 152);
+    frame.strokeRect(-165, -84, 330, 168);
     frame.lineStyle(2, 0xf7c83b, 1);
-    frame.strokeRect(-151, -72, 302, 144);
-    const title = this.add.text(0, -48, "FINISH!", { fontFamily: "'Press Start 2P', monospace", fontSize: "16px", color: "#f7c83b", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5);
-    const bonus = this.add.text(0, -8, `+${Number(result.finishBonus) || 0} BONUS POIN`, { fontFamily: "'Press Start 2P', monospace", fontSize: "9px", color: "#82d82c", stroke: "#000", strokeThickness: 3 }).setOrigin(0.5);
-    const rank = this.add.text(0, 20, `FINISH #${result.rank || "-"}`, { fontFamily: "'Press Start 2P', monospace", fontSize: "8px", color: "#ffffff", stroke: "#000", strokeThickness: 3 }).setOrigin(0.5);
+    frame.strokeRect(-161, -80, 322, 160);
+
+    const title = this.add.text(0, -56, "🏆 GLÜCKWUNSCH! 🏆", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "11px",
+      color: "#f7c83b", stroke: "#000", strokeThickness: 4
+    }).setOrigin(0.5);
+
+    const sub = this.add.text(0, -38, "REISE SELESAI · HAMBURG HBF", {
+      fontFamily: "Arial, sans-serif", fontSize: "10px", fontStyle: "bold",
+      color: "#ffffff"
+    }).setOrigin(0.5);
+
+    const route = this.add.text(0, -22, "München ➔ Frankfurt ➔ Berlin ➔ Hamburg", {
+      fontFamily: "Arial, sans-serif", fontSize: "8px",
+      color: "#82d82c"
+    }).setOrigin(0.5);
+
+    const bonus = this.add.text(0, -2, `+${Number(result.finishBonus) || 25} BONUS POIN`, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "8px",
+      color: "#82d82c", stroke: "#000", strokeThickness: 3
+    }).setOrigin(0.5);
+
+    const rank = this.add.text(0, 18, `FINISH #${result.rank || 1}`, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "8px",
+      color: "#ffffff", stroke: "#000", strokeThickness: 3
+    }).setOrigin(0.5);
+
     const secs = Math.floor((result.elapsedMs || 0) / 1000);
-    const time = this.add.text(0, 43, `WAKTU ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`, { fontFamily: "'Press Start 2P', monospace", fontSize: "7px", color: "#cbd5e1", stroke: "#000", strokeThickness: 3 }).setOrigin(0.5);
-    panel.add([frame, title, bonus, rank, time]);
+    const time = this.add.text(0, 36, `WAKTU ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "7px",
+      color: "#cbd5e1", stroke: "#000", strokeThickness: 3
+    }).setOrigin(0.5);
+
+    const restartBtn = this.add.rectangle(0, 58, 140, 22, 0xf7c83b).setStrokeStyle(2, 0x000000);
+    const restartText = this.add.text(0, 58, "MAIN LAGI ➔", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "7px",
+      color: "#171324"
+    }).setOrigin(0.5);
+    restartBtn.setInteractive({ useHandCursor: true });
+    restartBtn.on("pointerdown", () => {
+      this.setStage(0);
+    });
+
+    panel.add([frame, title, sub, route, bonus, rank, time, restartBtn, restartText]);
     this.finishOverlay = { overlay, panel };
-    this.tweens.add({ targets: panel, scaleX: 1.04, scaleY: 1.04, duration: 180, yoyo: true, ease: "Back.easeOut" });
+    this.tweens.add({ targets: panel, scaleX: 1.03, scaleY: 1.03, duration: 180, yoyo: true, ease: "Back.easeOut" });
   }
 
   // =====================================================
   // QUESTION BOX
 
   createQuestionBoxes() {
-    // Question Boxes are intentionally disabled for this build.
     this.questionBoxes = [];
     this.safeQuestionBoxIds = new Set();
     this.activeQuestionBoxId = null;
+
+    if (!this.textures.exists("question-box")) return;
+
+    const allBoxes = Array.isArray(this.questionDefinitions) && this.questionDefinitions.length
+      ? this.questionDefinitions
+      : (COURSE.questionBoxes || []);
+
+    const stageBoxes = allBoxes.filter(
+      (b) => b.x >= this.stageStartX && b.x < this.stageEndX
+    );
+
+    for (const boxDef of stageBoxes) {
+      const box = this.physics.add.staticSprite(boxDef.x, boxDef.y, "question-box");
+      box.setData("boxId", boxDef.id);
+      box.setData("originalY", boxDef.y);
+      box.setData("used", false);
+      box.setDepth(15);
+      this.safeQuestionBoxIds.add(boxDef.id);
+      this.questionBoxes.push(box);
+
+      if (this.player) {
+        this.physics.add.collider(this.player, box, this.onQuestionBoxCollision, null, this);
+      }
+    }
   }
 
   isSafeBoxPosition(pos) {
@@ -777,6 +1130,37 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
   // BACKGROUND DAN PARALLAX
   // =====================================================
+
+  createSnowAtmosphere() {
+    this.snowflakes = [];
+    const count = 52;
+    for (let i = 0; i < count; i++) {
+      const size = Phaser.Math.Between(1, 2);
+      const alpha = size === 1 ? 0.35 : 0.65;
+      // Snow exists strictly in the background sky/city silhouette (y: 0 to 218)
+      // Depth -20 places it behind the street (depth 7.5), behind props (depth 8-12),
+      // and behind all player characters (depth 20), so it never covers the screen or avatars.
+      const flake = this.add.rectangle(
+        Phaser.Math.Between(-20, VIEW_W + 60),
+        Phaser.Math.Between(-10, 218),
+        size,
+        size,
+        0xffffff,
+        alpha
+      )
+        .setScrollFactor(0.4, 0)
+        .setDepth(-20);
+
+      this.snowflakes.push({
+        sprite: flake,
+        speedY: Phaser.Math.Between(16, 36),
+        speedX: Phaser.Math.Between(-8, -2),
+        wobbleSpeed: Phaser.Math.FloatBetween(1.2, 2.4),
+        wobbleAmp: Phaser.Math.FloatBetween(0.3, 0.9),
+        phase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+      });
+    }
+  }
 
   createParallaxBackground() {
     // One panoramic city per scene. The next city is not rendered beside it;
@@ -1421,20 +1805,24 @@ export class WorldScene extends Phaser.Scene {
     else if (dx < -0.4 || vx < -8) direction = "left";
     remote.facing = direction;
 
-    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 8 : 6);
+    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 9 : 6);
     const frameDuration = 1000 / frameRate;
 
-    remote.animTimer = (remote.animTimer || 0) + delta;
-    if (remote.animTimer >= frameDuration) {
-      const steps = Math.floor(remote.animTimer / frameDuration);
-      remote.animTimer -= steps * frameDuration;
-      const bodyKey = anim === "jump" ? `avatar-body-jump-${direction}` : anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : "avatar-body";
-      const frameTexture = this.textures.exists(bodyKey) ? bodyKey : "avatar-body";
-      const activeColumns = this.getAvatarTextureColumns(frameTexture);
-      if (remote.lastAnim !== anim || remote.lastDirection !== direction) remote.animFrame = 0;
-      else remote.animFrame = ((remote.animFrame || 0) + steps) % activeColumns;
-      remote.lastAnim = anim;
-      remote.lastDirection = direction;
+    if (anim === "jump") {
+      remote.animFrame = vy < -40 ? 0 : (vy > 40 ? 2 : 1);
+    } else {
+      remote.animTimer = (remote.animTimer || 0) + delta;
+      if (remote.animTimer >= frameDuration) {
+        const steps = Math.floor(remote.animTimer / frameDuration);
+        remote.animTimer -= steps * frameDuration;
+        const bodyKey = anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : "avatar-body";
+        const frameTexture = this.textures.exists(bodyKey) ? bodyKey : "avatar-body";
+        const activeColumns = this.getAvatarTextureColumns(frameTexture);
+        if (remote.lastAnim !== anim || remote.lastDirection !== direction) remote.animFrame = 0;
+        else remote.animFrame = ((remote.animFrame || 0) + steps) % activeColumns;
+        remote.lastAnim = anim;
+        remote.lastDirection = direction;
+      }
     }
 
     remote.heroState = `${anim === "walk" ? "walk" : anim}-${direction}`;
@@ -1528,23 +1916,54 @@ export class WorldScene extends Phaser.Scene {
   }
 
   updateAvatarAnimation(delta) {
-    const frameRate = this.avatarState === "idle" ? 4 : 8;
+    const grounded = this.player?.body?.onFloor() ?? true;
+    const vy = this.player?.body?.velocity?.y ?? 0;
+
+    // In air: frame reflects real vertical trajectory (0: rise leap, 1: apex float, 2: landing reach)
+    if (!grounded && (this.avatarState.startsWith("jump") || this.avatarState.startsWith("fall"))) {
+      const jumpFrame = vy < -50 ? 0 : (vy > 50 ? 2 : 1);
+      if (this.avatarFrame !== jumpFrame) {
+        this.avatarFrame = jumpFrame;
+        this.applyAvatarFrame();
+      }
+      return;
+    }
+
+    // On ground: natural 9 FPS walk stride cadence vs 4 FPS breathing idle
+    const isMoving = Math.abs(this.player?.body?.velocity?.x || 0) > 5;
+    const frameRate = isMoving ? 9 : 4;
     const frameDuration = 1000 / frameRate;
 
     this.avatarFrameTimer += delta;
 
     if (this.avatarFrameTimer >= frameDuration) {
-      const steps = Math.floor(
-        this.avatarFrameTimer / frameDuration
-      );
-
+      const steps = Math.floor(this.avatarFrameTimer / frameDuration);
       this.avatarFrameTimer -= steps * frameDuration;
 
-      const bodyTexture = this.getAvatarTexture(this.avatarConfig[0], this.avatarState === "idle" ? "idle" : this.avatarState.startsWith("jump") || this.avatarState.startsWith("fall") ? `jump-${this.avatarState.endsWith("left") ? "left" : "right"}` : this.avatarState);
+      const bodyTexture = this.getAvatarTexture(
+        this.avatarConfig[0],
+        this.avatarState === "idle" ? "idle" : this.avatarState
+      );
       const columns = this.getAvatarTextureColumns(bodyTexture);
       this.avatarFrame = (this.avatarFrame + steps) % columns;
 
       this.applyAvatarFrame();
+    }
+  }
+
+  spawnFootDust(x, y) {
+    for (let i = 0; i < 4; i++) {
+      const p = this.add.rectangle(x + Phaser.Math.Between(-7, 7), y, 3, 2, 0xd0c4b0).setDepth(19);
+      this.tweens.add({
+        targets: p,
+        x: p.x + Phaser.Math.Between(-14, 14),
+        y: p.y - Phaser.Math.Between(2, 6),
+        alpha: { from: 0.8, to: 0 },
+        scale: 0.5,
+        duration: 160,
+        ease: "Sine.easeOut",
+        onComplete: () => p.destroy()
+      });
     }
   }
 
@@ -1604,11 +2023,14 @@ export class WorldScene extends Phaser.Scene {
     const width = Math.max(1, gameSize?.width || this.scale.width || VIEW_W);
     const height = Math.max(1, gameSize?.height || this.scale.height || VIEW_H);
     const camera = this.cameras.main;
-    // Phaser.Scale.FIT owns the canvas scaling. Keep the world camera in
-    // logical game coordinates (480x270); resizing it to browser pixels
-    // makes the camera see far beyond the world and leaves a large empty sky.
+    // Keep the world camera in logical game coordinates (480x270).
+    // Lock bounds strictly to the active stage so player is never thrown back visually.
+    camera.setBounds(this.stageStartX || 0, 0, this.stageWidth || 2400, 270);
     if (this.player) {
       this.player.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, this.worldWidth, this.worldHeight));
+      if (!this.isHostMode) {
+        camera.startFollow(this.player, true, 0.12, 0);
+      }
     }
     if (this.isHostMode && this.hostSpectatorTarget) {
       camera.startFollow(this.hostSpectatorTarget, true, 0.12, 0.12);
@@ -1661,20 +2083,33 @@ export class WorldScene extends Phaser.Scene {
       body.onFloor()
     ) {
       body.setVelocityY(-JUMP_SPEED);
+      retroAudio.playJump?.();
       this.setAvatarAnimation(`jump-${this.playerFacing}`);
+      // Jump vertical stretch juice
+      this.tweens.add({
+        targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+        scaleX: 0.90,
+        scaleY: 1.15,
+        duration: 85,
+        yoyo: true,
+        ease: "Quad.easeOut"
+      });
+      this.spawnFootDust(this.player.x, this.player.y + 11);
     }
 
     const grounded = body.onFloor();
     if (grounded && !this.wasGrounded) {
       this.events.emit("player:landed");
+      // Landing horizontal squash juice
       this.tweens.add({
         targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
-        scaleX: 1.2,
-        scaleY: 0.82,
-        duration: 75,
+        scaleX: 1.18,
+        scaleY: 0.84,
+        duration: 90,
         yoyo: true,
         ease: "Quad.easeOut"
       });
+      this.spawnFootDust(this.player.x, this.player.y + 11);
     }
     this.wasGrounded = grounded;
 
@@ -1719,6 +2154,32 @@ export class WorldScene extends Phaser.Scene {
         Math.round(cloud.sprite.x * 4) / 4;
     }
 
+    // UPDATE BACKGROUND SNOW ATMOSPHERE
+    // Drifts gently in the background scenery (depth -20), never over the player, street, or UI.
+    if (this.snowflakes) {
+      const dt = delta / 1000;
+      const camX = scrollX * 0.4;
+      for (const flake of this.snowflakes) {
+        flake.phase += flake.wobbleSpeed * dt;
+        flake.sprite.y += flake.speedY * dt;
+        flake.sprite.x += (flake.speedX + Math.sin(flake.phase) * flake.wobbleAmp) * dt;
+
+        // Reset when falling below the background skyline (y=218)
+        if (flake.sprite.y > 218) {
+          flake.sprite.y = -6;
+          flake.sprite.x = camX + Phaser.Math.Between(-20, VIEW_W + 50);
+        }
+
+        // Horizontal wrapping relative to parallax camera
+        const relX = flake.sprite.x - camX;
+        if (relX < -30) {
+          flake.sprite.x += VIEW_W + 60;
+        } else if (relX > VIEW_W + 50) {
+          flake.sprite.x -= VIEW_W + 60;
+        }
+      }
+    }
+
     // UPDATE AVATAR PEMAIN LAIN
     this.updateRemoteAvatars(delta);
     this.updateStageHUD();
@@ -1744,14 +2205,7 @@ export class WorldScene extends Phaser.Scene {
         if (this.stageIndex < COURSE.stages.length - 1) {
           this.startTrainTravel();
         } else if (!this.finished) {
-          this.finished = true;
-          this.finishGate?.setAlpha(0.7);
-          this.showFloatingFeedback(
-            this.player.x,
-            this.player.y,
-            "HAMBURG HBF • ENDSTATION!",
-            "#f7c83b"
-          );
+          this.triggerEndstationFinish();
         }
       }
     }

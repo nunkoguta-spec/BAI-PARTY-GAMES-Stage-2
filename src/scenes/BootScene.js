@@ -52,7 +52,7 @@ export class BootScene extends Phaser.Scene {
     }
     // Individually extracted, transparent side-view Bahnhof sprites (Bahnhof Asset Pack v2 sheet).
     for (const name of [
-      "station", "train", "track-tile", "platform-a", "platform-b",
+      "station", "train", "train-long", "carriage", "track-tile", "platform-a", "platform-b",
       "board-abfahrt", "board-ankunft", "direction-sign", "ticket-machine",
       "bench", "trash", "fence", "lamp-a", "lamp-b", "clocks", "kiosk",
       "stairs", "officer", "traveler", "warning-sign", "plant", "crates"

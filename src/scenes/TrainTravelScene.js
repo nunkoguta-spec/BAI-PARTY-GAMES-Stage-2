@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { COURSE } from "../game/course.js";
 import { DEFAULT_AVATAR } from "../avatar/defaultAvatar.js";
+import { retroAudio } from "../audio/retroAudio.js";
 
 const AVATAR_PARTS = [
   ["body", "avatar-body", "skin", 1],
@@ -22,24 +23,17 @@ export class TrainTravelScene extends Phaser.Scene {
     this.isHostMode = Boolean(data.isHostMode || window.deutschHostMode);
     this.avatarSelection = { ...DEFAULT_AVATAR, ...(data.avatarSelection || {}) };
     this._travelFinished = false;
+    this._arrivalStarted = false;
   }
 
   preload() {
-    // Environment strips supplied for the train journey and destination station.
-    const assets = [
-      "journey-sunset", "journey-mountains", "journey-countryside",
-      "tunnel-cave", "tunnel-industrial", "tunnel-rock",
-      "underground-platform", "arrival-modern-station"
-    ];
-    for (const key of assets) {
-      this.load.image(`travel-${key}`, `/assets/travel/${key}.png`);
-    }
+    // Centralized assets loaded by BootScene
   }
 
   create() {
     const camera = this.cameras.main;
-    const W = Math.max(320, Number(camera.width || this.scale.width || 480));
-    const H = Math.max(180, Number(camera.height || this.scale.height || 270));
+    const W = 480;
+    const H = 270;
     this.W = W;
     this.H = H;
     camera.setScroll(0, 0);
@@ -48,24 +42,24 @@ export class TrainTravelScene extends Phaser.Scene {
 
     const from = COURSE.stages[this.fromIndex] || COURSE.stages[0];
     const to = COURSE.stages[this.toIndex] || COURSE.stages[COURSE.stages.length - 1];
-    this.groundY = H * 0.79;
-    this.trainScale = Phaser.Math.Clamp(W / 850, 0.9, 1.5);
-    this.trainWidth = 302 * this.trainScale;
 
-    this.drawStationBackdrop(from);
+    this.groundY = Math.round(H * 0.72);
+    this.trainScale = 1.35;
+    this.trainKey = this.textures.exists("bhf-train-long") ? "bhf-train-long" : (this.textures.exists("bhf-train") ? "bhf-train" : "bahnhof-train");
+    this.trainWidth = Math.round((this.trainKey === "bhf-train-long" ? 448 : 302) * this.trainScale);
+
+    this.drawStationBackdrop(from, "departure");
     this.createHeader(from, to);
     this.createTrainAndBoardingSequence(from, to);
   }
 
-  drawStationBackdrop(stage) {
+  drawStationBackdrop(stage, mode = "departure") {
     const { W, H, groundY } = this;
     const bg = this.add.graphics().setDepth(0);
-    // Clean sky gradient; avoid the old floating grey skyline rectangles.
-    bg.fillGradientStyle(0x83b8d7, 0x83b8d7, 0xc6dce5, 0xc6dce5, 1);
+    bg.fillGradientStyle(0x78aecd, 0x78aecd, 0xc1dbe5, 0xc1dbe5, 1);
     bg.fillRect(0, 0, W, H);
 
-    // Soft distant city silhouette: grounded rooftops with varied heights,
-    // not isolated blocks. Kept low contrast so Bahnhof remains the focal point.
+    // City skyline silhouette
     const skyline = this.add.graphics().setDepth(1);
     skyline.fillStyle(0x7896a5, 0.42);
     const skylineBase = groundY - 66;
@@ -78,65 +72,93 @@ export class TrainTravelScene extends Phaser.Scene {
     for (const [x, h, width] of buildings) {
       const bx = W * x;
       const bw = W * width;
-      const bh = h * this.trainScale * 0.72;
+      const bh = h * 0.72;
       skyline.fillRect(bx, skylineBase - bh, bw, bh);
       skyline.fillStyle(0x7896a5, 0.22);
       skyline.fillRect(bx - 3, skylineBase - bh - 4, bw + 6, 5);
       skyline.fillStyle(0x7896a5, 0.42);
     }
 
-    // Station façade is set back from the train and reduced slightly so the
-    // full building reads clearly without dominating the whole scene.
+    // Station building façade on the left serves as the station entrance.
     if (this.textures.exists("bhf-station")) {
-      this.add.image(W * 0.255, groundY - 8, "bhf-station")
-        .setOrigin(0.5, 1).setScale(this.trainScale * 1.02).setDepth(3);
+      this.add.image(10, groundY, "bhf-station")
+        .setOrigin(0.5, 1).setScale(0.82).setDepth(3);
     }
 
-    // Platform paving, tactile edge and ballast are separate horizontal layers.
-    this.add.rectangle(W / 2, groundY + 5, W, 22, 0x89969a).setDepth(4);
-    this.add.rectangle(W / 2, groundY - 7, W, 4, 0xd9cba9).setDepth(5);
-    this.add.rectangle(W / 2, groundY + 18, W, 13, 0x53616a).setDepth(5);
-    this.add.rectangle(W / 2, groundY + 25, W, 3, 0x343e49).setDepth(5);
+    // Platform, ballast and foundation run edge to edge.
+    this.add.rectangle(W / 2, groundY + 11, W + 4, 22, 0x89969a).setDepth(4);
+    this.add.rectangle(W / 2, groundY - 1, W + 4, 4, 0xd9cba9).setDepth(5);
+    this.add.rectangle(W / 2, groundY + (H - groundY) / 2 + 8, W + 4, H - groundY + 16, 0x3d4654).setDepth(4);
+    this.add.rectangle(W / 2, groundY + 22, W + 4, 10, 0x53616a).setDepth(5);
 
-    // Canopy and departure board sit behind the train so neither is obscured.
+    // Platform canopy on the right covers the train boarding area
     if (this.textures.exists("bhf-platform-b")) {
-      this.add.image(W * 0.76, groundY + 1, "bhf-platform-b")
-        .setOrigin(0.5, 1).setScale(this.trainScale * 1.02).setDepth(6);
+      this.add.image(330, groundY, "bhf-platform-b")
+        .setOrigin(0.5, 1).setScale(1).setDepth(6);
     }
 
-    // Track sleepers, rails and yellow safety line are deliberately aligned.
+    // Stationary rails across the station platform
     const rails = this.add.graphics().setDepth(7);
-    const railY = groundY + 27 * this.trainScale;
-    rails.fillStyle(0x4c5159, 1);
-    for (let x = -8; x < W + 20; x += 24) {
-      rails.fillRect(x, railY - 2, 15, 13);
-    }
-    rails.lineStyle(3, 0x424b55, 1);
-    rails.lineBetween(0, railY, W, railY);
-    rails.lineBetween(0, railY + 10, W, railY + 10);
-    rails.lineStyle(1, 0xc3b38d, 0.95);
-    rails.lineBetween(0, railY - 2, W, railY - 2);
+    const railY = groundY + 18;
+    rails.fillStyle(0x6d5840, 1);
+    for (let x = -8; x < W + 24; x += 22) rails.fillRect(x, railY + 1, 14, 6);
+    rails.lineStyle(3, 0xc5ccd6, 1);
+    rails.lineBetween(-2, railY, W + 2, railY);
+    rails.lineBetween(-2, railY + 8, W + 2, railY + 8);
+    rails.lineStyle(1, 0xffffff, 0.6);
+    rails.lineBetween(-2, railY, W + 2, railY);
 
-    // Props use a consistent baseline and balanced spacing. Keep the board
-    // above the canopy, clear of the train body and door.
+    // Overhead electrical catenary poles (tiang listrik) at depth 5 (BEHIND the train at depth 12)
+    const catenaryPoles = this.add.graphics().setDepth(5);
+    const wireY = groundY + 18 - Math.round(52 * this.trainScale);
+    const messengerY = wireY - 14;
+
+    for (const mastX of [40, 210, 390]) {
+      catenaryPoles.fillStyle(0x3e4754, 1);
+      catenaryPoles.fillRect(mastX - 2, wireY - 20, 5, groundY - (wireY - 20));
+      catenaryPoles.fillRect(mastX - 2, wireY - 20, 24, 4);
+      catenaryPoles.fillStyle(0xd5e1ed, 1);
+      catenaryPoles.fillRect(mastX + 16, wireY - 14, 4, 6);
+    }
+
+    // Overhead catenary contact wire at roof level (depth 13, connects with pantograph)
+    const catenaryWire = this.add.graphics().setDepth(13);
+    catenaryWire.lineStyle(1.5, 0x4a5666, 0.95);
+    catenaryWire.lineBetween(-10, wireY, W + 10, wireY);
+    catenaryWire.lineStyle(1, 0x3d4754, 0.85);
+    catenaryWire.lineBetween(-10, messengerY, W + 10, messengerY);
+    catenaryWire.lineStyle(1, 0x5a6678, 0.7);
+    for (let x = 16; x < W + 10; x += 32) catenaryWire.lineBetween(x, messengerY, x, wireY);
+
+    // Platform travelers & station atmosphere
+    if (this.textures.exists("bhf-traveler")) {
+      this.add.image(72, groundY, "bhf-traveler").setOrigin(0.5, 1).setDepth(8);
+      this.add.image(410, groundY, "bhf-traveler").setOrigin(0.5, 1).setDepth(8).setFlipX(true);
+    }
+    if (this.textures.exists("bhf-officer")) {
+      this.add.image(280, groundY, "bhf-officer").setOrigin(0.5, 1).setDepth(8);
+    }
+
+    // Props use a consistent baseline and balanced spacing.
+    // Lamps set to depth 5 (behind the train) so train blocks them if overlapping.
+    const boardKey = mode === "departure" ? "bhf-board-abfahrt" : "bhf-board-ankunft";
     const props = [
-      ["bhf-lamp-a", W * 0.075, 0.92],
-      ["bhf-bench", W * 0.145, 1.02],
-      ["bhf-ticket-machine", W * 0.385, 0.96],
-      ["bhf-board-abfahrt", W * 0.765, 1.04],
-      ["bhf-plant", W * 0.91, 1.02],
-      ["bhf-lamp-b", W * 0.95, 0.92]
+      ["bhf-lamp-a", 36, groundY, 5],
+      ["bhf-bench", 78, groundY, 8],
+      ["bhf-ticket-machine", 240, groundY, 8],
+      [boardKey, 330, groundY - 48, 8],
+      ["bhf-plant", 430, groundY, 8],
+      ["bhf-lamp-b", 458, groundY, 5]
     ];
-    for (const [key, x, scale] of props) {
+    for (const [key, x, y, depth] of props) {
       if (!this.textures.exists(key)) continue;
-      const y = key === "bhf-board-abfahrt" ? groundY - 49 * this.trainScale : groundY - 1;
       this.add.image(x, y, key)
-        .setOrigin(0.5, 1).setScale(this.trainScale * scale).setDepth(key === "bhf-board-abfahrt" ? 8 : 9);
+        .setOrigin(0.5, 1).setScale(1).setDepth(depth);
     }
 
-    this.add.rectangle(W / 2, H - 9, W, 18, 0x313b48).setDepth(10);
-    this.add.text(W * 0.255, groundY - 126 * this.trainScale, stage.station || "BAHNHOF", {
-      fontFamily: "'Press Start 2P', monospace", fontSize: `${Math.max(7, W / 120)}px`,
+    this.add.rectangle(W / 2, H - 8, W + 4, 16, 0x313b48).setDepth(10);
+    this.add.text(60, groundY - 110, stage.station || "BAHNHOF", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "7px",
       color: "#fff3c5", backgroundColor: "#203449", padding: { x: 7, y: 5 },
       stroke: "#111", strokeThickness: 3
     }).setOrigin(0.5).setDepth(11);
@@ -146,45 +168,62 @@ export class TrainTravelScene extends Phaser.Scene {
     const { W } = this;
     const panel = this.add.graphics().setDepth(30);
     panel.fillStyle(0x101c2b, 0.9);
-    panel.fillRoundedRect(W * 0.2, 8, W * 0.6, 58, 8);
+    panel.fillRoundedRect(W * 0.15, 46, W * 0.7, 44, 8);
     panel.lineStyle(2, 0xf6c84a, 1);
-    panel.strokeRoundedRect(W * 0.2, 8, W * 0.6, 58, 8);
-    this.add.text(W / 2, 22, `${from.name}  →  ${to.name}`, {
-      fontFamily: "'Press Start 2P', monospace", fontSize: `${Math.max(7, W / 145)}px`,
+    panel.strokeRoundedRect(W * 0.15, 46, W * 0.7, 44, 8);
+    this.add.text(W / 2, 58, `${from.name}  →  ${to.name}`, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "7px",
       color: "#ffdc72", stroke: "#000", strokeThickness: 3
     }).setOrigin(0.5).setDepth(31);
-    this.statusText = this.add.text(W / 2, 47, "ZUG FÄHRT EIN …", {
-      fontFamily: "Arial, sans-serif", fontSize: `${Math.max(12, W / 55)}px`,
+    this.statusText = this.add.text(W / 2, 76, "ZUG FÄHRT EIN …", {
+      fontFamily: "Arial, sans-serif", fontSize: "10px",
       fontStyle: "bold", color: "#ffffff", stroke: "#182435", strokeThickness: 3
     }).setOrigin(0.5).setDepth(31);
   }
 
   createTrainAndBoardingSequence(from, to) {
     const { W, groundY, trainScale, trainWidth } = this;
-    const railY = groundY + 20 * trainScale;
-    const trainY = railY + 13 * trainScale;
-    const trainKey = this.textures.exists("bhf-train") ? "bhf-train" : "bahnhof-train";
+    const railY = groundY + 18;
+    const trainY = railY + 1;
+    const trainKey = this.trainKey;
     this.train = this.add.image(-trainWidth, trainY, trainKey)
       .setOrigin(0.5, 1).setScale(trainScale).setDepth(12);
 
-    // Sliding door panels are layered over the train's doorway during boarding.
-    this.doorLeft = this.add.rectangle(0, trainY - 25 * trainScale, 10 * trainScale, 38 * trainScale, 0x9ec5d4, 1)
-      .setStrokeStyle(2, 0x253849).setDepth(13).setVisible(false);
-    this.doorRight = this.add.rectangle(0, trainY - 25 * trainScale, 10 * trainScale, 38 * trainScale, 0x9ec5d4, 1)
-      .setStrokeStyle(2, 0x253849).setDepth(13).setVisible(false);
+    // Glowing locomotive headlights pointing forward on the right!
+    this.headlight = this.add.graphics().setDepth(13);
+    const updateHeadlight = () => {
+      this.headlight.clear();
+      const fx = this.train.x + trainWidth * 0.5 - 2;
+      const fy = this.train.y - Math.round(18 * trainScale);
+      this.headlight.fillStyle(0xfff2b0, 0.28);
+      this.headlight.fillTriangle(fx, fy, fx + 75, fy - 16, fx + 75, fy + 22);
+      this.headlight.fillStyle(0xffffff, 0.85);
+      this.headlight.fillCircle(fx, fy, 3);
+    };
 
-    this.passenger = this.createPassenger(W * 0.22, groundY - 7);
+    // Passenger enters from the Bahnhof entrance hall on the left
+    this.passenger = this.createPassenger(-15, groundY - 7);
     this.passenger.setDepth(18);
 
+    // Train enters over stationary platform rails
+    const targetTrainX = Math.round(W * 0.44);
     this.tweens.add({
-      targets: this.train, x: W * 0.64, duration: 1700, ease: "Cubic.easeOut",
-      onComplete: () => this.openDoorsAndBoard()
+      targets: this.train,
+      x: targetTrainX,
+      duration: 1500,
+      ease: "Cubic.easeOut",
+      onUpdate: updateHeadlight,
+      onComplete: () => {
+        updateHeadlight();
+        this.openDoorsAndBoard();
+      }
     });
   }
 
   createPassenger(x, y) {
     const container = this.add.container(x, y).setDepth(18);
-    const scale = this.trainScale * 1.18;
+    const scale = 1;
+    container.avatarSprites = [];
     for (const [part, texture, rowKey, depth] of AVATAR_PARTS) {
       if (!this.textures.exists(texture)) continue;
       const row = Math.max(0, Number(this.avatarSelection[rowKey]) || 0);
@@ -196,6 +235,7 @@ export class TrainTravelScene extends Phaser.Scene {
       const sprite = this.add.sprite(0, 0, texture, frame)
         .setOrigin(0.5, 0.5).setScale(scale).setDepth(depth);
       container.add(sprite);
+      container.avatarSprites.push({ part, sprite, row, cols });
     }
     if (!container.list.length && this.textures.exists("hero-idle")) {
       container.add(this.add.image(0, 0, "hero-idle").setScale(0.75));
@@ -203,260 +243,500 @@ export class TrainTravelScene extends Phaser.Scene {
     return container;
   }
 
-  openDoorsAndBoard() {
-    const { train, trainScale, trainWidth, W } = this;
-    this.statusText.setText("PINTU TERBUKA • SILAKAN NAIK");
-    const doorX = train.x + trainWidth * 0.28;
-    this.doorLeft.setPosition(doorX - 5 * trainScale, train.y - 25 * trainScale).setVisible(true);
-    this.doorRight.setPosition(doorX + 5 * trainScale, train.y - 25 * trainScale).setVisible(true);
-    this.tweens.add({
-      targets: this.doorLeft, x: doorX - 15 * trainScale, duration: 380, ease: "Quad.easeOut"
-    });
-    this.tweens.add({
-      targets: this.doorRight, x: doorX + 15 * trainScale, duration: 380, ease: "Quad.easeOut",
-      onComplete: () => this.boardPassenger(doorX)
-    });
+  setPassengerWalk(container, isWalking, facing = "right") {
+    if (!container?.avatarSprites) return;
+    for (const item of container.avatarSprites) {
+      const walkKey = `avatar-${item.part}-walk-${facing}`;
+      const texKey = isWalking && this.textures.exists(walkKey) ? walkKey : `avatar-${item.part}`;
+      if (item.sprite.texture.key !== texKey) {
+        item.sprite.setTexture(texKey);
+      }
+    }
   }
 
-  boardPassenger(doorX) {
-    this.statusText.setText("PENUMPANG SEDANG NAIK …");
+  openDoorsAndBoard() {
+    const { train, trainWidth, groundY } = this;
+    this.statusText.setText("MASUK KE BAHNHOF • MENUJU PERON");
+    const doorX = train.x - Math.round(trainWidth * 0.08);
+
+    // Passenger walks from station entrance onto the platform and along the peron
+    this.setPassengerWalk(this.passenger, true, "right");
+
+    const walkStep = this.tweens.add({
+      targets: this.passenger,
+      y: groundY - 10,
+      duration: 120,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut"
+    });
+
     this.tweens.add({
       targets: this.passenger,
       x: doorX,
-      y: this.passenger.y - 2,
-      duration: 900,
-      ease: "Sine.easeInOut",
+      duration: 1400,
+      ease: "Linear",
+      onStart: () => {
+        this.time.delayedCall(450, () => {
+          this.statusText.setText("BERJALAN DI PERON MENUJU GERBONG …");
+        });
+      },
       onComplete: () => {
-        this.tweens.add({ targets: this.passenger, alpha: 0, duration: 260 });
-        this.closeDoorsAndDepart();
+        walkStep.stop();
+        this.passenger.y = groundY - 7;
+        this.setPassengerWalk(this.passenger, false, "right");
+        this.statusText.setText("PENUMPANG SUDAH NAIK • PINTU TERTUTUP");
+
+        // Step up into carriage and enter
+        this.tweens.add({
+          targets: this.passenger,
+          y: groundY - 15,
+          alpha: 0,
+          scale: 0.82,
+          duration: 250,
+          onComplete: () => {
+            this.departTrain();
+          }
+        });
       }
     });
   }
 
-  closeDoorsAndDepart() {
-    const { train, trainScale, trainWidth, W } = this;
-    this.statusText.setText("PINTU TERTUTUP • BERANGKAT!");
-    const doorX = this.train.x + this.trainWidth * 0.28;
-    this.doorLeft.setAlpha(1).setPosition(doorX - 15 * trainScale, this.train.y - 25 * trainScale).setVisible(true);
-    this.doorRight.setAlpha(1).setPosition(doorX + 15 * trainScale, this.train.y - 25 * trainScale).setVisible(true);
-    this.tweens.add({ targets: this.doorLeft, x: doorX, duration: 320, ease: "Quad.easeIn" });
-    this.tweens.add({ targets: this.doorRight, x: doorX, duration: 320, ease: "Quad.easeIn", onComplete: () => {
-      this.doorLeft.setVisible(false);
-      this.doorRight.setVisible(false);
-      this.startJourneyMotion();
-    }});
+  departTrain() {
+    this.statusText.setText("PINTU TERTUTUP • KERETA BERANGKAT!");
+    retroAudio.playTrainWhistle?.();
+
+    // Puff of steam from locomotive roof (locomotive is at the front on the right!)
+    const locoX = this.train.x + this.trainWidth * 0.35;
+    this.spawnSteamPuff(locoX, this.train.y - 48);
+
+    this.time.delayedCall(350, () => {
+      // The train drives forward over the stationary rails and accelerates right!
+      this.tweens.add({
+        targets: this.train,
+        x: this.W + this.trainWidth + 80,
+        duration: 1150,
+        ease: "Cubic.easeIn",
+        onUpdate: () => {
+          if (this.headlight && this.train) {
+            this.headlight.clear();
+            const fx = this.train.x + this.trainWidth * 0.5 - 2;
+            const fy = this.train.y - Math.round(18 * this.trainScale);
+            this.headlight.fillStyle(0xfff2b0, 0.28);
+            this.headlight.fillTriangle(fx, fy, fx + 75, fy - 16, fx + 75, fy + 22);
+            this.headlight.fillStyle(0xffffff, 0.85);
+            this.headlight.fillCircle(fx, fy, 3);
+          }
+        },
+        onComplete: () => {
+          this.startJourneyMotion();
+        }
+      });
+    });
+  }
+
+  spawnSteamPuff(x, y) {
+    for (let i = 0; i < 6; i++) {
+      const p = this.add.circle(
+        x + Phaser.Math.Between(-8, 8),
+        y + Phaser.Math.Between(-3, 3),
+        Phaser.Math.Between(3, 6),
+        0xffffff,
+        0.8
+      ).setDepth(20);
+      this.tweens.add({
+        targets: p,
+        x: p.x - Phaser.Math.Between(15, 35),
+        y: p.y - Phaser.Math.Between(15, 30),
+        alpha: 0,
+        scale: 1.8,
+        duration: Phaser.Math.Between(450, 750),
+        ease: "Sine.easeOut",
+        onComplete: () => p.destroy()
+      });
+    }
   }
 
   startJourneyMotion() {
-    const { W, H, train, trainWidth, trainScale } = this;
-    this.statusText.setText("ZUG FÄHRT • DALAM PERJALANAN …");
-    this.createMovingScenery();
-    const motion = this.add.graphics().setDepth(22);
-    motion.fillStyle(0x101c2b, 0.88);
-    motion.fillRoundedRect(W * 0.24, H * 0.72, W * 0.52, 28, 5);
-    this.add.text(W / 2, H * 0.72 + 14, "NÄCHSTER HALT: " + (COURSE.stages[this.toIndex]?.station || "ENDSTATION"), {
-      fontFamily: "'Press Start 2P', monospace", fontSize: `${Math.max(6, W / 180)}px`,
-      color: "#f7d36c"
-    }).setOrigin(0.5).setDepth(23);
+    const { W, H, groundY } = this;
 
-    this.tweens.add({
-      targets: train, x: W + trainWidth, duration: 3600, ease: "Cubic.easeIn",
-      onComplete: () => this.arriveAtNextCity()
+    // Clean up departure station objects cleanly
+    this.children.list.slice().forEach((child) => {
+      if (child !== this.cameras.main) child.destroy();
     });
-    this.sceneryItems.forEach((item, index) => {
+
+    const destination = COURSE.stages[this.toIndex] || COURSE.stages[COURSE.stages.length - 1];
+    const panoIndex = Phaser.Math.Clamp(this.toIndex - 1, 0, 2);
+
+    const stagePanoramas = [
+      "travel-journey-sunset",       // Munich -> Frankfurt
+      "travel-journey-countryside",  // Frankfurt -> Berlin
+      "travel-journey-mountains"     // Berlin -> Hamburg
+    ];
+    const selectedKey = stagePanoramas[panoIndex];
+
+    // 1. Sky gradient tailored to route
+    const skyGradients = [
+      [0x18243b, 0x18243b, 0xd86c42, 0xf0a876], // Munich -> Frankfurt: sunset twilight
+      [0x22558c, 0x22558c, 0x5da3d6, 0xaadbf4], // Frankfurt -> Berlin: clear blue day
+      [0x1d3552, 0x1d3552, 0x5a86a8, 0xc2dde8]  // Berlin -> Hamburg: coastal Nordic sky
+    ];
+    const [c1, c2, c3, c4] = skyGradients[panoIndex] || skyGradients[0];
+    const sky = this.add.graphics().setDepth(0);
+    sky.fillGradientStyle(c1, c2, c3, c4, 1);
+    sky.fillRect(0, 0, W, H);
+
+    // 2. Parallax clouds in upper sky
+    this.clouds = [];
+    const cloudKeys = ["deco-cloud-1", "deco-cloud-2", "deco-cloud-3", "deco-cloud-5"];
+    const cloudYPositions = [14, 28, 42, 22];
+    for (let i = 0; i < 4; i++) {
+      const key = cloudKeys[i % cloudKeys.length];
+      if (this.textures.exists(key)) {
+        const cloud = this.add.image(40 + i * 130, cloudYPositions[i], key)
+          .setOrigin(0, 0).setDepth(1).setAlpha(0.65).setScale(0.85);
+        this.clouds.push(cloud);
+      }
+    }
+
+    const trackY = groundY + 18;
+
+    // 3. Crisp multi-layer parallax landscape (clean solid pixel-art, zero checkerboard artifacts)
+    if (this.textures.exists("bg-snow-peaks")) {
+      this.bgMountains = this.add.tileSprite(0, trackY - 145, W, 120, "bg-snow-peaks")
+        .setOrigin(0, 0).setDepth(2).setAlpha(0.75);
+      this.bgMountains.tileScaleX = 0.65;
+      this.bgMountains.tileScaleY = 0.25;
+    }
+
+    if (this.textures.exists("bg-hills")) {
+      this.bgHills = this.add.tileSprite(0, trackY - 85, W, 70, "bg-hills")
+        .setOrigin(0, 0).setDepth(3).setAlpha(0.88);
+      this.bgHills.tileScaleX = 0.85;
+      this.bgHills.tileScaleY = 0.22;
+    }
+
+    if (this.textures.exists("bg-forest")) {
+      this.bgForest = this.add.tileSprite(0, trackY - 55, W, 50, "bg-forest")
+        .setOrigin(0, 0).setDepth(4).setAlpha(0.96);
+      this.bgForest.tileScaleX = 1.0;
+      this.bgForest.tileScaleY = 0.20;
+    }
+
+    // 4. Ground foundation below the tracks
+    const groundBase = this.add.graphics().setDepth(8);
+    groundBase.fillStyle(0x313b48, 1);
+    groundBase.fillRect(0, trackY + 8, W, H - (trackY + 8));
+
+    // 6. Track ballast and moving ties (sleepers)
+    this.trackTiesGraphics = this.add.graphics().setDepth(10);
+    this.trackOffset = 0;
+
+    // 7. Solid stationary steel rails (glistening metal lines)
+    const rails = this.add.graphics().setDepth(12);
+    rails.lineStyle(3, 0xc5ccd6, 1);
+    rails.lineBetween(-4, trackY + 2, W + 4, trackY + 2);
+    rails.lineBetween(-4, trackY + 10, W + 4, trackY + 10);
+    rails.lineStyle(1, 0xffffff, 0.7);
+    rails.lineBetween(-4, trackY + 1, W + 4, trackY + 1);
+
+    // 8. Overhead electrical catenary wire (kabel listrik aliran atas)
+    const railY = groundY + 18;
+    const wireY = railY - Math.round(52 * this.trainScale);
+    const messengerY = wireY - 14;
+
+    const catenaryWire = this.add.graphics().setDepth(14);
+    catenaryWire.lineStyle(1.5, 0x4a5666, 0.95);
+    catenaryWire.lineBetween(-10, wireY, W + 10, wireY);
+    catenaryWire.lineStyle(1, 0x3d4754, 0.85);
+    catenaryWire.lineBetween(-10, messengerY, W + 10, messengerY);
+    catenaryWire.lineStyle(1, 0x5a6678, 0.7);
+    for (let x = 8; x < W + 10; x += 28) catenaryWire.lineBetween(x, messengerY, x, wireY);
+
+    this.catenaryPoles = [60, 210, 360, 510];
+    // Mast poles at depth 5 (BEHIND the train at depth 13) so the train body occludes them
+    this.catenaryGraphics = this.add.graphics().setDepth(5);
+
+    // 9. Long German passenger train (Locomotive + multiple gerbong!)
+    // Wheels sit right on top of the rails at railY + 1
+    const trainKey = this.trainKey;
+    const trainY = railY + 1;
+    this.travelTrain = this.add.image(W * 0.44, trainY, trainKey)
+      .setOrigin(0.5, 1).setScale(this.trainScale).setDepth(13);
+
+    // Train dynamic movement: subtle speed vibration and sway
+    this.tweens.add({
+      targets: this.travelTrain,
+      y: trainY - 1.5,
+      duration: 110,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut"
+    });
+    this.tweens.add({
+      targets: this.travelTrain,
+      x: W * 0.44 + 3,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut"
+    });
+
+    // Locomotive headlights
+    const travelHeadlight = this.add.graphics().setDepth(14);
+    const hx = this.travelTrain.x + this.trainWidth * 0.5 - 2;
+    const hy = trainY - Math.round(18 * this.trainScale);
+    travelHeadlight.fillStyle(0xfff5c0, 0.25);
+    travelHeadlight.fillTriangle(hx, hy, hx + 85, hy - 18, hx + 85, hy + 24);
+    travelHeadlight.fillStyle(0xffffff, 0.85);
+    travelHeadlight.fillCircle(hx, hy, 3);
+
+    this.sparkGraphics = this.add.graphics().setDepth(16);
+    this.sparkTimer = 0;
+
+    // 10. Speed wind streaks
+    this.speedStreaksGraphics = this.add.graphics().setDepth(17);
+    this.streakItems = [];
+    for (let i = 0; i < 7; i++) {
+      this.streakItems.push({
+        x: Phaser.Math.Between(0, W),
+        y: Phaser.Math.Between(trackY - 45, trackY + 12),
+        len: Phaser.Math.Between(24, 65),
+        speed: Phaser.Math.Between(550, 850)
+      });
+    }
+
+    // 11. Route progress HUD banner at top
+    const badge = this.add.container(W / 2, 52).setDepth(30);
+    const badgeBg = this.add.rectangle(0, 0, 310, 38, 0x101c2b, 0.94)
+      .setStrokeStyle(2, 0xf6c84a, 1);
+    const fromName = (COURSE.stages[this.fromIndex] || {}).name || "";
+    const badgeFromTo = this.add.text(0, -7, `${fromName}  ➔  ${destination.name}`, {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "7px", color: "#ffdc72"
+    }).setOrigin(0.5);
+    const badgeStatus = this.add.text(0, 8, `NÄCHSTER HALT: ${destination.station || destination.name + " HBF"}  •  200 KM/H`, {
+      fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "bold", color: "#ffffff"
+    }).setOrigin(0.5);
+    badge.add([badgeBg, badgeFromTo, badgeStatus]);
+
+    // Active speed cruising immediately so it NEVER feels frozen!
+    this.isTraveling = true;
+    this.travelSpeed = 480;
+    this.wireY = wireY;
+
+    // After 3 seconds of cruising, smoothly decelerate into the destination city
+    this.time.delayedCall(3000, () => {
       this.tweens.add({
-        targets: item,
-        x: item.x - W * (index % 2 ? 2.15 : 1.75),
-        duration: 3600,
-        ease: "Linear"
+        targets: this,
+        travelSpeed: 80,
+        duration: 700,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          this.isTraveling = false;
+          this.arriveAtNextCity();
+        }
       });
     });
   }
 
-  createMovingScenery() {
-    const { W, H } = this;
-    this.sceneryItems = [];
+  update(time, delta) {
+    if (!this.isTraveling) return;
+    const dt = Math.min(0.05, delta / 1000);
+    const spd = this.travelSpeed;
 
-    // Exactly ONE panorama is selected for the destination stage.
-    // The supplied sprite sheets contain several separate environments;
-    // stacking all strips caused the checkerboard-like overlapping scene.
-    const stagePanoramas = [
-      "travel-journey-sunset",       // Stage 1: sunset route
-      "travel-journey-mountains",    // Stage 2: mountain route
-      "travel-journey-countryside", // Stage 3: countryside route
-      "travel-tunnel-cave"           // Stage 4: cave/tunnel route
-    ];
-    const stageIndex = Phaser.Math.Clamp(Number(this.toIndex) || 0, 0, stagePanoramas.length - 1);
-    const selectedKey = stagePanoramas[stageIndex];
+    // 1. Move parallax layers
+    if (this.bgMountains) this.bgMountains.tilePositionX += spd * 0.15 * dt;
+    if (this.bgHills) this.bgHills.tilePositionX += spd * 0.45 * dt;
+    if (this.bgForest) this.bgForest.tilePositionX += spd * 0.85 * dt;
 
-    const sky = this.add.graphics().setDepth(0);
-    sky.fillGradientStyle(0x283653, 0x283653, 0xe49a72, 0xe49a72, 1);
-    sky.fillRect(0, 0, W, H);
-
-    if (this.textures.exists(selectedKey)) {
-      const source = this.textures.get(selectedKey).getSourceImage();
-      const panorama = this.add.tileSprite(0, H * 0.17, W, H * 0.61, selectedKey)
-        .setOrigin(0, 0)
-        .setDepth(2);
-      // Fit one complete panorama segment across the gameplay viewport.
-      panorama.tileScaleX = (W * 1.18) / Math.max(1, source.width);
-      panorama.tileScaleY = (H * 0.61) / Math.max(1, source.height);
-      this.sceneryItems.push(panorama);
+    // 2. Parallax clouds
+    for (const cloud of this.clouds || []) {
+      cloud.x -= spd * 0.07 * dt;
+      if (cloud.x < -120) cloud.x = this.W + Phaser.Math.Between(20, 80);
     }
 
-    // Foreground track is independent of the selected background.
-    const trackY = H * 0.84;
-    const track = this.add.graphics().setDepth(10);
-    track.fillStyle(0x343e49, 1);
-    track.fillRect(0, trackY, W, H - trackY);
-    track.lineStyle(4, 0x8d9298, 1);
-    track.lineBetween(0, trackY + 8, W, trackY + 8);
-    track.lineBetween(0, trackY + 30, W, trackY + 30);
-    track.fillStyle(0x9a8b70, 1);
-    for (let x = 0; x < W + 20; x += 26) track.fillRect(x, trackY + 5, 15, 8);
-    this.tweens.add({
-      targets: track,
-      x: -W * 0.22,
-      duration: 3600,
-      ease: "Linear"
-    });
-
-    // Move only the one selected panorama; never layer other stage assets on top.
-    for (const panorama of this.sceneryItems) {
-      this.tweens.add({
-        targets: panorama,
-        tilePositionX: W * 1.18,
-        duration: 3600,
-        ease: "Linear"
-      });
+    // 3. Rushing railway ties (sleepers) beneath train wheels
+    if (this.trackTiesGraphics) {
+      this.trackOffset = (this.trackOffset + spd * 1.4 * dt) % 22;
+      this.trackTiesGraphics.clear();
+      this.trackTiesGraphics.fillStyle(0x6d5840, 1);
+      const trackY = this.groundY + 18;
+      for (let x = -24; x < this.W + 24; x += 22) {
+        this.trackTiesGraphics.fillRect(x - this.trackOffset, trackY + 3, 14, 5);
+      }
     }
 
-    this.statusText.setText("ZUG FÄHRT • " + (COURSE.stages[this.toIndex]?.name || "NÄCHSTE STADT"));
+    // 4. Overhead catenary masts (tiang listrik aliran atas) passing by
+    if (this.catenaryGraphics && this.catenaryPoles) {
+      this.catenaryGraphics.clear();
+      const wireY = this.wireY;
+      const poleBottom = this.groundY + 18;
+      for (let i = 0; i < this.catenaryPoles.length; i++) {
+        this.catenaryPoles[i] -= spd * 1.2 * dt;
+        if (this.catenaryPoles[i] < -50) {
+          this.catenaryPoles[i] += this.W + 150;
+        }
+        const px = Math.round(this.catenaryPoles[i]);
+        // Mast pole
+        this.catenaryGraphics.fillStyle(0x3e4754, 1);
+        this.catenaryGraphics.fillRect(px - 2, wireY - 20, 5, poleBottom - (wireY - 20));
+        // Horizontal cantilever arm extending over the track
+        this.catenaryGraphics.fillRect(px - 2, wireY - 20, 24, 4);
+        // Ceramic insulator
+        this.catenaryGraphics.fillStyle(0xd5e1ed, 1);
+        this.catenaryGraphics.fillRect(px + 16, wireY - 14, 4, 6);
+      }
+    }
+
+    // 5. Electric spark at the pantograph tip
+    if (this.sparkGraphics && this.travelTrain) {
+      this.sparkGraphics.clear();
+      this.sparkTimer = (this.sparkTimer || 0) + dt;
+      if (this.sparkTimer > 1.4) {
+        if (Phaser.Math.Between(0, 4) === 0) {
+          const pantographX = this.travelTrain.x - this.trainWidth * 0.5 + 50;
+          const py = this.wireY;
+          this.sparkGraphics.fillStyle(0xc8f2ff, 1);
+          this.sparkGraphics.fillRect(pantographX - 2, py - 2, 5, 5);
+          this.sparkGraphics.fillStyle(0xffffff, 1);
+          this.sparkGraphics.fillRect(pantographX - 1, py - 1, 3, 3);
+          if (this.sparkTimer > 1.6) this.sparkTimer = 0;
+        }
+      }
+    }
+
+    // 6. Animated speed wind streaks
+    if (this.speedStreaksGraphics && this.streakItems) {
+      this.speedStreaksGraphics.clear();
+      this.speedStreaksGraphics.lineStyle(1.5, 0xffffff, 0.45);
+      for (const s of this.streakItems) {
+        s.x -= s.speed * dt;
+        if (s.x + s.len < 0) {
+          s.x = this.W + Phaser.Math.Between(10, 60);
+          s.y = Phaser.Math.Between(this.groundY - 30, this.groundY + 18);
+          s.len = Phaser.Math.Between(24, 70);
+        }
+        this.speedStreaksGraphics.lineBetween(s.x, s.y, s.x + s.len, s.y);
+      }
+    }
   }
 
   arriveAtNextCity() {
     if (this._arrivalStarted || this._travelFinished) return;
     this._arrivalStarted = true;
 
-    const { W, H, groundY, train, trainWidth, trainScale } = this;
+    const { W, groundY, trainWidth, trainScale } = this;
     const destination = COURSE.stages[this.toIndex] || COURSE.stages[COURSE.stages.length - 1];
-    this.statusText.setText("ZIELBAHNHOF WIRD ERREICHT …");
 
-    // Briefly fade the moving countryside, then reveal a stationary destination
-    // Bahnhof. The station is fixed; only the train and passenger animate.
-    this.cameras.main.fadeOut(360, 12, 22, 36);
-    this.cameras.main.once("camerafadeoutcomplete", () => {
-      this.children.list.forEach((child) => {
-        if (child !== this.cameras.main) child.setVisible?.(false);
+    this.cameras.main.fadeOut(320, 12, 22, 36);
+    this.time.delayedCall(340, () => {
+      this.children.list.slice().forEach((child) => {
+        if (child !== this.cameras.main) child.destroy();
       });
 
-      const arrivalBg = this.add.graphics().setDepth(0);
-      arrivalBg.fillGradientStyle(0x83b8d7, 0x83b8d7, 0xc6dce5, 0xc6dce5, 1);
-      arrivalBg.fillRect(0, 0, W, H);
-      arrivalBg.fillStyle(0x7896a5, 0.35);
-      for (let i = 0; i < 10; i++) {
-        const bw = W * 0.07;
-        const bh = 24 + (i * 17 % 45);
-        arrivalBg.fillRect(i * W / 9, groundY - 75 - bh, bw, bh);
+      // Draw clean destination station with stationary rails & catenary
+      this.drawStationBackdrop(destination, "arrival");
+
+      const header = this.add.container(W / 2, 52).setDepth(30);
+      const headerBg = this.add.rectangle(0, 0, 310, 38, 0x101c2b, 0.94)
+        .setStrokeStyle(2, 0x82d82c, 1);
+      const title = this.add.text(0, -7, `WILLKOMMEN IN ${destination.name}!`, {
+        fontFamily: "'Press Start 2P', monospace", fontSize: "7px", color: "#82d82c"
+      }).setOrigin(0.5);
+      this.statusText = this.add.text(0, 8, `TIBA DI ${destination.station || destination.name + " HBF"}`, {
+        fontFamily: "Arial, sans-serif", fontSize: "10px", fontStyle: "bold", color: "#ffffff"
+      }).setOrigin(0.5);
+      header.add([headerBg, title, this.statusText]);
+
+      // Long train rolls in from the left over stationary station rails
+      const railY = groundY + 18;
+      const trainY = railY + 1;
+      const trainKey = this.trainKey;
+      const arrivalTrain = this.add.image(-trainWidth, trainY, trainKey)
+        .setOrigin(0.5, 1).setScale(trainScale).setDepth(12);
+
+      // Station master on destination platform welcoming passenger
+      if (this.textures.exists("bhf-officer")) {
+        this.add.image(W * 0.18, groundY, "bhf-officer")
+          .setOrigin(0.5, 1).setDepth(8);
       }
 
-      const arrivalStageAssets = [
-        "travel-underground-platform",
-        "travel-tunnel-industrial",
-        "travel-tunnel-rock",
-        "travel-arrival-modern-station"
-      ];
-      const arrivalKey = arrivalStageAssets[
-        Phaser.Math.Clamp(Number(this.toIndex) || 0, 0, arrivalStageAssets.length - 1)
-      ];
-      if (this.textures.exists(arrivalKey)) {
-        const stationArt = this.add.image(W / 2, groundY + 2, arrivalKey)
-          .setOrigin(0.5, 1)
-          .setDisplaySize(W, H * 0.48)
-          .setDepth(2);
-        stationArt.setAlpha(0.98);
-      } else if (this.textures.exists("bhf-station")) {
-        this.add.image(W * 0.27, groundY - 7, "bhf-station")
-          .setOrigin(0.5, 1).setScale(trainScale * 0.92).setDepth(3);
-      }
+      this.cameras.main.fadeIn(320, 12, 22, 36);
+      retroAudio.playTrainWhistle?.();
 
-      this.add.rectangle(W / 2, groundY + 5, W, 22, 0x89969a).setDepth(4);
-      this.add.rectangle(W / 2, groundY - 7, W, 4, 0xd9cba9).setDepth(5);
-      this.add.rectangle(W / 2, groundY + 18, W, 13, 0x53616a).setDepth(5);
-      const rail = this.add.graphics().setDepth(7);
-      rail.fillStyle(0x4c5159, 1);
-      for (let x = -8; x < W + 20; x += 24) rail.fillRect(x, groundY + 25, 15, 12);
-      rail.lineStyle(3, 0x424b55, 1);
-      rail.lineBetween(0, groundY + 27, W, groundY + 27);
-      rail.lineBetween(0, groundY + 37, W, groundY + 37);
-
-      this.add.text(W * 0.27, groundY - 122 * trainScale, destination.station || destination.name + " HBF", {
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: `${Math.max(7, W / 125)}px`,
-        color: "#fff3c5", backgroundColor: "#203449",
-        padding: { x: 7, y: 5 }, stroke: "#111", strokeThickness: 3
-      }).setOrigin(0.5).setDepth(11);
-
-      this.statusText.setText("ANGEKOMMEN • " + (destination.name || "ZIEL"));
-      this.train.setVisible(true).setPosition(-trainWidth, groundY + 40 * trainScale);
-      this.train.setDepth(12);
-
-      this.cameras.main.fadeIn(380, 12, 22, 36);
+      const targetTrainX = Math.round(W * 0.44);
       this.tweens.add({
-        targets: this.train,
-        x: W * 0.64,
-        duration: 1550,
+        targets: arrivalTrain,
+        x: targetTrainX,
+        duration: 1600,
         ease: "Cubic.easeOut",
-        onComplete: () => this.openArrivalDoors()
+        onComplete: () => {
+          this.passengerStepsOff(arrivalTrain);
+        }
       });
     });
   }
 
-  openArrivalDoors() {
-    const { train, trainScale, trainWidth } = this;
-    const doorX = train.x + trainWidth * 0.28;
-    const doorY = train.y - 25 * trainScale;
-    this.statusText.setText("TÜR ÖFFNET SICH • BITTE AUSSTEIGEN");
+  passengerStepsOff(arrivalTrain) {
+    const { groundY, trainWidth } = this;
+    const doorX = arrivalTrain.x - Math.round(trainWidth * 0.05);
+    const destination = COURSE.stages[this.toIndex] || COURSE.stages[0];
 
-    this.doorLeft.setVisible(true).setAlpha(1).setPosition(doorX - 5 * trainScale, doorY);
-    this.doorRight.setVisible(true).setAlpha(1).setPosition(doorX + 5 * trainScale, doorY);
-    this.tweens.add({
-      targets: this.doorLeft,
-      x: doorX - 15 * trainScale,
-      duration: 350,
-      ease: "Quad.easeOut"
-    });
-    this.tweens.add({
-      targets: this.doorRight,
-      x: doorX + 15 * trainScale,
-      duration: 350,
-      ease: "Quad.easeOut",
-      onComplete: () => this.passengerStepsOff(doorX)
-    });
-  }
+    // 1. Step out onto the peron (keluar dulu ke peron)
+    if (this.statusText) {
+      this.statusText.setText(`TIBA DI ${destination.name} • TURUN KE PERON`);
+    }
+    const passenger = this.createPassenger(doorX, groundY - 14);
+    passenger.setDepth(18).setAlpha(0).setScale(0.85);
 
-  passengerStepsOff(doorX) {
-    const { groundY, trainScale } = this;
-    this.statusText.setText("BITTE AUSSTEIGEN …");
-
-    const passenger = this.createPassenger(doorX, groundY - 7);
-    passenger.setDepth(18).setAlpha(0);
     this.tweens.add({
       targets: passenger,
+      y: groundY - 7,
       alpha: 1,
-      duration: 220,
+      scale: 1,
+      duration: 250,
       onComplete: () => {
+        // 2. Walk along the peron towards the Bahnhof entrance/doors
+        if (this.statusText) {
+          this.statusText.setText("BERJALAN DI PERON MENUJU PINTU KELUAR …");
+        }
+        this.setPassengerWalk(passenger, true, "left");
+
+        const walkBounce = this.tweens.add({
+          targets: passenger,
+          y: groundY - 10,
+          duration: 120,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut"
+        });
+
         this.tweens.add({
           targets: passenger,
-          x: doorX + 62 * trainScale,
-          y: groundY - 7,
-          duration: 760,
-          ease: "Sine.easeOut",
+          x: 45, // station exit doors
+          duration: 1300,
+          ease: "Linear",
           onComplete: () => {
-            this.statusText.setText("WILLKOMMEN IN " + (COURSE.stages[this.toIndex]?.name || "DER NEUEN STADT"));
-            this.doorLeft.setVisible(false);
-            this.doorRight.setVisible(false);
-            this.time.delayedCall(650, () => this.finishTravel());
+            walkBounce.stop();
+            passenger.y = groundY - 7;
+            this.setPassengerWalk(passenger, false, "left");
+            if (this.statusText) {
+              this.statusText.setText("KELUAR DARI BAHNHOF …");
+            }
+
+            // 3. Walk into the Bahnhof building doors (keluar dari Bahnhof)
+            this.tweens.add({
+              targets: passenger,
+              alpha: 0,
+              scale: 0.82,
+              duration: 250,
+              onComplete: () => {
+                this.cameras.main.fadeOut(300, 0, 0, 0);
+                this.time.delayedCall(340, () => {
+                  this.finishTravel();
+                });
+              }
+            });
           }
         });
       }

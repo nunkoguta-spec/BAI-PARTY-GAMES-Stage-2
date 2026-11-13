@@ -17,13 +17,13 @@ export function createPhoneGame({
 }) {
   class PhoneWorldScene extends WorldScene {
     applyCourse(course = {}) {
-      if (!this.player || !this.groundLayer || !this.platformLayer) {
+      if (!this.player) {
         this.pendingCourse = course;
         return;
       }
       this.worldWidth = Number(course.width) || this.worldWidth;
       this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
-      this.cameras.main.setBounds(0, 0, this.worldWidth, this.worldHeight);
+      this.cameras.main.setBounds(this.stageStartX || 0, 0, this.stageWidth || 2400, 270);
       this.hazardDefinitions = Array.isArray(course.hazards) ? course.hazards : COURSE.hazards;
       this.questionDefinitions = Array.isArray(course.questionBoxes) ? course.questionBoxes : this.courseQuestionDefaults;
       this.slugDefinitions = Array.isArray(course.slugs) ? course.slugs : COURSE.slugs;
@@ -32,24 +32,47 @@ export function createPhoneGame({
     }
 
     rebuildCourseObjects() {
-      // WorldScene already builds these from shared COURSE metadata before scene ready.
-      // Replace only if server delivered a different map width/config; never tear down active collider network.
-      if (!this.player || !this.groundLayer || !this.platformLayer) return;
+      if (!this.player) return;
       this.worldWidth = Number(this.pendingCourse?.width) || this.worldWidth;
       this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
-      this.cameras.main.setBounds(0, 0, this.worldWidth, this.worldHeight);
+      this.cameras.main.setBounds(this.stageStartX || 0, 0, this.stageWidth || 2400, 270);
       this.handleViewportResize();
     }
 
-    create() {
+    startTrainTravel() {
+      if (socket?.connected && this.stageIndex < COURSE.stages.length - 1) {
+        socket.emit("player:board-train", {
+          roomCode,
+          stageIndex: this.stageIndex,
+          nextStageIndex: this.stageIndex + 1
+        });
+      }
+      super.startTrainTravel();
+    }
+
+    init(data = {}) {
+      super.init?.(data);
+    }
+
+    create(data = {}) {
       this.localAvatarSelection = avatar || null;
       this.questionBoxPositions = questionBoxPositions || null;
-      super.create();
+      super.create({ ...data, stageIndex: this.stageIndex });
       this.gameStarted = true;
       this.courseQuestionDefaults = COURSE.questionBoxes;
       if (this.localAvatarSelection && this.player) this.applyAvatarSelection(this.localAvatarSelection);
 
       this.lastNetworkUpdate = 0;
+
+      if (socket?.connected && this.player) {
+        socket.emit("player:stage", {
+          roomCode,
+          stageIndex: this.stageIndex,
+          x: this.player.x,
+          y: this.player.y,
+          teleport: true
+        });
+      }
 
       console.log("[PHONE NETWORK] Scene siap.");
       console.log("[PHONE NETWORK] Socket ID:", socket.id);
@@ -93,9 +116,12 @@ export function createPhoneGame({
       };
       const handlePlayerCorrection = (position) => {
         if (position?.playerId !== socket.id || !this.player?.body) return;
+        if (Number.isInteger(position.stageIndex) && position.stageIndex !== this.stageIndex) return;
         const x = Number(position.x);
         const y = Number(position.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        // Ignore stale corrections from another city stage so player is never thrown back
+        if (this.stageStartX !== undefined && (x < this.stageStartX || x > this.stageEndX)) return;
         if (Math.hypot(this.player.x - x, this.player.y - y) > 24) {
           this.player.setPosition(x, y);
           this.player.body.reset(x, y);
@@ -311,6 +337,7 @@ export function createPhoneGame({
 
       socket.emit("player:move", {
         roomCode,
+        stageIndex: this.stageIndex,
         x: this.player.x,
         y: this.player.y,
         vx: this.quizPaused || this.finished ? 0 : this.player.body.velocity.x,

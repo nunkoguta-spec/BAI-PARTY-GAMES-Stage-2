@@ -43,8 +43,15 @@ body { background:#1b1330; }
 #avatarSaveButton { width:100%; margin-top:8px; font-family:var(--bai-font); font-size:11px; border-image-source:url(/assets/ui/btn-green.png); color:#fff; text-shadow:2px 2px 0 #1d5a0e; }
 @media (max-width:560px) { .avatar-custom-main { grid-template-columns:1fr; } .avatar-custom-layout { grid-template-columns:78px 1fr; } }
 
-/* ---- Game header: gold chips ---- */
-.game-header { background:transparent; }
+/* ---- Game header: one gold-edge bar, no nested navy frame ---- */
+.game-header.pixel-box {
+  background: #20243b;
+  border: 3px solid #f0b92e;
+  border-image: none;
+  box-shadow: 3px 3px 0 #0b0716;
+  padding: 4px 8px;
+  align-items: center;
+}
 .game-header strong { color:var(--bai-gold-lt); text-shadow:2px 2px 0 var(--bai-ink); }
 
 /* ---- Quiz: pink timer bar, parchment question, A-D answers ---- */
@@ -68,13 +75,14 @@ body { background:#1b1330; }
 @media (max-width:420px) { .pixel-choices { grid-template-columns:1fr; } }
 
 /* ---- Customizer layout fix: stage left, header+grid right ---- */
-.avatar-preview-wrap { grid-column:1; grid-row:1 / span 2; display:flex; flex-direction:column; align-items:center; gap:6px; }
-.avatar-options-header { grid-column:2; grid-row:1; }
-.avatar-item-grid { grid-column:2; grid-row:2; align-self:start; }
-.avatar-preview-copy { text-align:center; display:flex; flex-direction:column; gap:4px; font-size:7px; color:#cfd3ff; }
-.avatar-preview-stage canvas { width:100%; max-width:140px; height:auto; image-rendering:pixelated; }
-@media (max-width:560px) {
-  .avatar-preview-wrap, .avatar-options-header, .avatar-item-grid { grid-column:1; grid-row:auto; }
+.avatar-preview-card { flex-shrink: 0; }
+.avatar-selection-panel { flex: 1; min-width: 0; }
+.avatar-item-tiles {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)) !important;
+  gap: 8px !important;
+  min-height: 140px !important;
+  max-height: 220px !important;
 }
 .avatar-item .avatar-item-check { top:auto; left:auto; width:auto; height:auto; right:-4px; bottom:-4px; line-height:1; }
 

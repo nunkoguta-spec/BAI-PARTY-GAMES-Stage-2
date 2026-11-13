@@ -39,22 +39,39 @@
 
       <section id="avatarCustomizer" class="avatar-customizer pixel-box" aria-label="Kustomisasi karakter">
         <h2 class="pixel-subheading">KUSTOMISASI KARAKTER</h2>
-        <div class="avatar-preview-wrap">
-          <div class="avatar-preview-stage">
-            <canvas id="avatarPreview" width="96" height="96" aria-label="Pratinjau avatar"></canvas>
-            <span class="avatar-preview-shadow"></span>
+
+        <!-- TABS KATEGORI -->
+        <div id="avatarTabs" class="avatar-tabs" role="tablist">
+          <button type="button" class="avatar-tab active" data-category="skin">Wajah</button>
+          <button type="button" class="avatar-tab" data-category="hair">Rambut</button>
+          <button type="button" class="avatar-tab" data-category="top">Baju</button>
+          <button type="button" class="avatar-tab" data-category="bottoms">Celana</button>
+          <button type="button" class="avatar-tab" data-category="shoes">Sepatu</button>
+          <button type="button" class="avatar-tab" data-category="eyes">Mata</button>
+        </div>
+
+        <!-- WORKSPACE: KIRI STAGE PREVIEW, KANAN GRID ITEM MULTI-KOLOM -->
+        <div class="avatar-workspace">
+          <div class="avatar-preview-card">
+            <div class="avatar-preview-stage">
+              <canvas id="avatarPreview" width="96" height="96" aria-label="Pratinjau avatar"></canvas>
+            </div>
+            <div class="avatar-preview-badge">
+              <span id="activeSelectionDesc">Model #1</span>
+            </div>
           </div>
-          <div class="avatar-preview-copy"><strong>LIVE PREVIEW</strong><span>Perubahan kostum langsung terlihat</span></div>
+
+          <div class="avatar-selection-panel">
+            <div class="avatar-panel-header">
+              <strong id="activeCategoryTitle">Warna Kulit / Wajah</strong>
+              <span class="avatar-panel-hint">Pilih Model:</span>
+            </div>
+            <!-- VISUAL TILES ITEM MULTI-KOLOM -->
+            <div id="avatarItemTiles" class="avatar-item-tiles" role="region" aria-label="Pilihan item"></div>
+          </div>
         </div>
-        <div class="avatar-custom-grid">
-          <label>Warna kulit<select id="avatarSkin" class="pixel-select"></select></label>
-          <label>Celana<select id="avatarBottoms" class="pixel-select"></select></label>
-          <label>Sepatu<select id="avatarShoes" class="pixel-select"></select></label>
-          <label>Baju<select id="avatarTop" class="pixel-select"></select></label>
-          <label>Mata<select id="avatarEyes" class="pixel-select"></select></label>
-          <label>Rambut<select id="avatarHair" class="pixel-select"></select></label>
-        </div>
-        <p class="pixel-tag">Kostum tersimpan otomatis di perangkat ini.</p>
+
+        <p class="pixel-tag">Tersimpan otomatis · Tampil sama di TV Spectator</p>
       </section>
 
       <label id="roomCodeLabel" for="roomCode"></label>
@@ -104,6 +121,7 @@
         </div>
 
         <div style="display:flex;gap:4px">
+          <button id="fullscreenToggleBtn" class="pixel-btn pixel-btn-sm" type="button" title="Layar Penuh">⛶</button>
           <button id="audioToggleBtn" class="pixel-btn pixel-btn-sm" type="button">🔊</button>
           <button id="toggleLeaderboardBtn" class="pixel-btn pixel-btn-sm" type="button">TOP</button>
         </div>

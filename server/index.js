@@ -33,8 +33,25 @@ const DEFAULT_SETTINGS = Object.freeze({ quizSeconds: 15, gameMinutes: 20, corre
 const WORLD_WIDTH = COURSE.width;
 const WORLD_HEIGHT = COURSE.height;
 const FINISH_X = COURSE.finishX;
-const QUESTION_BOXES = new Map(COURSE.questionBoxes.map(box => [box.id, box]));
-const SAFE_QUESTION_IDS = new Set(COURSE.questionBoxes.map(box => box.id));
+const DEFAULT_QUESTION_BOXES = Object.freeze([
+  { x: 360, y: 176, id: "question-box-01", tier: 1 },
+  { x: 800, y: 176, id: "question-box-02", tier: 1 },
+  { x: 1300, y: 176, id: "question-box-03", tier: 1 },
+  { x: 2000, y: 176, id: "question-box-04", tier: 1 },
+  { x: 2700, y: 176, id: "question-box-05", tier: 1 },
+  { x: 3700, y: 176, id: "question-box-06", tier: 1 },
+  { x: 4400, y: 176, id: "question-box-07", tier: 2 },
+  { x: 5100, y: 176, id: "question-box-08", tier: 2 },
+  { x: 5800, y: 176, id: "question-box-09", tier: 2 },
+  { x: 6500, y: 176, id: "question-box-10", tier: 2 },
+  { x: 7100, y: 176, id: "question-box-11", tier: 3 },
+  { x: 7800, y: 176, id: "question-box-12", tier: 3 },
+  { x: 8500, y: 176, id: "question-box-13", tier: 3 },
+  { x: 9200, y: 176, id: "question-box-14", tier: 3 }
+]);
+const BOX_SOURCE = Array.isArray(COURSE.questionBoxes) && COURSE.questionBoxes.length > 0 ? COURSE.questionBoxes : DEFAULT_QUESTION_BOXES;
+const QUESTION_BOXES = new Map(BOX_SOURCE.map(box => [box.id, box]));
+const SAFE_QUESTION_IDS = new Set(BOX_SOURCE.map(box => box.id));
 const COURSE_HAZARDS = COURSE.hazards;
 const COURSE_SLUGS = COURSE.slugs || [];
 
@@ -163,6 +180,7 @@ function publicPlayerPosition(player) {
     playerId: player.id,
     name: player.name,
     avatar: player.avatar || sanitizeAvatar(),
+    stageIndex: Number.isInteger(player.stageIndex) ? player.stageIndex : 0,
     x: player.x,
     y: player.y,
     facing: player.facing,
@@ -481,6 +499,7 @@ io.on("connection", (socket) => {
       player.answeredQuestions = 0;
       player.usedBoxes.clear();
       player.activeQuiz = null;
+      player.stageIndex = 0;
       player.x = COURSE.startX;
       player.y = COURSE.startY;
       player.vx = 0;
@@ -620,6 +639,7 @@ io.on("connection", (socket) => {
       answeredQuestions: 0,
       activeQuiz: null,
       usedBoxes: new Set(),
+      stageIndex: 0,
       x: 240,
       y: 208,
       facing: "right",
@@ -756,6 +776,56 @@ io.on("connection", (socket) => {
     broadcastPlayerList(room);
   });
 
+  socket.on("player:board-train", (payload = {}) => {
+    const room = getRoom(socket, payload.roomCode);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player) return;
+    const nextStageIndex = Number(payload.nextStageIndex);
+    if (Number.isInteger(nextStageIndex) && nextStageIndex >= 0 && nextStageIndex < COURSE.stages.length) {
+      player.stageIndex = nextStageIndex;
+      const stage = COURSE.stages[nextStageIndex];
+      const targetX = stage.startX + 160;
+      const targetY = 208;
+      player.x = targetX;
+      player.y = targetY;
+      player.lastMoveAt = Date.now();
+      const eventData = {
+        playerId: player.id,
+        name: player.name,
+        fromIndex: Number(payload.stageIndex) || 0,
+        toIndex: nextStageIndex,
+        destination: stage.name,
+        x: targetX,
+        y: targetY
+      };
+      io.to(room.code).emit("tv:player-board-train", eventData);
+      const movementData = publicPlayerPosition(player);
+      socket.to(room.code).emit("player:moved", movementData);
+      socket.to(room.code).emit("tv:player-move", movementData);
+    }
+  });
+
+  socket.on("player:stage", (payload = {}) => {
+    const room = getRoom(socket, payload.roomCode);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player) return;
+    const stageIndex = Number(payload.stageIndex);
+    if (Number.isInteger(stageIndex) && stageIndex >= 0 && stageIndex < COURSE.stages.length) {
+      player.stageIndex = stageIndex;
+      const stage = COURSE.stages[stageIndex];
+      const targetX = Number.isFinite(Number(payload.x)) ? Number(payload.x) : stage.startX + 160;
+      const targetY = Number.isFinite(Number(payload.y)) ? Number(payload.y) : 208;
+      player.x = targetX;
+      player.y = targetY;
+      player.lastMoveAt = Date.now();
+      const movementData = publicPlayerPosition(player);
+      socket.to(room.code).emit("player:moved", movementData);
+      socket.to(room.code).emit("tv:player-move", movementData);
+    }
+  });
+
   socket.on("player:move", (payload = {}) => {
     const room = getRoom(socket, payload.roomCode);
 
@@ -763,16 +833,24 @@ io.on("connection", (socket) => {
 
     const player = room.players.get(socket.id);
 
-    if (!player || player.activeQuiz || room.status !== "playing" || player.finished) return;
+    if (!player || player.activeQuiz || room.status === "ended" || player.finished) return;
+
+    const stageIndex = Number.isInteger(payload.stageIndex) ? payload.stageIndex : undefined;
+    const isStageChange = payload.teleport === true || (stageIndex !== undefined && stageIndex !== player.stageIndex);
+    if (stageIndex !== undefined) {
+      player.stageIndex = stageIndex;
+    }
 
     const x = Number(payload.x);
     const y = Number(payload.y);
 
     if (Number.isFinite(x) && Number.isFinite(y)) {
+      const currentStage = COURSE.stages[player.stageIndex];
+      const inCurrentStage = currentStage && x >= currentStage.startX && x <= currentStage.endX;
       const distance = Math.hypot(x - player.x, y - player.y);
       const elapsed = Math.max(16, Date.now() - (player.lastMoveAt || Date.now() - 100));
-      // Allow Phaser jump velocity plus horizontal speed, including delayed mobile packets.
-      if (distance > Math.max(110, 0.8 * elapsed + 60)) {
+      // Allow stage transitions (e.g. train arrival) without sending cheat corrections
+      if (!isStageChange && !inCurrentStage && distance > Math.max(140, 1.2 * elapsed + 80)) {
         socket.emit("player:correction", publicPlayerPosition(player));
         return;
       }
@@ -891,11 +969,11 @@ io.on("connection", (socket) => {
       }
 
       // Validate reported position against actual box location (server authority).
-      if (Math.abs(player.x - boxPosition.x) > 64 || Math.abs(player.y - boxPosition.y) > 64) {
+      if (Math.abs(player.x - boxPosition.x) > 64 || Math.abs(player.y - boxPosition.y) > 80) {
         callback({ ok: false, error: "Pemain terlalu jauh dari Question Block." });
         return;
       }
-      if (Math.abs(player.x - boxPosition.x) > 32 || player.y < boxPosition.y + 8 || player.y > boxPosition.y + 64) {
+      if (Math.abs(player.x - boxPosition.x) > 40 || player.y < boxPosition.y - 16 || player.y > boxPosition.y + 72) {
         callback({ ok: false, error: "Question Block hanya aktif saat dipukul dari bawah." });
         return;
       }

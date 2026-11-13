@@ -651,6 +651,28 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (!scene) return;
     scene.updateRemoteAvatar(data);
 
+    // If followed player entered a new city stage, synchronize TV host view
+    const targetPlayerId = mode === "AUTO" ? (selectedPlayerId || data.playerId) : selectedPlayerId;
+    if (data.playerId === targetPlayerId) {
+      let targetStage = Number.isInteger(data.stageIndex) ? data.stageIndex : -1;
+      if (targetStage === -1 && Number.isFinite(data.x)) {
+        targetStage = COURSE.stages.findIndex(s => data.x >= s.startX && data.x < s.endX);
+      }
+      if (targetStage >= 0 && scene.stageIndex !== targetStage) {
+        scene.setStage?.(targetStage);
+        scene.events.once("create", () => {
+          const nextScene = getWorldScene();
+          if (nextScene) {
+            nextScene.setLeaderboardData(players);
+            for (const p of players) {
+              const px = p.playerId === data.playerId ? (data.x || 240) : p.x;
+              nextScene.createRemoteAvatar({ ...p, x: px, y: p.y || 208 });
+            }
+          }
+        });
+      }
+    }
+
     if (mode === "AUTO") {
       if (!selectedPlayerId || selectedPlayerId === data.playerId) {
         const remote = scene.remoteAvatars?.get(data.playerId);
@@ -659,6 +681,32 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     } else if (mode === "MANUAL" && data.playerId === selectedPlayerId) {
       const remote = scene.remoteAvatars?.get(data.playerId);
       if (remote) scene.hostFollowPlayer?.(remote);
+    }
+  });
+
+  socket.on("tv:player-board-train", (data = {}) => {
+    const scene = getWorldScene();
+    if (!scene) return;
+    scene.animatePlayerBoardTrain?.(data);
+
+    const targetPlayerId = mode === "AUTO" ? (selectedPlayerId || data.playerId) : selectedPlayerId;
+    if (data.playerId === targetPlayerId && Number.isInteger(data.toIndex)) {
+      window.setTimeout(() => {
+        const activeScene = getWorldScene();
+        if (activeScene && activeScene.stageIndex !== data.toIndex) {
+          activeScene.setStage?.(data.toIndex);
+          activeScene.events.once("create", () => {
+            const nextScene = getWorldScene();
+            if (nextScene) {
+              nextScene.setLeaderboardData(players);
+              for (const p of players) {
+                const px = p.playerId === data.playerId ? (data.x || 240) : p.x;
+                nextScene.createRemoteAvatar({ ...p, x: px, y: p.y || 208 });
+              }
+            }
+          });
+        }
+      }, 1500);
     }
   });
 
