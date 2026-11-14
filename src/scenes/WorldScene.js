@@ -327,6 +327,53 @@ export class WorldScene extends Phaser.Scene {
     this.createLeaderboardHUD();
     this.createGameTimerHUD();
     this.createStageHUD();
+    this.createGameplayTopHUD();
+  }
+
+  createGameplayTopHUD() {
+    // Compact arcade status strip inspired by the in-game reference layout.
+    // Keep the original 480x270 pixel-art coordinate system so it scales crisply.
+    const room = new URLSearchParams(window.location.search).get("room") || "OFFLINE";
+    const playerName = new URLSearchParams(window.location.search).get("name") || "PLAYER";
+    const stageNo = this.stageIndex + 1;
+    this.gameplayTopBg = this.add.graphics().setScrollFactor(0).setDepth(108);
+    this.gameplayTopBg.fillStyle(0x111422, 0.96);
+    this.gameplayTopBg.fillRect(137, 3, 206, 24);
+    this.gameplayTopBg.lineStyle(3, 0x05070d, 1);
+    this.gameplayTopBg.strokeRect(137, 3, 206, 24);
+    this.gameplayTopBg.lineStyle(1, 0x71809f, 0.9);
+    this.gameplayTopBg.strokeRect(140, 6, 200, 18);
+
+    const columns = [
+      { x: 145, label: "PLAYER", value: playerName.toUpperCase().slice(0, 8), color: "#f7c83b" },
+      { x: 190, label: "RANK", value: "--", color: "#f7c83b" },
+      { x: 228, label: "ROOM", value: room.toUpperCase().slice(0, 7), color: "#82d82c" },
+      { x: 274, label: "STAGE", value: String(stageNo).padStart(2, "0"), color: "#f7c83b" },
+      { x: 312, label: "SCORE", value: "0", color: "#f7c83b" }
+    ];
+    this.gameplayTopFields = columns.map((item) => {
+      const label = this.add.text(item.x, 8, item.label, {
+        fontFamily: "'Press Start 2P', monospace", fontSize: "4px",
+        color: "#aeb8d0", stroke: "#000", strokeThickness: 1
+      }).setScrollFactor(0).setDepth(110);
+      const value = this.add.text(item.x, 16, item.value, {
+        fontFamily: "'Press Start 2P', monospace", fontSize: "5px",
+        color: item.color, stroke: "#000", strokeThickness: 1
+      }).setScrollFactor(0).setDepth(110);
+      return { label, value, key: item.label };
+    });
+    this.gameplayTopFields.find((field) => field.key === "RANK")?.value.setText("01");
+  }
+
+  updateGameplayTopHUD() {
+    if (!this.gameplayTopFields) return;
+    const players = this.leaderboardData || [];
+    const rankField = this.gameplayTopFields.find((field) => field.key === "RANK");
+    const scoreField = this.gameplayTopFields.find((field) => field.key === "SCORE");
+    const playerField = this.gameplayTopFields.find((field) => field.key === "PLAYER");
+    if (rankField) rankField.value.setText(players.length ? "01" : "--");
+    if (scoreField) scoreField.value.setText(String(Number(players[0]?.score) || 0).slice(0, 6));
+    if (playerField && players[0]?.name) playerField.value.setText(String(players[0].name).toUpperCase().slice(0, 8));
   }
 
   createStageHUD() {
@@ -2255,6 +2302,7 @@ export class WorldScene extends Phaser.Scene {
       .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
       .slice(0, 5);
     this.updateLeaderboardHUD();
+    this.updateGameplayTopHUD();
   }
 
   updateLeaderboardHUD() {
