@@ -1,0 +1,48 @@
+{
+  "project": "BAI PARTY GAMES",
+  "imported_asset_sets": [
+    {
+      "name": "Germany City World",
+      "path": "public/assets/germany-city-world",
+      "cities": [
+        "Hamburg_Summer",
+        "Berlin_Winter",
+        "Munich_Autumn",
+        "Cologne_Spring",
+        "Frankfurt_Summer"
+      ],
+      "ambient_animation_strips": 20
+    },
+    {
+      "name": "Legendary Character Customization",
+      "path": "public/assets/legendary-character-customization",
+      "status": "prototype crops; not wired into avatar compositor"
+    },
+    {
+      "name": "Enemy Asset Pack",
+      "path": "public/assets/enemy-asset-pack/pack",
+      "enemies": [
+        "muenchen",
+        "frankfurt",
+        "berlin",
+        "hamburg",
+        "boss_tycoon"
+      ],
+      "runtime": "textures preloaded; gameplay spawning not wired"
+    }
+  ],
+  "runtime_changes": [
+    "BootScene preloads city animation strips and enemy state textures",
+    "WorldScene plays city-specific ambient loops for current four stages",
+    "Snowfall limited to Berlin"
+  ],
+  "playable_stages_current": [
+    "munich",
+    "frankfurt",
+    "berlin",
+    "hamburg"
+  ],
+  "imported_not_yet_playable": [
+    "cologne"
+  ]
+}

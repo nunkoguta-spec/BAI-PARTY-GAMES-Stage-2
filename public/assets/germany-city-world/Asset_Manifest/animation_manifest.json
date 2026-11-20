@@ -1,0 +1,212 @@
+{
+  "Hamburg_Summer": [
+    {
+      "name": "Water_Shimmer",
+      "spritesheet": "Animations/Water_Shimmer_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Seagull_Flight",
+      "spritesheet": "Animations/Seagull_Flight_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Sun_Sparkle",
+      "spritesheet": "Animations/Sun_Sparkle_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Harbor_Smoke",
+      "spritesheet": "Animations/Harbor_Smoke_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    }
+  ],
+  "Berlin_Winter": [
+    {
+      "name": "Falling_Snow",
+      "spritesheet": "Animations/Falling_Snow_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Snow_Sparkle",
+      "spritesheet": "Animations/Snow_Sparkle_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Chimney_Smoke",
+      "spritesheet": "Animations/Chimney_Smoke_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Winter_Breath",
+      "spritesheet": "Animations/Winter_Breath_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    }
+  ],
+  "Munich_Autumn": [
+    {
+      "name": "Falling_Leaves",
+      "spritesheet": "Animations/Falling_Leaves_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Swirling_Leaves",
+      "spritesheet": "Animations/Swirling_Leaves_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Cafe_Steam",
+      "spritesheet": "Animations/Cafe_Steam_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Warm_Sparkle",
+      "spritesheet": "Animations/Warm_Sparkle_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    }
+  ],
+  "Cologne_Spring": [
+    {
+      "name": "Cherry_Blossom_Petals",
+      "spritesheet": "Animations/Cherry_Blossom_Petals_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Butterflies",
+      "spritesheet": "Animations/Butterflies_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "River_Shimmer",
+      "spritesheet": "Animations/River_Shimmer_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Bloom_Sparkle",
+      "spritesheet": "Animations/Bloom_Sparkle_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    }
+  ],
+  "Frankfurt_Summer": [
+    {
+      "name": "Water_Shimmer",
+      "spritesheet": "Animations/Water_Shimmer_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Fountain_Splash",
+      "spritesheet": "Animations/Fountain_Splash_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Bird_Flight",
+      "spritesheet": "Animations/Bird_Flight_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    },
+    {
+      "name": "Heat_Haze",
+      "spritesheet": "Animations/Heat_Haze_32x32_8frames.png",
+      "frame_width": 32,
+      "frame_height": 32,
+      "frame_count": 8,
+      "fps_suggestion": 8,
+      "loop": true,
+      "format": "RGBA PNG"
+    }
+  ]
+}

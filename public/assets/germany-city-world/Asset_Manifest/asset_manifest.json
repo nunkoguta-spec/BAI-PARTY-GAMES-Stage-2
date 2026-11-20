@@ -1,0 +1,42 @@
+{
+  "pack": "GERMANY_CITY_WORLD",
+  "status": "concept_preview_and_folder_scaffold",
+  "tile_size_px": [
+    32,
+    32
+  ],
+  "cities": [
+    {
+      "folder": "Hamburg_Summer",
+      "season": "Summer",
+      "production_order": 1,
+      "asset_status": "not_yet_exported_as_individual_game_assets"
+    },
+    {
+      "folder": "Berlin_Winter",
+      "season": "Winter",
+      "production_order": 2,
+      "asset_status": "not_yet_exported_as_individual_game_assets"
+    },
+    {
+      "folder": "Munich_Autumn",
+      "season": "Autumn",
+      "production_order": 3,
+      "asset_status": "not_yet_exported_as_individual_game_assets"
+    },
+    {
+      "folder": "Cologne_Spring",
+      "season": "Spring",
+      "production_order": 4,
+      "asset_status": "not_yet_exported_as_individual_game_assets"
+    },
+    {
+      "folder": "Frankfurt_Summer",
+      "season": "Summer",
+      "production_order": 5,
+      "asset_status": "not_yet_exported_as_individual_game_assets"
+    }
+  ],
+  "preview": "Previews/Germany_City_World_Concept_Sheet.png",
+  "important_note": "The concept sheet is a visual direction preview only. It is not a transparent, individually sliced production spritesheet. Individual RGBA PNGs, animation frames, tile atlases, and per-city previews still need to be authored and quality-checked."
+}
