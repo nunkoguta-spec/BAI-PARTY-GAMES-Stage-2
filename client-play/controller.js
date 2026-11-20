@@ -112,15 +112,15 @@ function renderAvatarPreview() {
 
 // Zoomed source window [x, y, w, h] per category inside the native 32x32 frame.
 const TILE_CROPS = {
-  skin:    [6, 2, 20, 28],
-  hair:    [6, 0, 20, 18],
-  eyes:    [8, 6, 16, 12],
-  hat:     [4, 0, 24, 16],
-  glasses: [7, 6, 18, 12],
-  top:     [6, 8, 20, 18],
-  bottoms: [8, 14, 16, 16],
-  shoes:   [8, 20, 16, 12],
-  weapon:  [2, 2, 28, 28]
+  skin:    [8, 4, 16, 18],    // Cute face & head portrait
+  hair:    [7, 2, 18, 17],    // Hairstyle on head
+  eyes:    [10, 11, 12, 6],   // Focused eyes closeup
+  top:     [8, 16, 16, 11],   // Centered SHIRT only! (y: 16..27, completely below head!)
+  bottoms: [8, 23, 16, 10],   // Centered PANTS only! (y: 23..33, waist down!)
+  shoes:   [8, 26, 16, 7],    // Centered SHOES only! (y: 26..33, ankles down!)
+  hat:     [6, 0, 20, 14],    // Headwear/Hat
+  glasses: [8, 9, 16, 8],     // Glasses/Goggles
+  weapon:  [15, 8, 14, 22]    // Weapon/Blade
 };
 
 function drawAvatarLayerToContext(tctx, key, row) {
@@ -148,12 +148,22 @@ function renderCategoryTiles() {
   const isLoaded = image?.complete && image.naturalWidth;
   const [cx, cy, cw, ch] = TILE_CROPS[activeCategory] || [0, 0, 32, 32];
 
-  // Layers drawn under the item so each card is readable on its own.
-  const underlay = ["skin"];
-  if (activeCategory === "top") underlay.push("bottoms", "shoes");
-  if (activeCategory === "bottoms") underlay.push("shoes");
-  if (["hair", "hat", "glasses", "eyes"].includes(activeCategory)) underlay.push("eyes");
-  if (["hat", "glasses"].includes(activeCategory)) underlay.push("hair");
+  // Layers drawn under and over the active category item:
+  const underlay = [];
+  const overlay = [];
+  if (activeCategory === "hair" || activeCategory === "hat" || activeCategory === "glasses") {
+    underlay.push("skin", "eyes");
+  } else if (activeCategory === "eyes") {
+    underlay.push("skin");
+  } else if (activeCategory === "top") {
+    underlay.push("skin");
+  } else if (activeCategory === "bottoms") {
+    underlay.push("skin");
+  } else if (activeCategory === "shoes") {
+    underlay.push("skin");
+  } else if (activeCategory === "skin") {
+    overlay.push("eyes", "hair");
+  }
 
   for (let i = 0; i < count; i++) {
     const selected = avatarSelection[activeCategory] === i;
@@ -176,25 +186,38 @@ function renderCategoryTiles() {
       const tctx = thumbCanvas.getContext("2d");
       if (tctx) {
         tctx.imageSmoothingEnabled = false;
-        {
-          const temp = document.createElement("canvas");
-          temp.width = 32;
-          temp.height = 32;
-          const a = temp.getContext("2d");
-          a.imageSmoothingEnabled = false;
+        const temp = document.createElement("canvas");
+        temp.width = 32;
+        temp.height = 32;
+        const a = temp.getContext("2d");
+        a.imageSmoothingEnabled = false;
 
-          for (const under of underlay) {
-            if (under === activeCategory) continue;
-            const urow = Math.min(AVATAR_LIMITS[under] - 1, avatarSelection[under] || 0);
-            drawAvatarLayerToContext(a, under, urow);
-          }
-
-          if (isLoaded) {
-            drawAvatarLayerToContext(a, activeCategory, i);
-          }
-
-          tctx.drawImage(temp, cx, cy, cw, ch, 0, 0, 64, 64);
+        // 1. Draw underlay layers
+        for (const under of underlay) {
+          if (under === activeCategory) continue;
+          const urow = Math.min(AVATAR_LIMITS[under] - 1, avatarSelection[under] || 0);
+          drawAvatarLayerToContext(a, under, urow);
         }
+
+        // 2. Draw active category item
+        if (isLoaded) {
+          drawAvatarLayerToContext(a, activeCategory, i);
+        }
+
+        // 3. Draw overlay layers (e.g. eyes and hair on top of skin)
+        for (const over of overlay) {
+          if (over === activeCategory) continue;
+          const orow = Math.min(AVATAR_LIMITS[over] - 1, avatarSelection[over] || 0);
+          drawAvatarLayerToContext(a, over, orow);
+        }
+
+        // 4. Integer pixel-perfect scaling centered inside the 64x64 card canvas
+        const scale = Math.min(Math.floor(56 / cw), Math.floor(56 / ch)) || 1;
+        const dw = cw * scale;
+        const dh = ch * scale;
+        const dx = Math.round((64 - dw) / 2);
+        const dy = Math.round((64 - dh) / 2);
+        tctx.drawImage(temp, cx, cy, cw, ch, dx, dy, dw, dh);
       }
       tile.append(thumbCanvas);
     }
@@ -224,11 +247,9 @@ function setupAvatarCustomizer() {
     });
   });
 
-  // "Selesai": choices already autosave, so just move on to the room code field.
+  // "Selesai": choices already autosave, so trigger join!
   $("avatarDoneButton")?.addEventListener("click", () => {
-    const roomInput = $("roomCode");
-    roomInput?.scrollIntoView({ behavior: "smooth", block: "center" });
-    roomInput?.focus({ preventScroll: true });
+    $("joinButton")?.click();
   });
 
   let loadedCount = 0;
