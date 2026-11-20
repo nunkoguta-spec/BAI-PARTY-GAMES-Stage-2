@@ -8,7 +8,8 @@ import { QUEST } from "../src/game/quests.js";
 // SOCKET.IO
 // =====================================================
 
-const serverUrl = import.meta.env.VITE_SERVER_URL || `${location.protocol === "https:" ? "https:" : "http:"}//${location.hostname}:3001`;
+const serverUrl = import.meta.env.VITE_SERVER_URL
+  || (location.port === "3001" ? location.origin : "");
 const socket = io(serverUrl, {
   autoConnect: true,
   reconnection: true,
@@ -111,15 +112,15 @@ function renderAvatarPreview() {
 
 // Zoomed source window [x, y, w, h] per category inside the native 32x32 frame.
 const TILE_CROPS = {
-  skin:    [0, 0, 32, 32],
-  hair:    [0, 0, 32, 32],
-  eyes:    [0, 0, 32, 32],
-  hat:     [0, 0, 32, 32],
-  glasses: [0, 0, 32, 32],
-  top:     [0, 0, 32, 32],
-  bottoms: [0, 0, 32, 32],
-  shoes:   [0, 0, 32, 32],
-  weapon:  [0, 0, 32, 32]
+  skin:    [6, 2, 20, 28],
+  hair:    [6, 0, 20, 18],
+  eyes:    [8, 6, 16, 12],
+  hat:     [4, 0, 24, 16],
+  glasses: [7, 6, 18, 12],
+  top:     [6, 8, 20, 18],
+  bottoms: [8, 14, 16, 16],
+  shoes:   [8, 20, 16, 12],
+  weapon:  [2, 2, 28, 28]
 };
 
 function drawAvatarLayerToContext(tctx, key, row) {

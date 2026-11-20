@@ -138,7 +138,8 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   });
 
   const hostname = location.hostname || "localhost";
-  const serverUrl = import.meta.env.VITE_SERVER_URL || `${location.protocol === "https:" ? "https:" : "http:"}//${hostname}:3001`;
+  const serverUrl = import.meta.env.VITE_SERVER_URL
+    || (location.port === "3001" ? location.origin : "");
   let controllerUrl = `${location.origin}/client-play/`;
 
   controllerUrlElement.textContent = controllerUrl;
@@ -308,7 +309,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   const socket = io(serverUrl, {
     autoConnect: false,
     reconnection: true,
-    reconnectionAttempts: Infinity,
+    reconnectionAttempts: 8,
     timeout: 10000
   });
 
@@ -466,13 +467,6 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (!socket.connected) {
       connection.textContent = "Menghubungkan server...";
       socket.connect();
-      setTimeout(() => {
-        if (!socket.connected && roomRequested) {
-          roomRequested = false;
-          connection.textContent = "Server tidak tersedia. Game berjalan offline.";
-          onRoomCreated({ roomCode: "", offline: true });
-        }
-      }, 10000);
       return;
     }
     createRoomOnServer();
@@ -578,6 +572,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     connection.textContent = "Server tidak tersedia. Menghubungkan ulang...";
     connection.classList.remove("host-online");
     console.error("[HOST] Koneksi server gagal:", error.message);
+  });
+
+  socket.io.on("reconnect_failed", () => {
+    if (roomRequested && !roomCreated) {
+      roomRequested = false;
+      connection.textContent = "Server tidak tersedia. Game berjalan offline.";
+      onRoomCreated({ roomCode: "", offline: true });
+    }
   });
 
   socket.on("disconnect", () => {
