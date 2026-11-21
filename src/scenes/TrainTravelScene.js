@@ -168,18 +168,6 @@ export class TrainTravelScene extends Phaser.Scene {
       color: "#fff3c5", backgroundColor: "#203449", padding: { x: 7, y: 5 },
       stroke: "#111", strokeThickness: 3
     }).setOrigin(0.5).setDepth(11);
-
-    // Station track tunnel portals framing train arrival & departure (depth 12, in front of train at depth 10)
-    const portalH = 82;
-    const tunnelLeft = this.add.graphics().setDepth(12);
-    tunnelLeft.fillStyle(0x1a212d, 1).fillRect(-8, railY - portalH, 32, portalH);
-    tunnelLeft.fillStyle(0x2d3648, 1).fillRect(18, railY - portalH, 6, portalH);
-    tunnelLeft.lineStyle(1.5, 0x475569, 0.9).strokeRect(-8, railY - portalH, 32, portalH);
-
-    const tunnelRight = this.add.graphics().setDepth(12);
-    tunnelRight.fillStyle(0x1a212d, 1).fillRect(W - 24, railY - portalH, 32, portalH);
-    tunnelRight.fillStyle(0x2d3648, 1).fillRect(W - 24, railY - portalH, 6, portalH);
-    tunnelRight.lineStyle(1.5, 0x475569, 0.9).strokeRect(W - 24, railY - portalH, 32, portalH);
   }
 
   drawStationPlatform(groundY) {

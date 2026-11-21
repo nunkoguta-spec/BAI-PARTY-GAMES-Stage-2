@@ -53,94 +53,24 @@ function roller(scene, trap) {
   return obj;
 }
 
-// TRAM LEWAT -----------------------------------------------------------------------------------
-function buildTunnelPortal(scene, x, G, isLeft) {
-  // 1. Dark cavern interior behind the tram (depth 7.8, behind body at depth 21)
-  const interior = scene.add.graphics().setDepth(DEPTH.trap);
-  interior.fillStyle(0x06080e, 1);
-  interior.fillRect(x - 24, G - 54, 48, 56);
-  interior.fillStyle(0x131924, 0.8);
-  interior.fillRect(x - 22, G - 52, 44, 6);
-
-  // 2. Front Arch Facade in FRONT of the tram (depth 21.5, masks the tram entering/exiting)
-  const facade = scene.add.graphics().setDepth(21.5);
-  const w = 54, h = 64;
-  const left = x - w / 2;
-  const top = G - h;
-
-  // Solid dark stone archway body
-  facade.fillStyle(0x1e2430, 1);
-  facade.fillRect(left, top, w, h);
-
-  // Arch header and pillars (leaving 38px width x 48px opening for the 46px tall tram)
-  facade.fillStyle(0x2d3648, 1);
-  facade.fillRect(left, top, w, 16);             // Arch header
-  facade.fillRect(left, top + 16, 8, 48);        // Outer pillar
-  facade.fillRect(left + w - 8, top + 16, 8, 48);// Inner pillar
-
-  // Cornice trim on top
-  facade.fillStyle(0x0f172a, 1);
-  facade.fillRect(left - 3, top - 2, w + 6, 3);
-  facade.lineStyle(1, 0x64748b, 0.85);
-  facade.lineBetween(left - 3, top - 2, left + w + 3, top - 2);
-
-  // Keystone center block in European arched stone style
-  facade.fillStyle(0x94a3b8, 1);
-  facade.fillRect(x - 5, top + 3, 10, 9);
-  facade.lineStyle(1, 0x000000, 0.7);
-  facade.strokeRect(x - 5, top + 3, 10, 9);
-
-  // Stone block mortar lines
-  facade.lineStyle(1, 0x111622, 0.85);
-  facade.lineBetween(left, top + 8, left + w, top + 8);
-  for (let py = top + 16; py < G; py += 12) {
-    facade.lineBetween(left, py, left + 8, py);
-    facade.lineBetween(left + w - 8, py, left + w, py);
-  }
-
-  // Inner shadow rim around the tunnel mouth
-  facade.fillStyle(0x0a0d14, 0.95);
-  facade.fillRect(left + 8, top + 16, 3, 48);
-  facade.fillRect(left + w - 11, top + 16, 3, 48);
-  facade.fillRect(left + 8, top + 16, w - 16, 4);
-
-  // Warning Railway Lantern above the portal
-  const lantern = scene.add.graphics().setDepth(21.6);
-  lantern.fillStyle(0x111827, 1);
-  lantern.fillRect(x - 3, top - 9, 6, 7);
-
-  return { interior, facade, lantern, x };
-}
-
+// TRAM LEWAT — PERLINTASAN SEBIDANG (BAHNÜBERGANG) -------------------------------------------
 function tram(scene, trap) {
   const ext = trap.half + trap.len;
   const rails = scene.add.tileSprite(trap.x, G - 2, ext * 2 + 56, 6, "trap-rails").setOrigin(0.5, 0).setDepth(DEPTH.rail);
-  const tunnelL = buildTunnelPortal(scene, trap.x - ext, G, true);
-  const tunnelR = buildTunnelPortal(scene, trap.x + ext, G, false);
-  const sigL = scene.add.sprite(trap.x - ext - 34, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
-  const sigR = scene.add.sprite(trap.x + ext + 34, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+  const sigL = scene.add.sprite(trap.x - ext - 16, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+  const sigR = scene.add.sprite(trap.x + ext + 16, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
   const body = scene.add.image(trap.x, G + 1, "trap-tram").setOrigin(0.5, 1).setDepth(DEPTH.front).setAlpha(0).setVisible(false);
   const beam = scene.add.graphics().setDepth(DEPTH.top);
 
   const obj = {
-    trap, parts: [body, rails, tunnelL.facade, tunnelR.facade], lastBeat: -1, lastActive: false,
+    trap, parts: [body, rails], lastBeat: -1, lastActive: false,
     update(now) {
       const s = tramState(trap, now);
       const beat = Math.floor(now / 250);
       const frame = s.lights ? 1 + (beat % 2) : 0;
       sigL.setFrame(frame); sigR.setFrame(frame === 0 ? 0 : 3 - frame);
 
-      // Warning lantern on the tunnel portal header
-      const lanternColor = s.lights ? (beat % 2 === 0 ? 0xf59e0b : 0xef4444) : 0x475569;
-      tunnelL.lantern.clear();
-      tunnelL.lantern.fillStyle(0x111827, 1).fillRect(tunnelL.x - 3, G - 73, 6, 7);
-      tunnelL.lantern.fillStyle(lanternColor, 1).fillCircle(tunnelL.x, G - 69, 2.5);
-
-      tunnelR.lantern.clear();
-      tunnelR.lantern.fillStyle(0x111827, 1).fillRect(tunnelR.x - 3, G - 73, 6, 7);
-      tunnelR.lantern.fillStyle(lanternColor, 1).fillCircle(tunnelR.x, G - 69, 2.5);
-
-      // Headlight warning beam shining out onto the rails from the tunnel portal
+      // Headlight warning beam shining out onto the rails from the approaching train
       beam.clear();
       if ((s.lights || s.active) && near(scene, trap.x, 420)) {
         const fromX = s.dir > 0 ? (trap.x - ext) : (trap.x + ext);
@@ -155,26 +85,11 @@ function tram(scene, trap) {
       if (s.bell && beat !== obj.lastBeat && near(scene, trap.x, 380)) retroAudio.playBell?.();
       obj.lastBeat = beat;
 
-      // Tram is physically masked by the tunnel facade (depth 21.5); keeping alpha solid as it rolls out
-      body.setVisible(s.active).setAlpha(s.active ? 1 : 0).setX(s.x).setFlipX(s.dir < 0);
+      // Tram fades smoothly in/out at the ends of its path so it never "pops" into view
+      body.setVisible(s.active).setAlpha(s.alpha).setX(s.x).setFlipX(s.dir < 0);
       if (s.active && !obj.lastActive && near(scene, trap.x, 380)) {
         retroAudio.playTrainWhistle?.();
         scene.cameras?.main?.shake(220, 0.0022);
-        // Spawn steam/track dust puffs as the tram bursts out of the tunnel mouth
-        const mouthX = s.dir > 0 ? (trap.x - ext) : (trap.x + ext);
-        for (let i = 0; i < 5; i++) {
-          const puff = scene.add.circle(mouthX, G - 12, Phaser.Math.Between(3, 5), 0xdde4ec, 0.75).setDepth(21.7);
-          scene.tweens.add({
-            targets: puff,
-            x: puff.x + s.dir * Phaser.Math.Between(15, 30),
-            y: puff.y - Phaser.Math.Between(4, 12),
-            alpha: 0,
-            scale: 1.8,
-            duration: Phaser.Math.Between(320, 500),
-            ease: "Quad.easeOut",
-            onComplete: () => puff.destroy()
-          });
-        }
       }
       obj.lastActive = s.active;
     },

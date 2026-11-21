@@ -353,6 +353,13 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
     const scene = getWorldScene();
     if (!scene) return;
+
+    // Switch stage bounds if the watched player is on a different city stage
+    const targetStage = Number.isInteger(player.stageIndex) ? player.stageIndex : -1;
+    if (targetStage >= 0 && scene.stageIndex !== targetStage) {
+      scene.setStage?.(targetStage);
+    }
+
     const remote = scene.remoteAvatars?.get(selectedPlayerId);
     if (remote && remote.sprites && remote.sprites[0]) {
       scene.hostFollowPlayer?.(remote);
@@ -371,13 +378,23 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       return;
     }
 
-    const currentStillExists = players.some(
-      (player) => player.playerId === selectedPlayerId
-    );
+    // In AUTO mode, pick the player leading the race (highest stageIndex and x coordinate)
+    const scene = getWorldScene();
+    let bestPlayer = players[0];
+    let bestProgress = -Infinity;
 
-    if (currentStillExists) return;
+    for (const p of players) {
+      const remote = scene?.remoteAvatars?.get(p.playerId);
+      const px = Number.isFinite(remote?.x) ? remote.x : (Number(p.x) || 0);
+      const pStage = Number.isInteger(remote?.stageIndex) ? remote.stageIndex : (Number.isInteger(p.stageIndex) ? p.stageIndex : 0);
+      const progress = pStage * 10000 + px;
+      if (progress > bestProgress) {
+        bestProgress = progress;
+        bestPlayer = p;
+      }
+    }
 
-    watchPlayer(players[0]);
+    watchPlayer(bestPlayer);
   }
 
   function updateModeButtons() {
@@ -387,6 +404,9 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
   autoButton.addEventListener("click", () => {
     mode = "AUTO";
+    selectedPlayerId = "";
+    selectedPlayerName = "";
+    watchingLabel.textContent = "Kamera: Otomatis";
     updateModeButtons();
     chooseAutomaticPlayer();
   });
@@ -645,45 +665,12 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     }
   });
 
-  let autoFollowPlayerId = null;
-
-  socket.on("player:moved", (data) => {
-    if (!data?.playerId) return;
-    const scene = getWorldScene();
-    if (!scene) return;
-    scene.updateRemoteAvatar(data);
-
-    // In AUTO mode, lock camera onto one primary player and do not switch back-and-forth on every packet!
-    if (mode === "AUTO") {
-      if (!autoFollowPlayerId || !players.some(p => p.playerId === autoFollowPlayerId)) {
-        autoFollowPlayerId = players[0]?.playerId || data.playerId;
-      }
-    }
-    const targetPlayerId = mode === "MANUAL" ? selectedPlayerId : (selectedPlayerId || autoFollowPlayerId);
-
-    // Only the designated followed player drives host camera and stage changes
-    if (data.playerId === targetPlayerId) {
-      let targetStage = Number.isInteger(data.stageIndex) ? data.stageIndex : -1;
-      if (targetStage === -1 && Number.isFinite(data.x)) {
-        targetStage = COURSE.stages.findIndex(s => data.x >= s.startX && data.x < s.endX);
-      }
-      if (targetStage >= 0 && scene.stageIndex !== targetStage) {
-        scene.setStage?.(targetStage);
-      }
-
-      const remote = scene.remoteAvatars?.get(data.playerId);
-      if (remote && scene.hostSpectatorTarget !== remote.sprites[0]) {
-        scene.hostFollowPlayer?.(remote);
-      }
-    }
-  });
-
   socket.on("tv:player-board-train", (data = {}) => {
     const scene = getWorldScene();
     if (!scene) return;
     scene.animatePlayerBoardTrain?.(data);
 
-    const targetPlayerId = mode === "MANUAL" ? selectedPlayerId : (selectedPlayerId || autoFollowPlayerId);
+    const targetPlayerId = selectedPlayerId;
     if (data.playerId === targetPlayerId && Number.isInteger(data.toIndex)) {
       window.setTimeout(() => {
         const activeScene = getWorldScene();
