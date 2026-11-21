@@ -80,6 +80,21 @@ export class WorldScene extends Phaser.Scene {
     this.stageIndex = stageIndex;
     window.baiStageIndex = stageIndex;
     try { sessionStorage.setItem("baiStageIndex", String(stageIndex)); } catch {}
+
+    if (this.isHostMode) {
+      // Host TV view: smoothly update stage bounds & assets without restarting the scene or dropping players!
+      this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
+      this.stageStartX = this.currentStage.startX;
+      this.stageEndX = this.currentStage.endX;
+      this.stageWidth = this.stageEndX - this.stageStartX;
+      this.cameras.main.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+      this.createArrivalStation();
+      this.createBahnhof();
+      this.createStageEnemies();
+      this.updateStageHUD();
+      return;
+    }
+
     this.scene.restart({ stageIndex, isHostMode: this.isHostMode });
   }
 
@@ -2582,7 +2597,7 @@ export class WorldScene extends Phaser.Scene {
   // MULTIPLAYER REMOTE AVATAR
   // =====================================================
 
-  drawPlayerNameplate(remote, x, y) {
+  buildPlayerNameplate(remote) {
     if (!remote?.namePlate?.active || !remote?.nameLabel?.active) return;
     const slot = remote.slot ?? 0;
     const slotColors = [
@@ -2599,8 +2614,8 @@ export class WorldScene extends Phaser.Scene {
     const totalW = badgeW + labelW + pad * 2 + 2;
     const totalH = 13;
 
-    const left = Math.round(x - totalW / 2);
-    const top = Math.round(y - totalH);
+    const left = -Math.round(totalW / 2);
+    const top = -totalH;
 
     const g = remote.namePlate;
     g.clear();
@@ -2617,11 +2632,11 @@ export class WorldScene extends Phaser.Scene {
 
     // 3. Small downward pointer arrow (caret) pointing at avatar's head
     g.fillStyle(pal.border, 1);
-    g.fillTriangle(x - 3, y, x + 3, y, x, y + 3);
+    g.fillTriangle(-3, 0, 3, 0, 0, 3);
 
-    // 4. Position text elements precisely
-    remote.slotLabel?.setPosition(left + 1 + Math.round(badgeW / 2), y - 2);
-    remote.nameLabel.setPosition(left + badgeW + pad + Math.round(labelW / 2) + 1, y - 2);
+    // 4. Position text elements precisely inside the container
+    remote.slotLabel?.setPosition(left + 1 + Math.round(badgeW / 2), -2);
+    remote.nameLabel.setPosition(left + badgeW + pad + Math.round(labelW / 2) + 1, -2);
   }
 
   createRemoteAvatar(data) {
@@ -2716,7 +2731,7 @@ export class WorldScene extends Phaser.Scene {
     const displayName = String(data.name || `Player ${slot + 1}`).slice(0, 10);
 
     const nameLabel = this.add.text(
-      x, y - 24,
+      0, 0,
       displayName,
       {
         fontFamily: "Arial, sans-serif",
@@ -2725,10 +2740,10 @@ export class WorldScene extends Phaser.Scene {
         color: "#f8fafc",
         align: "center"
       }
-    ).setOrigin(0.5, 1).setDepth(33);
+    ).setOrigin(0.5, 1);
 
     const slotLabel = this.add.text(
-      x, y - 24,
+      0, 0,
       pal.tag,
       {
         fontFamily: "'Press Start 2P', monospace",
@@ -2736,10 +2751,12 @@ export class WorldScene extends Phaser.Scene {
         color: "#ffffff",
         fontStyle: "bold"
       }
-    ).setOrigin(0.5, 1).setDepth(34);
+    ).setOrigin(0.5, 1);
 
-    const namePlate = this.add.graphics().setDepth(32);
-    const hpBar = this.add.graphics().setDepth(35);
+    const namePlate = this.add.graphics();
+    const hpBar = this.add.graphics();
+    const nameContainer = this.add.container(x, y - 24).setDepth(33);
+    nameContainer.add([namePlate, hpBar, nameLabel, slotLabel]);
 
     const remoteObj = {
       hpBar,
@@ -2752,6 +2769,7 @@ export class WorldScene extends Phaser.Scene {
       nameLabel,
       slotLabel,
       namePlate,
+      nameContainer,
       slot,
       x,
       y,
@@ -2769,7 +2787,8 @@ export class WorldScene extends Phaser.Scene {
       serverNow: Number(data.serverNow) || Date.now()
     };
 
-    this.drawPlayerNameplate(remoteObj, x, y - 24);
+    this.buildPlayerNameplate(remoteObj);
+    this.drawRemoteHpBar(remoteObj);
     this.remoteAvatars.set(data.playerId, remoteObj);
 
     console.log(
@@ -2845,10 +2864,10 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    if (data.name && remote.nameLabel?.active) {
+    if (data.name && data.name !== remote.name && remote.nameLabel?.active) {
       remote.name = String(data.name).slice(0, 24);
       remote.nameLabel.setText(String(remote.name || "Player").slice(0, 10));
-      this.drawPlayerNameplate(remote, remote.x, remote.y - 24);
+      this.buildPlayerNameplate(remote);
     }
   }
 
@@ -2858,9 +2877,17 @@ export class WorldScene extends Phaser.Scene {
     if (!remote) return;
     const prevHp = remote.hp;
     const wasKo = remote.ko;
-    remote.maxHp = Number(data.maxHp) || remote.maxHp || BATTLE.playerMaxHp;
-    remote.hp = Phaser.Math.Clamp(Number(data.hp), 0, remote.maxHp);
-    if (typeof data.ko === "boolean") remote.ko = data.ko;
+    const newMax = Number(data.maxHp) || remote.maxHp || BATTLE.playerMaxHp;
+    const newHp = Phaser.Math.Clamp(Number(data.hp), 0, newMax);
+    const newKo = typeof data.ko === "boolean" ? data.ko : remote.ko;
+
+    const hpChanged = (newHp !== prevHp) || (newMax !== remote.maxHp);
+    const koChanged = (newKo !== wasKo);
+
+    remote.maxHp = newMax;
+    remote.hp = newHp;
+    remote.ko = newKo;
+
     const damage = Number(data.damage) || Math.max(0, (Number(prevHp) || 0) - remote.hp);
     if (damage > 0 && remote.nameLabel?.active) {
       this.showFloatingFeedback(remote.x, remote.y - 14, `-${damage}`, "#ff7777");
@@ -2884,9 +2911,12 @@ export class WorldScene extends Phaser.Scene {
       }
       this.showFloatingFeedback(remote.x, remote.y - 26, "RESPAWN!", "#82d82c");
     }
+    if (hpChanged || koChanged) {
+      this.drawRemoteHpBar(remote);
+    }
   }
 
-  drawRemoteHpBar(remote, x, y) {
+  drawRemoteHpBar(remote) {
     const g = remote.hpBar;
     if (!g?.active) return;
     const ratio = Phaser.Math.Clamp((remote.hp ?? BATTLE.playerMaxHp) / (remote.maxHp || BATTLE.playerMaxHp), 0, 1);
@@ -2896,9 +2926,9 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const w = 26, h = 3;
-    const left = Math.round(x - w / 2);
-    // Positioned right above the compact nameplate (nameplate top is at y - 13)
-    const top = Math.round(y - 19);
+    const left = -Math.round(w / 2);
+    // Positioned right above the compact nameplate (nameplate top is at -13)
+    const top = -19;
     g.clear();
     g.fillStyle(0x0a0c16, 0.95).fillRect(left - 1, top - 1, w + 2, h + 2);
     g.fillStyle(0x381215, 1).fillRect(left, top, w, h);
@@ -2924,10 +2954,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     remote.finishBanner?.destroy();
-    remote.hpBar?.destroy();
-    remote.nameLabel?.destroy();
-    remote.slotLabel?.destroy();
-    remote.namePlate?.destroy();
+    remote.nameContainer?.destroy(true);
     remote.hero?.destroy();
 
     this.remoteAvatars.delete(playerId);
@@ -2968,8 +2995,7 @@ export class WorldScene extends Phaser.Scene {
       const idleBob = remote.heroState?.startsWith("idle") ? Math.sin(performance.now() / 430 + remote.slot) * 0.45 : 0;
       for (const sprite of remote.sprites) sprite.setPosition(x, y + idleBob);
       for (const sprite of remote.sprites) sprite.setVisible(true);
-      this.drawPlayerNameplate(remote, x, y - 24 + idleBob);
-      this.drawRemoteHpBar(remote, x, y - 24 + idleBob);
+      remote.nameContainer?.setPosition(x, y - 24 + idleBob);
       if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 42);
     }
   }
@@ -3073,7 +3099,10 @@ export class WorldScene extends Phaser.Scene {
       }
 
       if (sprite.texture.key !== textureKey) sprite.setTexture(textureKey);
-      sprite.setFrame(this.getAvatarFrameIndex(textureKey, rows[index], frame));
+      const targetFrame = this.getAvatarFrameIndex(textureKey, rows[index], frame);
+      if (sprite.frame?.name !== targetFrame) {
+        sprite.setFrame(targetFrame);
+      }
       sprite.setFlipX(false);
     });
   }
@@ -3312,6 +3341,7 @@ export class WorldScene extends Phaser.Scene {
   performAttackSlash() {
     if (this.isAttacking || this.playerKo || !this.player?.body) return;
     this.isAttacking = true;
+    this.attackStartTime = this.time.now;
     const dir = this.playerFacing || "right";
     const hasWeapon = Number(this.localAvatarSelection?.weapon) > 0;
     const anim = hasWeapon ? "sword" : "punch";
@@ -3354,9 +3384,21 @@ export class WorldScene extends Phaser.Scene {
     // Trap knock-back: keep the push for a moment instead of letting held input cancel it.
     if (this.time.now < (this.trapKnockUntil || 0)) return;
 
-    // Freeze movement until host starts game, during intro, during quiz, or after finish.
+    // Watchdog safety checks: prevent any flag from freezing player permanently
+    if (this.isAttacking && (!this.attackStartTime || this.time.now - this.attackStartTime > 450)) {
+      this.isAttacking = false;
+    }
+    if (this.introActive && (!this.introStartTime || this.time.now - this.introStartTime > 3600)) {
+      this.introActive = false;
+      this._gameStartIntroPlaying = false;
+    }
+    if (this.quizPaused && !this.battleActive && !this.inCanvasBattleElements) {
+      this.quizPaused = false;
+    }
+
+    // Freeze movement until host starts game, during intro (host TV only), during quiz, or after finish.
     // A K.O. keeps the fallen pose instead of snapping back to idle.
-    if (!this.gameStarted || this.introActive || this._bossIntroPlaying || this.quizPaused || this.finished) {
+    if (!this.gameStarted || (this.isHostMode && this.introActive) || this._bossIntroPlaying || this.quizPaused || this.finished) {
       body.setVelocity(0, body.velocity.y);
       if (!this.playerKo) this.setAvatarAnimation("idle");
       return;
@@ -3907,16 +3949,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // SCENE: GAME START COUNTDOWN CUTSCENE
-  // =====================================================
-  // =====================================================
   // SCENE: GAME START COUNTDOWN SPEECH BUBBLE CUTSCENE
   // =====================================================
   playGameStartIntro(onComplete) {
+    if (!this.isHostMode) {
+      this.introActive = false;
+      this._gameStartIntroPlaying = false;
+      if (onComplete) onComplete();
+      return;
+    }
+
     if (this._gameStartIntroPlaying) return;
     this._gameStartIntroPlaying = true;
     this._gameStartIntroPlayed = true;
     this.introActive = true;
+    this.introStartTime = this.time.now;
 
     if (this.player?.body) {
       this.player.body.setVelocity(0, 0);

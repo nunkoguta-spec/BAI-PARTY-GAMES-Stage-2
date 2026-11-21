@@ -58,6 +58,8 @@ export function createPhoneGame({
       this.localPlayerId = socket.id;
       super.create({ ...data, stageIndex: this.stageIndex });
       this.gameStarted = Boolean(data?.gameStarted ?? window.baiGameStarted ?? false);
+      this.introActive = false;
+      this._gameStartIntroPlaying = false;
       if (this.localAvatarSelection && this.player) this.applyAvatarSelection(this.localAvatarSelection);
 
       this.lastNetworkUpdate = 0;
@@ -153,10 +155,6 @@ export function createPhoneGame({
       const handleHazardHit = (result) => {
         if (result?.playerId === socket.id) this.handleAuthoritativeHazardHit(result);
       };
-      const handleSlugState = (data) => {
-        if (!data?.playerId || data.playerId === socket.id) return;
-        this.updateRemoteAvatar(data);
-      };
       const handleFinishedPeer = (data) => {
         if (!data?.playerId || data.playerId === socket.id) return;
         this.updateRemoteAvatar({ ...data, state: "idle", finished: true });
@@ -166,7 +164,6 @@ export function createPhoneGame({
       };
       socket.on("tv:leaderboard", handleLeaderboard);
       socket.on("hazard:hit", handleHazardHit);
-      socket.on("player:moved", handleSlugState);
       socket.on("player:finished", handleFinished);
       socket.on("tv:player-finished", handleFinishedPeer);
 
@@ -216,7 +213,6 @@ export function createPhoneGame({
           socket.off("player:left", handlePlayerLeft);
           socket.off("tv:leaderboard", handleLeaderboard);
           socket.off("hazard:hit", handleHazardHit);
-          socket.off("player:moved", handleSlugState);
           socket.off("player:finished", handleFinished);
           socket.off("tv:player-finished", handleFinishedPeer);
           this.events.off("hazard-hit", this._hazardSyncHandler);

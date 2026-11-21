@@ -212,6 +212,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       startGameButton.disabled = players.length === 0;
       roomStatus.textContent = "Sesi baru siap. Pemain dapat bergerak ke garis start.";
       const scene = getWorldScene();
+      if (scene) {
+        scene._gameStartIntroPlayed = false;
+        scene._gameStartIntroPlaying = false;
+        scene.introActive = false;
+      }
       scene?.resetLocalPlayer?.();
       for (const p of players) {
         const avatar = scene?.remoteAvatars?.get(p.playerId);
@@ -603,8 +608,6 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         scene.setGameTimer(endsAt, "playing");
         if (!scene._gameStartIntroPlayed) {
           scene._gameStartIntroPlayed = true;
-          // Keep the TV view clear: fold the dashboard into the minibar once play starts (BUKA reopens it).
-          if (hostCard && !hostCard.hidden) { hostCard.hidden = true; hostMinibar.hidden = false; }
           scene.playGameStartIntro?.();
         }
       }
@@ -660,27 +663,12 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
     // Only the designated followed player drives host camera and stage changes
     if (data.playerId === targetPlayerId) {
-      if (!scene._stageSwitching) {
-        let targetStage = Number.isInteger(data.stageIndex) ? data.stageIndex : -1;
-        if (targetStage === -1 && Number.isFinite(data.x)) {
-          targetStage = COURSE.stages.findIndex(s => data.x >= s.startX && data.x < s.endX);
-        }
-        if (targetStage >= 0 && scene.stageIndex !== targetStage) {
-          scene._stageSwitching = true;
-          scene.setStage?.(targetStage);
-          scene.events.once("create", () => {
-            const nextScene = getWorldScene();
-            if (nextScene) {
-              nextScene._stageSwitching = false;
-              nextScene.setLeaderboardData(players);
-              for (const p of players) {
-                const px = p.playerId === data.playerId ? (data.x || 240) : p.x;
-                nextScene.createRemoteAvatar({ ...p, x: px, y: p.y || 208 });
-              }
-            }
-          });
-          return;
-        }
+      let targetStage = Number.isInteger(data.stageIndex) ? data.stageIndex : -1;
+      if (targetStage === -1 && Number.isFinite(data.x)) {
+        targetStage = COURSE.stages.findIndex(s => data.x >= s.startX && data.x < s.endX);
+      }
+      if (targetStage >= 0 && scene.stageIndex !== targetStage) {
+        scene.setStage?.(targetStage);
       }
 
       const remote = scene.remoteAvatars?.get(data.playerId);
@@ -696,23 +684,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     scene.animatePlayerBoardTrain?.(data);
 
     const targetPlayerId = mode === "MANUAL" ? selectedPlayerId : (selectedPlayerId || autoFollowPlayerId);
-    if (data.playerId === targetPlayerId && Number.isInteger(data.toIndex) && !scene._stageSwitching) {
-      scene._stageSwitching = true;
+    if (data.playerId === targetPlayerId && Number.isInteger(data.toIndex)) {
       window.setTimeout(() => {
         const activeScene = getWorldScene();
         if (activeScene && activeScene.stageIndex !== data.toIndex) {
           activeScene.setStage?.(data.toIndex);
-          activeScene.events.once("create", () => {
-            const nextScene = getWorldScene();
-            if (nextScene) {
-              nextScene._stageSwitching = false;
-              nextScene.setLeaderboardData(players);
-              for (const p of players) {
-                const px = p.playerId === data.playerId ? (data.x || 240) : p.x;
-                nextScene.createRemoteAvatar({ ...p, x: px, y: p.y || 208 });
-              }
-            }
-          });
         }
       }, 1500);
     }

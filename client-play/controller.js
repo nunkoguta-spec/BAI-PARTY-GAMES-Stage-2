@@ -1468,12 +1468,15 @@ socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
   if (phoneScene) {
     phoneScene.finished = false;
     phoneScene.finishRequestSent = false;
+    phoneScene.introActive = false;
+    phoneScene._gameStartIntroPlaying = false;
     phoneScene.physics?.world?.resume?.();
     phoneScene.setStage?.(0);
     phoneScene.player?.setPosition(Number(x) || 240, Number(y) || 208);
     phoneScene.player?.body?.reset(Number(x) || 240, Number(y) || 208);
     phoneScene.syncAvatarLayers?.();
   }
+  window._baiGameStartIntroPlayed = false;
   if (Number.isFinite(Number(resetScore))) {
     score = Number(resetScore);
     $("score").textContent = score;
@@ -1493,12 +1496,13 @@ socket.on("room:status", ({ status, endsAt, startedAt, remainingMs, leaderboard,
   window.baiGameStarted = gameStarted;
   if (phoneScene) {
     phoneScene.gameStarted = gameStarted;
+    phoneScene.introActive = false;
+    phoneScene._gameStartIntroPlaying = false;
     if (startedAt) phoneScene.gameStartedAt = startedAt;
     if (status === "ended") phoneScene.finished = true;
     if (gameStarted && !wasPlaying && !window._baiGameStartIntroPlayed && (phoneScene.stageIndex === 0 || !phoneScene.stageIndex)) {
       window._baiGameStartIntroPlayed = true;
       playDomGameStartCountdown();
-      phoneScene.playGameStartIntro?.();
     }
   }
   if (status === "ended") {
