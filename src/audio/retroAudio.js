@@ -1,0 +1,314 @@
+// Retro Chiptune Audio Synthesizer (Native Web Audio API)
+class RetroAudioSystem {
+  constructor() {
+    this.ctx = null;
+    this.masterGain = null;
+    this.bgmGain = null;
+    this.sfxGain = null;
+    this.isPlaying = false;
+    this.muted = false;
+    this.timerId = null;
+  }
+
+  init() {
+    if (this.ctx) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    this.ctx = new AudioCtx();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+    this.masterGain.connect(this.ctx.destination);
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+    this.bgmGain.connect(this.masterGain);
+
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
+    this.sfxGain.connect(this.masterGain);
+  }
+
+  unlock() {
+    if (!this.ctx) this.init();
+    if (this.ctx?.state === "suspended") this.ctx.resume();
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 0.25, this.ctx.currentTime, 0.05);
+    }
+    return this.muted;
+  }
+
+  isMuted() { return this.muted; }
+
+  playJump() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(440, now + 0.12);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } catch {}
+  }
+
+  playCoin() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(987.77, now);
+      osc.frequency.setValueAtTime(1318.51, now + 0.08);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.31);
+    } catch {}
+  }
+
+  playCorrect() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const start = now + idx * 0.07;
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.3, start);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + 0.22);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(start);
+        osc.stop(start + 0.23);
+      });
+    } catch {}
+  }
+
+  playWrong() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.linearRampToValueAtTime(110, now + 0.28);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.29);
+    } catch {}
+  }
+
+  playBounce() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.exponentialRampToValueAtTime(650, now + 0.18);
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.21);
+    } catch {}
+  }
+
+  playCountdownBeep(high = false) {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      const freq = high ? 880 : 440; // A5 for GO!, A4 for 3, 2, 1
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (high ? 0.45 : 0.22));
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + (high ? 0.46 : 0.23));
+    } catch {}
+  }
+
+  playBossAlarm() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      // Heavy warning klaxon (dual square waves sliding down)
+      [220, 277.18].forEach((f) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(f, now);
+        osc.frequency.linearRampToValueAtTime(f * 0.85, now + 0.35);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      });
+    } catch {}
+  }
+
+  playTrainWhistle() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      // Dual harmonic European train horn ("Tuuut-tuuut!")
+      [587.33, 739.99].forEach((freq) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.setValueAtTime(freq * 1.01, now + 0.15);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+        gain.gain.setValueAtTime(0.18, now + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(now);
+        osc.stop(now + 0.56);
+      });
+    } catch {}
+  }
+
+  playBell() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      // tram crossing bell: two bright sine partials, short ring
+      [1568, 2349].forEach((freq, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(i ? 0.05 : 0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(now);
+        osc.stop(now + 0.23);
+      });
+    } catch {}
+  }
+
+  playShatter() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      // icicle shatter: short noise burst through a high-pass
+      const len = Math.floor(this.ctx.sampleRate * 0.22);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = this.ctx.createBufferSource();
+      const hp = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+      hp.type = "highpass";
+      hp.frequency.value = 2400;
+      src.buffer = buf;
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      src.connect(hp);
+      hp.connect(gain);
+      gain.connect(this.sfxGain);
+      src.start(now);
+    } catch {}
+  }
+
+  playGull() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(1500, now);
+      osc.frequency.exponentialRampToValueAtTime(700, now + 0.3);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.1, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.33);
+    } catch {}
+  }
+
+  startBGM() {
+    if (this.isPlaying) return;
+    this.unlock();
+    this.isPlaying = true;
+    const mel = [64,0,67,72,71,0,67,0,69,0,67,0,64,0,62,60,64,0,67,72,74,0,76,0,72,0,69,72,71,0,0,0];
+    const bass = [36,0,48,0,36,0,48,0,41,0,53,0,36,0,48,0,36,0,48,0,43,0,55,0,41,0,53,0,43,0,55,0];
+    let step = 0;
+    this.timerId = setInterval(() => {
+      if (!this.isPlaying || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const n = mel[step % mel.length];
+      if (n > 0) {
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = "square";
+        o.frequency.setValueAtTime(440 * Math.pow(2, (n - 69) / 12), now);
+        g.gain.setValueAtTime(0.06, now);
+        g.gain.exponentialRampToValueAtTime(0.005, now + 0.11);
+        o.connect(g); g.connect(this.bgmGain);
+        o.start(now); o.stop(now + 0.12);
+      }
+      const b = bass[step % bass.length];
+      if (b > 0) {
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = "triangle";
+        o.frequency.setValueAtTime(440 * Math.pow(2, (b - 69) / 12), now);
+        g.gain.setValueAtTime(0.15, now);
+        g.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+        o.connect(g); g.connect(this.bgmGain);
+        o.start(now); o.stop(now + 0.17);
+      }
+      step++;
+    }, 125);
+  }
+
+  stopBGM() {
+    this.isPlaying = false;
+    if (this.timerId) clearInterval(this.timerId);
+  }
+}
+
+export const retroAudio = new RetroAudioSystem();

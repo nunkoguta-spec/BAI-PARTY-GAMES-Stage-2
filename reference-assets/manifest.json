@@ -1,0 +1,198 @@
+{
+  "project": "BAI PARTY GAMES",
+  "type": "organized_reference_library",
+  "asset_count": 19,
+  "production_ready": false,
+  "assets": [
+    {
+      "file": "01_ENVIRONMENT_MUNICH/munich_street_buildings_and_props.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.28.56.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 151586,
+      "sha256": "a4c55dace8e34c7b018dd842c3287dc825bd4d116aeb7d0c98c484421f86603c"
+    },
+    {
+      "file": "11_MAIN_MENU_UI/main_menu_panels_buttons_and_icons.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.28.07.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 174369,
+      "sha256": "b97f1fdb501888c29e07e93a2bdda6c9de08622523c253e2b0fbff0702a25dab"
+    },
+    {
+      "file": "12_CHARACTER_CUSTOMIZATION/modular_character_customization_parts.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.26.58.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 171593,
+      "sha256": "a2873784c661d15b61d9a3e1d79a98d46cbd2d1a1e1eda379b4be6ebdd5ddee3"
+    },
+    {
+      "file": "13_CHARACTER_ANIMATIONS/character_views_animations_and_emotes.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.25.41.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 143679,
+      "sha256": "7252271789aace71094438035657f90763174cbe6fba7de9ca5108df30945b9e"
+    },
+    {
+      "file": "14_ORNAMENTAL_UI/gold_ornamental_frames_and_panels.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.24.17.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 129136,
+      "sha256": "db56c06884bff53c5b1596da2fe010dea8ad937fc68f8dd63b729554899a00cd"
+    },
+    {
+      "file": "15_STAGE_TRANSITION_UI/ornamental_city_transition_card.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.21.39.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 72229,
+      "sha256": "7d677df679d4916b1305ec6f2aa62bd717ae3b9fb606e580a2f7b5b563203720"
+    },
+    {
+      "file": "01_ENVIRONMENT_MUNICH/munich_city_street_background.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.20.19.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 320616,
+      "sha256": "1d32a992077213b051f1d0162bbbd3d386b441cc6150d51694e0198865df627e"
+    },
+    {
+      "file": "13_CHARACTER_ANIMATIONS/character_front_side_back_reference.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.19.06.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 77075,
+      "sha256": "e723104586387e4db09db5f42e0a35b11ceb66146898e382903a2701f5d898e4"
+    },
+    {
+      "file": "16_GENERAL_GAME_UI/navy_gold_panels_buttons_and_controls.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.18.43.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.04.10.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 115755,
+      "sha256": "4efdf550ae3f05abe799c40bfb609bb1759ab37a0df9672b2e807327f003c850"
+    },
+    {
+      "file": "02_GAMEPLAY_REFERENCE/full_gameplay_screen_munich.jpg",
+      "original_filename": "WhatsApp Image 2026-11-11 at 00.02.57.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1600,
+      "height": 900,
+      "format": "JPEG",
+      "bytes": 595679,
+      "sha256": "592939ac2ee14c729b4dd70084bc90a50e907a07577311c0b0fe7d9772a81c0f"
+    },
+    {
+      "file": "02_GAMEPLAY_REFERENCE/gameplay_hud_quiz_and_stage_progress.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.49.06.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 309465,
+      "sha256": "cd1fae3ecf7a20dc84d1317d0128ddb94a2173c9be05f508d1d1f6d3e7474903"
+    },
+    {
+      "file": "03_LEADERBOARD_RESULTS/final_leaderboard_and_rewards.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.38.56.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 199590,
+      "sha256": "4e467d24d00b67875f033166bed33fe20922d030959f43d1105ad1dfb109e328"
+    },
+    {
+      "file": "04_VFX_REFERENCE/golden_magic_particle_effect.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.37.30.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 175604,
+      "sha256": "315a51cc6fd39bc519dd5488ec138e4885fabcc9ca3592ed924ece5b1b26c75a"
+    },
+    {
+      "file": "05_QUIZ_UI/quiz_question_timer_and_answer_panels.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.36.18.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 137503,
+      "sha256": "58eace911c7e32f8342c679609f30a648dcd90b8afffc4377160938bc22725bb"
+    },
+    {
+      "file": "06_MULTIPLAYER_UI/player_slots_ready_states_and_countdown.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.35.23.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 162502,
+      "sha256": "ba218730d4d7433d88a50180c312c00722fc396377a5147f2852d08718b71e12"
+    },
+    {
+      "file": "07_TILESET_REFERENCE/terrain_nature_stone_and_water_tileset.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.34.21.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 197402,
+      "sha256": "ff7dfacdfa3cff50662c5c396bd659dc63955c463d1b25cb7dff250e21e1fcde"
+    },
+    {
+      "file": "08_STAGE_4_HAMBURG/hamburg_harbor_background_and_props.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.31.18.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 226369,
+      "sha256": "d65ccd72e9c0ba057f1598b43e525699be3c62874820dbf897417d53e02da5b2"
+    },
+    {
+      "file": "09_STAGE_3_BERLIN/berlin_landmarks_and_city_props.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.30.26.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 189234,
+      "sha256": "bda0c04ff9ee5acc5b66c6fa593f76db8d6c5839ce6f42d61f2352d5d5405c3a"
+    },
+    {
+      "file": "10_STAGE_2_FRANKFURT/frankfurt_skyline_and_city_props.jpg",
+      "original_filename": "WhatsApp Image 2026-11-10 at 23.29.37.jpeg",
+      "source_archive": "WhatsApp Unknown 2026-11-11 at 00.03.44.zip",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 172867,
+      "sha256": "6926576115e3dc5b5befd661e0f4ed7969671051c9c07e99215ec2281ef5998e"
+    }
+  ]
+}
