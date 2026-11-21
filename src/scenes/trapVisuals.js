@@ -56,40 +56,123 @@ function roller(scene, trap) {
 // TRAM LEWAT — PERLINTASAN SEBIDANG (BAHNÜBERGANG) -------------------------------------------
 function tram(scene, trap) {
   const ext = trap.half + trap.len;
-  const rails = scene.add.tileSprite(trap.x, G - 2, ext * 2 + 56, 6, "trap-rails").setOrigin(0.5, 0).setDepth(DEPTH.rail);
-  const sigL = scene.add.sprite(trap.x - ext - 16, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
-  const sigR = scene.add.sprite(trap.x + ext + 16, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
-  const body = scene.add.image(trap.x, G + 1, "trap-tram").setOrigin(0.5, 1).setDepth(DEPTH.front).setAlpha(0).setVisible(false);
+  const crossW = ext * 2 + 36;
+
+  // 1. Level Crossing Pavement & Rails (Perlintasan Sebidang)
+  const crossBase = scene.add.graphics().setDepth(DEPTH.rail);
+  // Dark asphalt crossing roadbed
+  crossBase.fillStyle(0x1a202c, 0.95);
+  crossBase.fillRect(trap.x - crossW / 2, G - 4, crossW, 8);
+  // Timber crossing panels between rails
+  crossBase.fillStyle(0x4a3a2a, 1);
+  for (let rx = trap.x - crossW / 2 + 6; rx < trap.x + crossW / 2 - 6; rx += 14) {
+    crossBase.fillRect(rx, G - 3, 10, 6);
+  }
+  // White pedestrian warning crossing stripes
+  crossBase.fillStyle(0xffffff, 0.75);
+  for (let wx = trap.x - crossW / 2 + 10; wx < trap.x + crossW / 2 - 10; wx += 24) {
+    crossBase.fillRect(wx, G + 3, 12, 2);
+  }
+
+  const rails = scene.add.tileSprite(trap.x, G - 2, crossW, 6, "trap-rails").setOrigin(0.5, 0).setDepth(DEPTH.back);
+
+  // 2. German Andreaskreuz Warning Signal Posts
+  const sigL = scene.add.sprite(trap.x - ext - 14, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+  const sigR = scene.add.sprite(trap.x + ext + 14, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+
+  // 3. Red & White Automatic Crossing Gates (Schranken / Palang Pintu)
+  const gateL = scene.add.graphics().setDepth(DEPTH.front + 1);
+  const gateR = scene.add.graphics().setDepth(DEPTH.front + 1);
+  const gateLen = 42;
+
+  function drawGateArm(g, postX, angleDeg, isLeft) {
+    g.clear();
+    // Gate post pivot
+    g.fillStyle(0x2d3748, 1);
+    g.fillRect(postX - 3, G - 16, 6, 16);
+    g.fillStyle(0xe2e8f0, 1);
+    g.fillCircle(postX, G - 14, 3.5);
+
+    // Diagonal red/white striped barrier arm
+    const rad = Phaser.Math.DegToRad(angleDeg);
+    const dir = isLeft ? 1 : -1;
+    const endX = postX + Math.cos(rad) * gateLen * dir;
+    const endY = (G - 14) + Math.sin(rad) * gateLen;
+
+    g.lineStyle(4, 0xffffff, 1);
+    g.lineBetween(postX, G - 14, endX, endY);
+
+    // Red stripes
+    const segs = 5;
+    for (let i = 1; i < segs; i += 2) {
+      const t1 = i / segs;
+      const t2 = (i + 1) / segs;
+      const x1 = Phaser.Math.Linear(postX, endX, t1);
+      const y1 = Phaser.Math.Linear(G - 14, endY, t1);
+      const x2 = Phaser.Math.Linear(postX, endX, t2);
+      const y2 = Phaser.Math.Linear(G - 14, endY, t2);
+      g.lineStyle(4, 0xef4444, 1);
+      g.lineBetween(x1, y1, x2, y2);
+    }
+  }
+
+  // Initial upright open barrier pose (~75 deg up)
+  let currentGateAngle = -75;
+  drawGateArm(gateL, trap.x - ext + 2, currentGateAngle, true);
+  drawGateArm(gateR, trap.x + ext - 2, currentGateAngle, false);
+
+  // 4. Authentic Front-Facing German Train (Tampak Depan, matching Image 1)
+  const textureKey = scene.textures.exists("trap-train-front") ? "trap-train-front" : "trap-tram";
+  const body = scene.add.image(trap.x, G + 1, textureKey)
+    .setOrigin(0.5, 1)
+    .setDepth(DEPTH.front)
+    .setAlpha(0)
+    .setVisible(false);
+
+  // 5. Dual LED Headlight Beams Shining Down the Tracks
   const beam = scene.add.graphics().setDepth(DEPTH.top);
 
   const obj = {
-    trap, parts: [body, rails], lastBeat: -1, lastActive: false,
+    trap, parts: [body, rails, crossBase, gateL, gateR], lastBeat: -1, lastActive: false,
     update(now) {
       const s = tramState(trap, now);
       const beat = Math.floor(now / 250);
       const frame = s.lights ? 1 + (beat % 2) : 0;
       sigL.setFrame(frame); sigR.setFrame(frame === 0 ? 0 : 3 - frame);
 
-      // Headlight warning beam shining out onto the rails from the approaching train
+      // Animate crossing barrier gates lowering when train warns or approaches
+      const targetAngle = (s.lights || s.active) ? 0 : -75;
+      if (Math.abs(currentGateAngle - targetAngle) > 1) {
+        currentGateAngle = Phaser.Math.Linear(currentGateAngle, targetAngle, 0.12);
+        drawGateArm(gateL, trap.x - ext + 2, currentGateAngle, true);
+        drawGateArm(gateR, trap.x + ext - 2, currentGateAngle, false);
+      }
+
+      // Conical front headlight beams shining directly towards viewer / crossing
       beam.clear();
       if ((s.lights || s.active) && near(scene, trap.x, 420)) {
-        const fromX = s.dir > 0 ? (trap.x - ext) : (trap.x + ext);
-        const toX = fromX + s.dir * 85;
-        const beamY = G - 18;
-        beam.fillStyle(0xfff2b0, s.active ? 0.22 : 0.14);
-        beam.fillTriangle(fromX, beamY, toX, beamY - 14, toX, beamY + 18);
-        beam.fillStyle(0xffffff, s.active ? 0.75 : 0.45);
-        beam.fillCircle(fromX + s.dir * 4, beamY, 3);
+        const trainX = s.active ? s.x : (s.dir > 0 ? trap.x - ext : trap.x + ext);
+        const beamAlpha = s.active ? 0.32 : 0.18;
+        // Left headlight beam
+        beam.fillStyle(0xfff2b0, beamAlpha);
+        beam.fillTriangle(trainX - 18, G - 16, trainX - 32, G + 14, trainX - 4, G + 14);
+        beam.fillStyle(0xffffff, s.active ? 0.9 : 0.6);
+        beam.fillCircle(trainX - 18, G - 16, 3);
+        // Right headlight beam
+        beam.fillStyle(0xfff2b0, beamAlpha);
+        beam.fillTriangle(trainX + 18, G - 16, trainX + 4, G + 14, trainX + 32, G + 14);
+        beam.fillStyle(0xffffff, s.active ? 0.9 : 0.6);
+        beam.fillCircle(trainX + 18, G - 16, 3);
       }
 
       if (s.bell && beat !== obj.lastBeat && near(scene, trap.x, 380)) retroAudio.playBell?.();
       obj.lastBeat = beat;
 
-      // Tram fades smoothly in/out at the ends of its path so it never "pops" into view
-      body.setVisible(s.active).setAlpha(s.alpha).setX(s.x).setFlipX(s.dir < 0);
+      // Front-facing train roars across the crossing (position follows s.x, matching server hitbox)
+      body.setVisible(s.active).setAlpha(s.alpha).setX(s.x);
       if (s.active && !obj.lastActive && near(scene, trap.x, 380)) {
         retroAudio.playTrainWhistle?.();
-        scene.cameras?.main?.shake(220, 0.0022);
+        scene.cameras?.main?.shake(240, 0.0028);
       }
       obj.lastActive = s.active;
     },

@@ -32,6 +32,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image("trap-sign", `${ASSET}/traps/sign.png`);
     // "Not ordinary" traps: tram, rails, signal, icicles, canopy, gull, wrecking ball, censer.
     this.load.image("trap-tram", `${ASSET}/traps/tram.png`);
+    this.load.image("trap-train-front", `${ASSET}/traps/train-front.png`);
     this.load.image("trap-rails", `${ASSET}/traps/rails.png`);
     this.load.spritesheet("trap-signal", `${ASSET}/traps/signal.png`, { frameWidth: 14, frameHeight: 40 });
     this.load.spritesheet("trap-icicle", `${ASSET}/traps/icicle.png`, { frameWidth: 48, frameHeight: 30 });
