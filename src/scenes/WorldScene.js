@@ -2370,15 +2370,17 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  // Correct answer: the player lunges & punches, the enemy flinches in hit pose and loses HP!
+  // Correct answer: the player lunges & strikes with weapon (or punch), the enemy flinches in hit pose and loses HP!
   playPlayerAttack(solved, total, defeated) {
     return new Promise((resolve) => {
       const e = this.stageEnemy;
       if (!e || !this.player) { resolve(); return; }
       const dir = e.sprite.x >= this.player.x ? "right" : "left";
       this.playerFacing = dir;
-      this.setAvatarAnimation(`punch-${dir}`);
-      this.networkCharacterState = { state: `punch-${dir}`, grounded: true, vx: 0, vy: 0 };
+      const hasWeapon = Number(this.localAvatarSelection?.weapon) > 0;
+      const animType = hasWeapon ? "sword" : "punch";
+      this.setAvatarAnimation(`${animType}-${dir}`);
+      this.networkCharacterState = { state: `${animType}-${dir}`, grounded: true, vx: 0, vy: 0 };
       retroAudio.playCorrect?.();
 
       const lunge = dir === "right" ? 16 : -16;
@@ -2537,21 +2539,46 @@ export class WorldScene extends Phaser.Scene {
   // MULTIPLAYER REMOTE AVATAR
   // =====================================================
 
-  drawParchmentNameplate(graphics, label, x, bottomY) {
-    if (!graphics?.active || !label?.active) return;
-    const width = Math.ceil(label.width + 2);
-    const height = Math.ceil(label.height + 2);
-    const left = Math.round(x - width / 2);
-    const top = Math.round(bottomY - height);
-    graphics.clear();
-    graphics.fillStyle(0x3b291d, 0.92);
-    graphics.fillRect(left - 2, top - 2, width + 4, height + 4);
-    graphics.fillStyle(0xe8d7ad, 1);
-    graphics.fillRect(left, top, width, height);
-    graphics.lineStyle(1, 0x765333, 1);
-    graphics.strokeRect(left + 1, top + 1, width - 2, height - 2);
-    graphics.lineStyle(1, 0xf7edcf, 0.9);
-    graphics.lineBetween(left + 3, top + 3, left + width - 4, top + 3);
+  drawPlayerNameplate(remote, x, y) {
+    if (!remote?.namePlate?.active || !remote?.nameLabel?.active) return;
+    const slot = remote.slot ?? 0;
+    const slotColors = [
+      { badge: 0x2563eb, border: 0x60a5fa, tag: "P1" }, // Blue
+      { badge: 0xd97706, border: 0xfbbf24, tag: "P2" }, // Gold / Orange
+      { badge: 0x059669, border: 0x34d399, tag: "P3" }, // Green
+      { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }  // Purple
+    ];
+    const pal = slotColors[slot % slotColors.length];
+
+    const labelW = Math.max(20, Math.ceil(remote.nameLabel.width));
+    const badgeW = 14;
+    const pad = 3;
+    const totalW = badgeW + labelW + pad * 2 + 2;
+    const totalH = 13;
+
+    const left = Math.round(x - totalW / 2);
+    const top = Math.round(y - totalH);
+
+    const g = remote.namePlate;
+    g.clear();
+
+    // 1. Sleek dark translucent pill
+    g.fillStyle(0x0a101d, 0.92);
+    g.fillRoundedRect(left, top, totalW, totalH, 3);
+    g.lineStyle(1, pal.border, 0.95);
+    g.strokeRoundedRect(left, top, totalW, totalH, 3);
+
+    // 2. Colored slot badge pill on left [P1] / [P2]
+    g.fillStyle(pal.badge, 1);
+    g.fillRoundedRect(left + 1, top + 1, badgeW, totalH - 2, 2);
+
+    // 3. Small downward pointer arrow (caret) pointing at avatar's head
+    g.fillStyle(pal.border, 1);
+    g.fillTriangle(x - 3, y, x + 3, y, x, y + 3);
+
+    // 4. Position text elements precisely
+    remote.slotLabel?.setPosition(left + 1 + Math.round(badgeW / 2), y - 2);
+    remote.nameLabel.setPosition(left + badgeW + pad + Math.round(labelW / 2) + 1, y - 2);
   }
 
   createRemoteAvatar(data) {
@@ -2636,24 +2663,42 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const slot = this.remoteAvatars.size;
+    const slotColors = [
+      { badge: 0x2563eb, border: 0x60a5fa, tag: "P1" },
+      { badge: 0xd97706, border: 0xfbbf24, tag: "P2" },
+      { badge: 0x059669, border: 0x34d399, tag: "P3" },
+      { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }
+    ];
+    const pal = slotColors[slot % slotColors.length];
+    const displayName = String(data.name || `Player ${slot + 1}`).slice(0, 10);
+
     const nameLabel = this.add.text(
-      x, y - 29,
-      `P${slot + 1} ${String(data.name || "Player").slice(0, 8)}`,
+      x, y - 24,
+      displayName,
+      {
+        fontFamily: "Arial, sans-serif",
+        fontSize: "8px",
+        fontStyle: "bold",
+        color: "#f8fafc",
+        align: "center"
+      }
+    ).setOrigin(0.5, 1).setDepth(33);
+
+    const slotLabel = this.add.text(
+      x, y - 24,
+      pal.tag,
       {
         fontFamily: "'Press Start 2P', monospace",
-        fontSize: "8px",
-        color: "#563b27",
-        align: "center",
-        resolution: 2
+        fontSize: "5px",
+        color: "#ffffff",
+        fontStyle: "bold"
       }
-    ).setPadding(4, 3, 4, 3).setOrigin(0.5, 1).setDepth(33);
-    nameLabel.setVisible(true);
+    ).setOrigin(0.5, 1).setDepth(34);
+
     const namePlate = this.add.graphics().setDepth(32);
-    this.drawParchmentNameplate(namePlate, nameLabel, x, y - 29);
+    const hpBar = this.add.graphics().setDepth(35);
 
-    const hpBar = this.add.graphics().setDepth(34);
-
-    this.remoteAvatars.set(data.playerId, {
+    const remoteObj = {
       hpBar,
       hp: Number.isFinite(Number(data.hp)) ? Number(data.hp) : BATTLE.playerMaxHp,
       maxHp: Number(data.maxHp) || BATTLE.playerMaxHp,
@@ -2662,6 +2707,7 @@ export class WorldScene extends Phaser.Scene {
       name: data.name || "Player",
       sprites,
       nameLabel,
+      slotLabel,
       namePlate,
       slot,
       x,
@@ -2678,7 +2724,10 @@ export class WorldScene extends Phaser.Scene {
       lastUpdate: performance.now(),
       snapshots: [{ time: performance.now(), x, y }],
       serverNow: Number(data.serverNow) || Date.now()
-    });
+    };
+
+    this.drawPlayerNameplate(remoteObj, x, y - 24);
+    this.remoteAvatars.set(data.playerId, remoteObj);
 
     console.log(
       "[MULTIPLAYER] Avatar pemain dibuat:",
@@ -2753,10 +2802,10 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    if (data.name) {
+    if (data.name && remote.nameLabel?.active) {
       remote.name = String(data.name).slice(0, 24);
-      remote.nameLabel.setText(`P${(remote.slot ?? 0) + 1} ${String(remote.name || "Player").slice(0, 8)}`);
-      this.drawParchmentNameplate(remote.namePlate, remote.nameLabel, remote.x, remote.y - 29);
+      remote.nameLabel.setText(String(remote.name || "Player").slice(0, 10));
+      this.drawPlayerNameplate(remote, remote.x, remote.y - 24);
     }
   }
 
@@ -2803,10 +2852,10 @@ export class WorldScene extends Phaser.Scene {
       g.clear();
       return;
     }
-    const w = 24, h = 3;
+    const w = 26, h = 3;
     const left = Math.round(x - w / 2);
-    // y - 48 sits cleanly above the nameplate (which extends up to y - 44), preventing any overlap
-    const top = Math.round(y - 48);
+    // Positioned right above the compact nameplate (nameplate top is at y - 13)
+    const top = Math.round(y - 19);
     g.clear();
     g.fillStyle(0x0a0c16, 0.95).fillRect(left - 1, top - 1, w + 2, h + 2);
     g.fillStyle(0x381215, 1).fillRect(left, top, w, h);
@@ -2833,7 +2882,8 @@ export class WorldScene extends Phaser.Scene {
 
     remote.finishBanner?.destroy();
     remote.hpBar?.destroy();
-    remote.nameLabel.destroy();
+    remote.nameLabel?.destroy();
+    remote.slotLabel?.destroy();
     remote.namePlate?.destroy();
     remote.hero?.destroy();
 
@@ -2875,10 +2925,9 @@ export class WorldScene extends Phaser.Scene {
       const idleBob = remote.heroState?.startsWith("idle") ? Math.sin(performance.now() / 430 + remote.slot) * 0.45 : 0;
       for (const sprite of remote.sprites) sprite.setPosition(x, y + idleBob);
       for (const sprite of remote.sprites) sprite.setVisible(true);
-      remote.nameLabel.setPosition(x, y - 29 + idleBob);
-      this.drawParchmentNameplate(remote.namePlate, remote.nameLabel, x, y - 29 + idleBob);
-      this.drawRemoteHpBar(remote, x, y + idleBob);
-      if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 40);
+      this.drawPlayerNameplate(remote, x, y - 24 + idleBob);
+      this.drawRemoteHpBar(remote, x, y - 24 + idleBob);
+      if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 42);
     }
   }
 
@@ -2910,6 +2959,8 @@ export class WorldScene extends Phaser.Scene {
 
     if (remote.state?.startsWith("interact")) {
       anim = "interact";
+    } else if (remote.state?.startsWith("sword") || remote.state?.startsWith("attack")) {
+      anim = "sword";
     } else if (remote.state?.startsWith("punch")) {
       anim = "punch";
     } else if (remote.state?.startsWith("hurt")) {
@@ -2926,7 +2977,7 @@ export class WorldScene extends Phaser.Scene {
     else if (dx < -0.4 || vx < -8) direction = "left";
     remote.facing = direction;
 
-    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 9 : (anim === "punch" ? 12 : 6));
+    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 9 : ((anim === "punch" || anim === "sword") ? 14 : 6));
     const frameDuration = 1000 / frameRate;
 
     if (anim === "jump") {
@@ -2936,7 +2987,7 @@ export class WorldScene extends Phaser.Scene {
       if (remote.animTimer >= frameDuration) {
         const steps = Math.floor(remote.animTimer / frameDuration);
         remote.animTimer -= steps * frameDuration;
-        const bodyKey = anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : anim === "punch" ? `avatar-body-punch-${direction}` : "avatar-body";
+        const bodyKey = anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : anim === "sword" ? `avatar-body-sword-${direction}` : anim === "punch" ? `avatar-body-punch-${direction}` : "avatar-body";
         const frameTexture = this.textures.exists(bodyKey) ? bodyKey : "avatar-body";
         const activeColumns = this.getAvatarTextureColumns(frameTexture);
         if (remote.lastAnim !== anim || remote.lastDirection !== direction) remote.animFrame = 0;
@@ -2968,7 +3019,10 @@ export class WorldScene extends Phaser.Scene {
       else if (anim === "jump") textureKey = `avatar-${part}-jump-${direction}`;
       else if (anim === "interact") textureKey = `avatar-${part}-interact-${direction}`;
       else if (anim === "hurt") textureKey = `avatar-${part}-hurt-${direction}`;
-      else if (anim === "punch") textureKey = `avatar-${part}-punch-${direction}`;
+      else if (anim === "sword" || anim === "attack") {
+        textureKey = `avatar-${part}-sword-${direction}`;
+        if (!this.textures.exists(textureKey)) textureKey = `avatar-${part}-punch-${direction}`;
+      } else if (anim === "punch") textureKey = `avatar-${part}-punch-${direction}`;
 
       if (!this.textures.exists(textureKey)) {
         textureKey = `avatar-${part}-walk-${direction}`;
@@ -3029,11 +3083,16 @@ export class WorldScene extends Phaser.Scene {
   getAvatarTexture(part, state) {
     if (state === "idle") return part.idleTexture;
 
-    // Smooth locomotion uses same-pivot Walk sheets; special attacks use verified Punch sheets.
+    // Smooth locomotion uses same-pivot Walk sheets; special attacks use Sword or Punch sheets.
     const direction = state.endsWith("left") ? "left" : "right";
-    const pose = state.startsWith("punch") ? "punch" : state.startsWith("hurt") ? "hurt" : state.startsWith("interact") ? "interact" : state.startsWith("jump") || state.startsWith("fall") ? "jump" : state.startsWith("run") ? "run" : "walk";
+    const pose = (state.startsWith("sword") || state.startsWith("attack")) ? "sword" : state.startsWith("punch") ? "punch" : state.startsWith("hurt") ? "hurt" : state.startsWith("interact") ? "interact" : state.startsWith("jump") || state.startsWith("fall") ? "jump" : state.startsWith("run") ? "run" : "walk";
     const exact = `avatar-${part.name}-${pose}-${direction}`;
     if (this.textures.exists(exact)) return exact;
+
+    if (pose === "sword") {
+      const punchKey = `avatar-${part.name}-punch-${direction}`;
+      if (this.textures.exists(punchKey)) return punchKey;
+    }
 
     // Run sheets exist for body/eyes/hair and some clothing layers only; reuse the aligned Walk fallback.
     const walk = `avatar-${part.name}-walk-${direction}`;
@@ -3080,7 +3139,8 @@ export class WorldScene extends Phaser.Scene {
 
     // On ground: natural 9 FPS walk stride cadence vs 4 FPS breathing idle
     const isMoving = Math.abs(this.player?.body?.velocity?.x || 0) > 5;
-    const frameRate = this.avatarState.startsWith("punch") ? 14
+    const isAttacking = this.avatarState.startsWith("punch") || this.avatarState.startsWith("sword") || this.avatarState.startsWith("attack");
+    const frameRate = isAttacking ? 15
       : this.avatarState.startsWith("hurt") ? 10
       : (isMoving ? 10 : 5);
     const frameDuration = 1000 / frameRate;
@@ -3096,8 +3156,8 @@ export class WorldScene extends Phaser.Scene {
         this.avatarState === "idle" ? "idle" : this.avatarState
       );
       const columns = this.getAvatarTextureColumns(bodyTexture);
-      // Punch and death play once and hold the last frame. Hurt flinches, then holds if K.O.
-      if (this.avatarState.startsWith("punch") || this.playerKo) {
+      // Attacks and death play once and hold the last frame until timer reset.
+      if (isAttacking || this.playerKo) {
         this.avatarFrame = Math.min(columns - 1, this.avatarFrame + steps);
       } else {
         this.avatarFrame = (this.avatarFrame + steps) % columns;
@@ -3168,10 +3228,13 @@ export class WorldScene extends Phaser.Scene {
     this.mobileInput = {
       left: false,
       right: false,
-      jump: false
+      jump: false,
+      attack: false
     };
 
     this.mobileJumpWasDown = false;
+    this.mobileAttackWasDown = false;
+    this.isAttacking = false;
     this.playerFacing = "right";
     this.wasGrounded = true;
     this.networkCharacterState = { state: "idle", grounded: true, vx: 0, vy: 0 };
@@ -3203,6 +3266,40 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  performAttackSlash() {
+    if (this.isAttacking || this.playerKo || !this.player?.body) return;
+    this.isAttacking = true;
+    const dir = this.playerFacing || "right";
+    const hasWeapon = Number(this.localAvatarSelection?.weapon) > 0;
+    const anim = hasWeapon ? "sword" : "punch";
+    const state = `${anim}-${dir}`;
+
+    this.setAvatarAnimation(state);
+    this.networkCharacterState = { state, grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+    retroAudio.playBounce?.();
+
+    // Visual slash / swoosh effect
+    this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
+
+    // Subtle forward lunge
+    const lunge = dir === "right" ? 8 : -8;
+    this.tweens.add({
+      targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+      x: `+=${lunge}`,
+      duration: 110,
+      yoyo: true,
+      ease: "Quad.easeOut"
+    });
+
+    this.time.delayedCall(340, () => {
+      this.isAttacking = false;
+      if (!this.playerKo) {
+        this.setAvatarAnimation("idle");
+        this.networkCharacterState = { state: "idle", grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+      }
+    });
+  }
+
   updatePlayerMovement() {
     const body = this.player.body;
 
@@ -3214,6 +3311,25 @@ export class WorldScene extends Phaser.Scene {
     if (!this.gameStarted || this.introActive || this._bossIntroPlaying || this.quizPaused || this.finished) {
       body.setVelocity(0, body.velocity.y);
       if (!this.playerKo) this.setAvatarAnimation("idle");
+      return;
+    }
+
+    // Attack button or F key:
+    const attackPressed = Phaser.Input.Keyboard.JustDown(this.enemyAttackKey) ||
+      (this.mobileInput.attack && !this.mobileAttackWasDown);
+    this.mobileAttackWasDown = Boolean(this.mobileInput.attack);
+
+    if (attackPressed && !this.isAttacking && !this.playerKo) {
+      if (this.enemyInReach) {
+        this.attackStageEnemy();
+      } else {
+        this.performAttackSlash();
+      }
+      return;
+    }
+
+    if (this.avatarState.startsWith("interact") || this.avatarState.startsWith("hurt") || this.avatarState.startsWith("punch") || this.avatarState.startsWith("sword") || this.avatarState.startsWith("attack") || this.isAttacking) {
+      this.networkCharacterState = { state: this.avatarState, grounded: body.onFloor(), vx: 0, vy: 0 };
       return;
     }
 

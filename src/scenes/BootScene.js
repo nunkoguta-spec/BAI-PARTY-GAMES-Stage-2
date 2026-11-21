@@ -254,6 +254,19 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
+    // Official Sword Slash Attack sheets (5-frame high quality slash animation)
+    const sword = `${ASSET}/avatar/Sword`;
+    for (const dir of ["Left", "Right"]) {
+      const lower = dir.toLowerCase();
+      for (const [name, folder, file] of [
+        ["body", "Character", "Character"], ["bottoms", "Clothing", "Clothing_Bottoms"],
+        ["shoes", "Clothing", "Clothing_Shoes"], ["top", "Clothing", "Clothing_Tops"],
+        ["eyes", "Eyes", "Eyes"], ["hair", "Hair", "Hair"], ["sword", "Swords", "Sword"]
+      ]) {
+        this.load.spritesheet(`avatar-${name}-sword-${lower}`, `${sword}/${folder}/${file}_Sword_${dir}-Sheet.png`, { frameWidth: FRAME, frameHeight: FRAME });
+      }
+    }
+
     const hurt = `${ASSET}/avatar/Hurt`;
     for (const [key, url] of [
       ["avatar-body-hurt-left", `${hurt}/Character/Character_Hurt_Left-Sheet.png`],
@@ -275,6 +288,7 @@ export class BootScene extends Phaser.Scene {
     const gear = `${ASSET}/avatar-gear`;
     const gearSheets = [["idle", "Idle", "Front"], ["walk", "Walk", "Left"], ["walk", "Walk", "Right"], ["jump", "Jump", "Left"], ["jump", "Jump", "Right"],
       ["interact", "Interact", "Left"], ["interact", "Interact", "Right"], ["punch", "Punch", "Left"], ["punch", "Punch", "Right"],
+      ["sword", "Sword", "Left"], ["sword", "Sword", "Right"],
       ["hurt", "Hurt", "Left"], ["hurt", "Hurt", "Right"]];
     for (const part of [["Hat", "hat"], ["Glasses", "glasses"], ["Weapon", "weapon"]]) {
       for (const [pose, anim, dir] of gearSheets) {

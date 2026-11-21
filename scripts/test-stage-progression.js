@@ -18,11 +18,17 @@ async function run() {
   serverProcess.stdout.on("data", d => process.stdout.write("[SERVER] " + d));
   serverProcess.stderr.on("data", d => process.stderr.write("[SERVER-ERR] " + d));
 
-  await wait(1200);
+  for (let i = 0; i < 50; i++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${SERVER_PORT}/health`);
+      if (res.ok) break;
+    } catch {}
+    await wait(100);
+  }
 
-  const socket = io(`http://localhost:${SERVER_PORT}`, {
-    transports: ["websocket"],
-    reconnection: false
+  const socket = io(`http://127.0.0.1:${SERVER_PORT}`, {
+    reconnection: true,
+    reconnectionAttempts: 10
   });
 
   await new Promise((resolve, reject) => {
@@ -39,9 +45,9 @@ async function run() {
   const token = createRes.hostToken;
 
   // Player joins
-  const playerSocket = io(`http://localhost:${SERVER_PORT}`, {
-    transports: ["websocket"],
-    reconnection: false
+  const playerSocket = io(`http://127.0.0.1:${SERVER_PORT}`, {
+    reconnection: true,
+    reconnectionAttempts: 10
   });
   await new Promise(resolve => playerSocket.once("connect", resolve));
 

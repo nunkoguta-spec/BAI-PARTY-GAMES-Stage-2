@@ -698,13 +698,23 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   pointer-events:auto;
   box-shadow:inset -3px -3px 0 #b38612,inset 3px 3px 0 #fff194,3px 3px 0 #000;
 }
+.mobile-controls .attack-btn {
+  flex-basis: clamp(68px, 19vw, 92px);
+  width: clamp(68px, 19vw, 92px);
+  margin-left: auto;
+  font-size: 7px;
+  background: #f59e0b;
+  color: #171324;
+  font-weight: 900;
+  box-shadow: inset -3px -3px 0 #b45309, inset 3px 3px 0 #fde68a, 3px 3px 0 #000;
+}
 .mobile-controls .jump-button {
-  flex-basis:clamp(88px,25vw,112px);
-  width:clamp(88px,25vw,112px);
-  margin-left:auto;
-  font-size:8px;
-  background:#82d82c;
-  box-shadow:inset -3px -3px 0 #478b19,inset 3px 3px 0 #c5ff83,3px 3px 0 #000;
+  flex-basis: clamp(68px, 19vw, 92px);
+  width: clamp(68px, 19vw, 92px);
+  margin-left: 6px;
+  font-size: 8px;
+  background: #82d82c;
+  box-shadow: inset -3px -3px 0 #478b19, inset 3px 3px 0 #c5ff83, 3px 3px 0 #000;
 }
 #gamePanel { padding-bottom:calc(82px + env(safe-area-inset-bottom)); }
 @media (orientation:landscape) and (max-height:560px) {

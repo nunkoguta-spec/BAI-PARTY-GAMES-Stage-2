@@ -49,7 +49,8 @@ let phoneScene = null;
 const mobileInput = {
   left: false,
   right: false,
-  jump: false
+  jump: false,
+  attack: false
 };
 
 let quizInterval = null;
@@ -366,6 +367,13 @@ function setMobileInput(action, pressed) {
   if (action === "jump" && pressed) {
     retroAudio.playJump();
   }
+  if (action === "attack" && pressed) {
+    if (phoneScene?.enemyInReach) {
+      phoneScene.attackStageEnemy();
+    } else {
+      phoneScene?.performAttackSlash?.();
+    }
+  }
   if (phoneScene?.mobileInput && phoneScene.mobileInput !== mobileInput) {
     phoneScene.mobileInput[action] = pressed;
   }
@@ -375,6 +383,7 @@ function releaseAllMobileInput() {
   setMobileInput("left", false);
   setMobileInput("right", false);
   setMobileInput("jump", false);
+  setMobileInput("attack", false);
 }
 
 // =====================================================
@@ -965,6 +974,7 @@ function setupMobileControls() {
   const controls = [
     ["leftButton", "left"],
     ["rightButton", "right"],
+    ["mobileAttackButton", "attack"],
     ["jumpButton", "jump"]
   ];
 

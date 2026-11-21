@@ -1,11 +1,17 @@
 import { io } from "socket.io-client";
 import { fork } from "child_process";
+import { BATTLE_QUESTIONS } from "../server/battleQuestions.js";
 
 const SERVER_PORT = 3479;
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+const answerFor = (stageId, q) => {
+  const item = BATTLE_QUESTIONS[stageId].find((x) => x.question === q.question && Object.values(x.choices).every((t) => Object.values(q.choices).includes(t)));
+  return Object.keys(q.choices).find((l) => q.choices[l] === item.choices[item.answer]);
+};
 
 async function run() {
   console.log("[BATTLE TEST] Starting test server on port " + SERVER_PORT);
@@ -17,10 +23,16 @@ async function run() {
   serverProcess.stdout.on("data", d => process.stdout.write("[SERVER] " + d));
   serverProcess.stderr.on("data", d => process.stderr.write("[SERVER-ERR] " + d));
 
-  await wait(1200);
+  for (let i = 0; i < 50; i++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${SERVER_PORT}/health`);
+      if (res.ok) break;
+    } catch {}
+    await wait(100);
+  }
 
   // Host connects
-  const host = io(`http://localhost:${SERVER_PORT}`, { transports: ["websocket"], reconnection: false });
+  const host = io(`http://127.0.0.1:${SERVER_PORT}`, { reconnection: true, reconnectionAttempts: 10 });
   await new Promise(res => host.once("connect", res));
 
   const roomRes = await new Promise(res => host.emit("room:create", {}, res));
@@ -31,7 +43,7 @@ async function run() {
   await new Promise(res => host.emit("tv:subscribe", { roomCode: code, hostToken: token }, res));
 
   // Player connects and joins
-  const player = io(`http://localhost:${SERVER_PORT}`, { transports: ["websocket"], reconnection: false });
+  const player = io(`http://127.0.0.1:${SERVER_PORT}`, { reconnection: true, reconnectionAttempts: 10 });
   await new Promise(res => player.once("connect", res));
   await new Promise(res => player.emit("room:join", { roomCode: code, name: "Hero" }, res));
 
@@ -48,25 +60,9 @@ async function run() {
   console.log("[BATTLE TEST] Battle started successfully! First question:", startRes.question);
 
   console.log("[BATTLE TEST] 2. Test wrong answer & health reduction...");
-  // Test wrong answer: send an answer until a wrong one is found
-  let wrongRes = null;
-  for (const letter of ["A", "B", "C", "D"]) {
-    const res = await new Promise(r => player.emit("battle:answer", { roomCode: code, choice: letter }, r));
-    if (!res.correct) {
-      wrongRes = res;
-      break;
-    }
-  }
-  if (!wrongRes) {
-    // If first was correct, get next question and submit wrong answer
-    for (const letter of ["A", "B", "C", "D"]) {
-      const res = await new Promise(r => player.emit("battle:answer", { roomCode: code, choice: letter }, r));
-      if (!res.correct) {
-        wrongRes = res;
-        break;
-      }
-    }
-  }
+  const correctLetter = answerFor("munich", startRes);
+  const wrongLetter = ["A", "B", "C", "D"].find((l) => l !== correctLetter);
+  const wrongRes = await new Promise(r => player.emit("battle:answer", { roomCode: code, choice: wrongLetter }, r));
   console.log("[BATTLE TEST] Wrong answer response:", { correct: wrongRes.correct, damage: wrongRes.wrongDamage, remainingHp: wrongRes.hp });
   if (wrongRes.correct) throw new Error("Expected wrong answer to fail!");
   if (wrongRes.hp >= startRes.hp) throw new Error("Expected HP to decrease!");
@@ -118,16 +114,11 @@ async function run() {
       defeated = true;
       break;
     }
-    // Pick the right choice
-    // In server, battle.shown has answer letter
-    // We can test each letter until correct
-    for (const choice of ["A", "B", "C", "D"]) {
-      const ans = await new Promise(res => player.emit("battle:answer", { roomCode: code, choice }, res));
-      if (ans.correct) {
-        console.log(`[BATTLE TEST] Correct answer! Progress: ${ans.solved}/${ans.total}, Enemy HP: ${ans.enemyHp}`);
-        if (ans.defeated) defeated = true;
-        break;
-      }
+    const cLetter = answerFor("munich", qState);
+    const ans = await new Promise(res => player.emit("battle:answer", { roomCode: code, choice: cLetter }, res));
+    if (ans.correct) {
+      console.log(`[BATTLE TEST] Correct answer! Progress: ${ans.solved}/${ans.total}, Enemy HP: ${ans.enemyHp}`);
+      if (ans.defeated) defeated = true;
     }
   }
 
