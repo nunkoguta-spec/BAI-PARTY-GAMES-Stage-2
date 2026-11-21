@@ -2859,7 +2859,7 @@ export class WorldScene extends Phaser.Scene {
       remote.serverNow = Number(data.serverNow) || Date.now();
     }
 
-    if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "hurt"].includes(data.state)) {
+    if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "hurt", "hurt-left", "hurt-right", "punch-left", "punch-right", "sword-left", "sword-right"].includes(data.state)) {
       remote.state = data.state;
     }
     if (typeof data.finished === "boolean") remote.finished = data.finished;
@@ -2975,6 +2975,58 @@ export class WorldScene extends Phaser.Scene {
       "[MULTIPLAYER] Avatar pemain dihapus:",
       playerId
     );
+  }
+
+  // Other players see a clear attack pose + slash when someone lands a hit, and a hurt pose when the enemy hits back.
+  showRemoteBattleStrike(data = {}) {
+    const remote = this.remoteAvatars?.get(data.playerId);
+    const e = this.stageEnemy;
+    if (e && Number.isFinite(Number(data.enemyHp))) {
+      e.hp = Number(data.enemyHp);
+      if (Number.isFinite(Number(data.enemyMaxHp))) e.maxHp = Number(data.enemyMaxHp);
+      this.drawEnemyHealthBar?.();
+    }
+    if (!remote) return;
+    const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+    const hasWeapon = Number(remote.avatarRows?.weapon) > 0;
+    remote.state = `${hasWeapon ? "sword" : "punch"}-${dir}`;
+    remote.animFrame = 0;
+    remote.animTimer = 0;
+    const hitX = e?.sprite?.x ?? remote.x + (dir === "right" ? 22 : -22);
+    const hitY = (e?.sprite?.y ?? remote.y) - 6;
+    if (hasWeapon) this.spawnSwordSlashArc?.(remote.x + (dir === "right" ? 16 : -16), remote.y - 4, dir);
+    else this.spawnPunchSwoosh?.(remote.x + (dir === "right" ? 16 : -16), remote.y - 4, dir);
+    this.spawnSlashEffect?.(hitX, hitY);
+    this.spawnHitSparks?.(hitX, hitY);
+    if (e?.sprite?.active && !data.defeated) {
+      this.setEnemyPose?.("hit");
+      e.sprite.setTint?.(0xff4444);
+      this.time?.delayedCall?.(180, () => {
+        e.sprite?.clearTint?.();
+        if (!e.defeated) this.setEnemyPose?.("idle");
+      });
+    }
+    this.showFloatingFeedback?.(hitX, hitY - 18, data.defeated ? "DIKALAHKAN!" : `-${Number(data.damage) || 0} HP`, "#ffe28a");
+    this.time?.delayedCall?.(520, () => {
+      if (remote.state?.startsWith("sword") || remote.state?.startsWith("punch")) remote.state = "idle";
+    });
+  }
+
+  showRemoteBattleHurt(data = {}) {
+    const remote = this.remoteAvatars?.get(data.playerId);
+    if (!remote) return;
+    const e = this.stageEnemy;
+    const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+    remote.state = `hurt-${dir}`;
+    remote.animFrame = 0;
+    remote.animTimer = 0;
+    this.spawnSlashEffect?.(remote.x, remote.y - 6);
+    this.showFloatingFeedback?.(remote.x, remote.y - 20, `-${Number(data.damage) || 0} HP`, "#ff7777");
+    if (e?.sprite?.active) this.setEnemyPose?.("attack");
+    this.time?.delayedCall?.(220, () => { if (e && !e.defeated) this.setEnemyPose?.("idle"); });
+    this.time?.delayedCall?.(480, () => {
+      if (remote.state?.startsWith("hurt")) remote.state = "idle";
+    });
   }
 
   updateRemoteAvatars(delta) {

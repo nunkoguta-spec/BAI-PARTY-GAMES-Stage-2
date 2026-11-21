@@ -782,7 +782,17 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   if (socket.connected) syncClock();
   setInterval(() => { if (socket.connected) syncServerClock(socket, 2); }, 30000);
 
-  // Enemy battles on TV: show hit animation, update HP bar, and show defeat particles
+  // Enemy battles on TV: show player attack animations, hit feedback, HP bar update, and defeat
+  socket.on("battle:player-strike", (data = {}) => {
+    const scene = getWorldScene();
+    scene?.showRemoteBattleStrike?.(data);
+  });
+
+  socket.on("battle:enemy-strike", (data = {}) => {
+    const scene = getWorldScene();
+    scene?.showRemoteBattleHurt?.(data);
+  });
+
   socket.on("tv:enemy-hit", ({ playerId, stageId, damage, enemyHp, enemyMaxHp } = {}) => {
     const scene = getWorldScene();
     if (!scene) return;

@@ -199,6 +199,17 @@ export function createPhoneGame({
       };
       socket.on("game:ended", handleGameEnded);
 
+      const handlePlayerStrike = (data) => {
+        if (!data?.playerId || data.playerId === socket.id) return;
+        this.showRemoteBattleStrike?.(data);
+      };
+      const handleEnemyStrike = (data) => {
+        if (!data?.playerId || data.playerId === socket.id) return;
+        this.showRemoteBattleHurt?.(data);
+      };
+      socket.on("battle:player-strike", handlePlayerStrike);
+      socket.on("battle:enemy-strike", handleEnemyStrike);
+
       // =====================================================
       // BERSIHKAN LISTENERS SAAT SCENE DITUTUP
       // =====================================================
@@ -223,6 +234,8 @@ export function createPhoneGame({
           socket.off("trap:hit", handleTrapHit);
           clearInterval(this._clockTimer);
           socket.off("game:ended", handleGameEnded);
+          socket.off("battle:player-strike", handlePlayerStrike);
+          socket.off("battle:enemy-strike", handleEnemyStrike);
         }
       );
 

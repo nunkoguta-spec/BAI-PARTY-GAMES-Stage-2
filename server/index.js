@@ -966,6 +966,7 @@ io.on("connection", (socket) => {
       broadcastLeaderboard(room);
       broadcastPlayerList(room);
       io.to(room.code).emit("tv:enemy-hit", { playerId: player.id, stageId: stage.id, damage: enemy.enemyDamage, enemyHp: enemy.enemyHp, enemyMaxHp: enemy.enemyMaxHp });
+      io.to(room.code).emit("battle:player-strike", { playerId: player.id, stageId: stage.id, damage: enemy.enemyDamage, enemyHp: enemy.enemyHp, enemyMaxHp: enemy.enemyMaxHp, defeated, solved: battle.solved, total: battle.total });
       callback({
         ok: true, correct: true, defeated, solved: battle.solved, total: battle.total,
         points, totalScore: player.score, hp: player.hp, maxHp: BATTLE.playerMaxHp, ko: false, ...enemy,
@@ -979,6 +980,7 @@ io.on("connection", (socket) => {
     battle.shown = null;
     const hit = damagePlayerHp(room, player, cfg.wrongDamage, "battle-wrong");
     const enemy = enemyHpPayload(battle, cfg);
+    io.to(room.code).emit("battle:enemy-strike", { playerId: player.id, stageId: stage.id, damage: hit.applied, playerHp: player.hp, ko: hit.ko });
     callback({
       ok: true, correct: false, defeated: false, solved: battle.solved, total: battle.total,
       points: 0, wrongDamage: hit.applied, ko: hit.ko, koPenalty: hit.penalty, respawnMs: BATTLE.koRespawnMs,
@@ -1068,7 +1070,7 @@ io.on("connection", (socket) => {
     if (payload.facing === "left" || payload.facing === "right") player.facing = payload.facing;
     if ([-1, 0, 1].includes(Math.sign(Number(payload.vx)))) player.vx = Math.max(-500, Math.min(500, Number(payload.vx) || 0));
     if (Number.isFinite(Number(payload.vy))) player.vy = Math.max(-700, Math.min(700, Number(payload.vy)));
-    if (["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "punch-left", "punch-right"].includes(payload.state)) player.state = payload.state;
+    if (["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "punch-left", "punch-right", "sword-left", "sword-right", "hurt-left", "hurt-right"].includes(payload.state)) player.state = payload.state;
     if (typeof payload.grounded === "boolean") player.grounded = payload.grounded;
 
     const movementData = publicPlayerPosition(player);
