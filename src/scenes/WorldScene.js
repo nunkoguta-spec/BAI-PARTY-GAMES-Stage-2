@@ -1018,6 +1018,12 @@ export class WorldScene extends Phaser.Scene {
       this.networkCharacterState = { state: `hurt-${this.playerFacing}`, grounded: false, vx: dir * TRAP.knockbackX, vy: -TRAP.knockbackY };
       this.setAvatarAnimation(`hurt-${this.playerFacing}`);
       this.trapKnockUntil = this.time.now + 350;
+      this.time.delayedCall(360, () => {
+        if (!this.player?.body || this.playerKo) return;
+        this.player.body.setVelocity(0, 0);
+        this.setAvatarAnimation("idle");
+        this.networkCharacterState = { state: "idle", grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+      });
       this.cameras.main.shake(140, 0.006);
       const damage = Number(data.damage) || 15;
       const newHp = Math.max(0, this.playerHp - damage);
@@ -1126,6 +1132,12 @@ export class WorldScene extends Phaser.Scene {
     this.player.body.reset(result.respawnX, result.respawnY);
     this.syncAvatarLayers();
     this.setAvatarAnimation(`hurt-${this.playerFacing}`);
+    this.time.delayedCall(420, () => {
+      if (!this.player?.body || this.playerKo) return;
+      this.player.body.setVelocity(0, 0);
+      this.setAvatarAnimation("idle");
+      this.networkCharacterState = { state: "idle", grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+    });
     this.time.delayedCall(1600, () => { this.hitCooldown = false; });
   }
 
@@ -3383,6 +3395,13 @@ export class WorldScene extends Phaser.Scene {
 
     // Trap knock-back: keep the push for a moment instead of letting held input cancel it.
     if (this.time.now < (this.trapKnockUntil || 0)) return;
+
+    // Safety recovery: stop knockback velocity once stun expires so the character doesn't slide/walk endlessly
+    if (this.avatarState.startsWith("hurt") && !this.playerKo) {
+      body.setVelocityX(0);
+      this.setAvatarAnimation("idle");
+      this.networkCharacterState = { state: "idle", grounded: body.onFloor(), vx: 0, vy: 0 };
+    }
 
     // Watchdog safety checks: prevent any flag from freezing player permanently
     if (this.isAttacking && (!this.attackStartTime || this.time.now - this.attackStartTime > 450)) {

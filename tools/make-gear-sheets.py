@@ -148,7 +148,9 @@ def lighter(c, f=.55): return tuple(int(v + (255 - v) * f) for v in c)
 def weapon_frame(spec, a, d, anim="Idle", col=0):
     out = Image.new("RGBA", (F, F), (0, 0, 0, 0))
     s = -1 if d == "Left" else 1
-    hx = round(a["bcx"] + 5 * s)
+    # Forward spacing for walking/idle to prevent piercing the body/head
+    fwd_offset = 2.5 if anim in ("Walk", "Idle") else (1.5 if anim == "Jump" else 0)
+    hx = round(a["bcx"] + (5 + fwd_offset) * s)
     hy = a["feet"] - 7
 
     # Dynamic animation adjustments for weapon holding & attack swing:
@@ -164,8 +166,10 @@ def weapon_frame(spec, a, d, anim="Idle", col=0):
         hx += shift_x * s
         hy += shift_y
     elif anim == "Walk":
-        # Bob with stride
+        # Synchronize forward swing and vertical bob with stride
+        shift_x = [0, 1, 0, 1][col % 4]
         shift_y = [0, -1, 0, -1][col % 4]
+        hx += shift_x * s
         hy += shift_y
     elif anim == "Jump":
         hy -= 2
