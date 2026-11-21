@@ -140,6 +140,39 @@ class RetroAudioSystem {
     } catch {}
   }
 
+  playSlash() {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      // White noise / sharp frequency sweep for blade whoosh
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(950, now);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.13);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.13);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.14);
+
+      // High metallic chime ring
+      const ring = this.ctx.createOscillator();
+      const ringGain = this.ctx.createGain();
+      ring.type = "triangle";
+      ring.frequency.setValueAtTime(2400, now);
+      ring.frequency.exponentialRampToValueAtTime(900, now + 0.12);
+      ringGain.gain.setValueAtTime(0.14, now);
+      ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      ring.connect(ringGain);
+      ringGain.connect(this.sfxGain);
+      ring.start(now);
+      ring.stop(now + 0.13);
+    } catch {}
+  }
+
   playCountdownBeep(high = false) {
     if (this.muted) return;
     this.unlock();

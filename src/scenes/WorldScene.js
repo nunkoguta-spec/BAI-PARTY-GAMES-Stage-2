@@ -2319,6 +2319,39 @@ export class WorldScene extends Phaser.Scene {
     this.tweens.add({ targets: g, alpha: 0, scale: 1.5, x: x + sign * 14, duration: 200, onComplete: () => g.destroy() });
   }
 
+  spawnSwordSlashArc(x, y, dir) {
+    const g = this.add.graphics({ x, y }).setDepth(43);
+    const sign = dir === "right" ? 1 : -1;
+    // Outer vibrant cyan-glow arc
+    g.lineStyle(4, 0x38bdf8, 0.7);
+    g.beginPath();
+    g.arc(sign * 12, 0, 18, -0.65 * Math.PI, 0.65 * Math.PI, sign < 0);
+    g.strokePath();
+
+    // Inner bright white razor blade arc
+    g.lineStyle(2, 0xffffff, 1);
+    g.beginPath();
+    g.arc(sign * 13, 0, 18, -0.6 * Math.PI, 0.6 * Math.PI, sign < 0);
+    g.strokePath();
+
+    // Sharp blade tip spark
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(sign * 22, -6, 2.5);
+    g.fillStyle(0x38bdf8, 0.9);
+    g.fillCircle(sign * 24, 0, 2);
+
+    this.tweens.add({
+      targets: g,
+      alpha: 0,
+      scaleX: 1.45,
+      scaleY: 1.45,
+      x: x + sign * 18,
+      duration: 190,
+      ease: "Quad.easeOut",
+      onComplete: () => g.destroy()
+    });
+  }
+
   spawnHitSparks(x, y) {
     const colors = [0xfff2b0, 0xff4444, 0xffa500, 0xffffff];
     for (let i = 0; i < 10; i++) {
@@ -2384,7 +2417,12 @@ export class WorldScene extends Phaser.Scene {
       retroAudio.playCorrect?.();
 
       const lunge = dir === "right" ? 16 : -16;
-      this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 18 : -18), this.player.y - 4, dir);
+      if (hasWeapon) {
+        retroAudio.playSlash?.();
+        this.spawnSwordSlashArc(this.player.x + (dir === "right" ? 18 : -18), this.player.y - 4, dir);
+      } else {
+        this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 18 : -18), this.player.y - 4, dir);
+      }
 
       this.tweens.add({
         targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
@@ -2401,8 +2439,13 @@ export class WorldScene extends Phaser.Scene {
         this.setEnemyProgress(solved, total);
         this.spawnSlashEffect(e.sprite.x + (dir === "right" ? -14 : 14), e.sprite.y - 6);
         this.spawnHitSparks(e.sprite.x + (dir === "right" ? -14 : 14), e.sprite.y - 6);
-        this.cameras.main.shake(120, 0.005);
-        retroAudio.playBounce?.();
+        this.cameras.main.shake(defeated ? 220 : 120, defeated ? 0.01 : 0.005);
+        if (hasWeapon) {
+          retroAudio.playShatter?.();
+        } else {
+          retroAudio.playBounce?.();
+        }
+        if (defeated) retroAudio.playCoin?.();
         const dmg = Math.round(e.maxHp / Math.max(1, total));
         this.showFloatingFeedback(e.sprite.x, e.sprite.y - 38, defeated ? "DIKALAHKAN!" : `-${dmg} HP`, "#ffe28a");
 
@@ -3276,10 +3319,15 @@ export class WorldScene extends Phaser.Scene {
 
     this.setAvatarAnimation(state);
     this.networkCharacterState = { state, grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
-    retroAudio.playBounce?.();
 
-    // Visual slash / swoosh effect
-    this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
+    // Visual slash / swoosh effect + audio
+    if (hasWeapon) {
+      retroAudio.playSlash?.();
+      this.spawnSwordSlashArc(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
+    } else {
+      retroAudio.playBounce?.();
+      this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
+    }
 
     // Subtle forward lunge
     const lunge = dir === "right" ? 8 : -8;

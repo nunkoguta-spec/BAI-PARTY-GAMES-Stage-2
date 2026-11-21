@@ -697,6 +697,13 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   touch-action:none;
   pointer-events:auto;
   box-shadow:inset -3px -3px 0 #b38612,inset 3px 3px 0 #fff194,3px 3px 0 #000;
+  transition: transform 0.06s ease, filter 0.06s ease;
+}
+.mobile-controls .control-button:active,
+.mobile-controls .control-button.active {
+  transform: translateY(3px) scale(0.96);
+  box-shadow: inset 3px 3px 0 rgba(0,0,0,0.4), 1px 1px 0 #000;
+  filter: brightness(0.92);
 }
 .mobile-controls .attack-btn {
   flex-basis: clamp(68px, 19vw, 92px);
@@ -1041,14 +1048,26 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 .battle-modal .pixel-choice-btn.correct {
   background: #1e824c !important;
   border-color: #2ecc71 !important;
-  box-shadow: 0 0 14px rgba(46, 204, 113, 0.8), 2px 2px 0 #000 !important;
+  box-shadow: 0 0 16px rgba(46, 204, 113, 0.9), 2px 2px 0 #000 !important;
   color: #fff !important;
+  animation: answerPop 0.25s ease-out;
 }
 .battle-modal .pixel-choice-btn.wrong {
   background: #962d22 !important;
   border-color: #e74c3c !important;
-  box-shadow: 0 0 14px rgba(231, 76, 60, 0.8), 2px 2px 0 #000 !important;
+  box-shadow: 0 0 16px rgba(231, 76, 60, 0.9), 2px 2px 0 #000 !important;
   color: #fff !important;
+  animation: answerShake 0.3s ease-out;
+}
+@keyframes answerPop {
+  0% { transform: scale(0.96); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+@keyframes answerShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
 }
 .battle-modal.anim #battleBody, .battle-modal.anim .battle-flee { display: none; }
 .battle-modal .pixel-message-text {
