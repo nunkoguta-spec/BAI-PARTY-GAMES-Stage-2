@@ -2090,6 +2090,10 @@ export class WorldScene extends Phaser.Scene {
   updateStageEnemies(delta) {
     const e = this.stageEnemy;
     if (!e || e.defeated || !e.sprite?.active) return;
+    if (this.time.now < (e.actionUntil || 0)) {
+      this.drawEnemyHealthBar();
+      return;
+    }
 
     if (this.isHostMode || !this.player) {
       // Host / spectator view: enemy patrols with animated walking step
@@ -2435,6 +2439,7 @@ export class WorldScene extends Phaser.Scene {
     return new Promise((resolve) => {
       const e = this.stageEnemy;
       if (!e || !this.player) { resolve(); return; }
+      if (e) e.actionUntil = this.time.now + (defeated ? 1300 : 700);
       const dir = e.sprite.x >= this.player.x ? "right" : "left";
       this.playerFacing = dir;
       const hasWeapon = Number(this.localAvatarSelection?.weapon) > 0;
@@ -2509,6 +2514,7 @@ export class WorldScene extends Phaser.Scene {
     return new Promise((resolve) => {
       const e = this.stageEnemy;
       if (!e || !this.player) { this.releaseHp(); resolve(); return; }
+      if (e) e.actionUntil = this.time.now + 700;
       const dir = e.sprite.x >= this.player.x ? "right" : "left";
       const useSpecial = e.cfg.boss && Math.random() < 0.4 && this.textures.exists(`enemy-${e.enemyId}-special`);
       retroAudio.playWrong?.();
@@ -2860,7 +2866,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "hurt", "hurt-left", "hurt-right", "punch-left", "punch-right", "sword-left", "sword-right"].includes(data.state)) {
-      remote.state = data.state;
+      if (this.time.now >= (remote.actionUntil || 0)) {
+        remote.state = data.state;
+      }
     }
     if (typeof data.finished === "boolean") remote.finished = data.finished;
     if (Number.isFinite(Number(data.hp))) this.setRemoteHp(remote, data);
@@ -2981,52 +2989,146 @@ export class WorldScene extends Phaser.Scene {
   showRemoteBattleStrike(data = {}) {
     const remote = this.remoteAvatars?.get(data.playerId);
     const e = this.stageEnemy;
-    if (e && Number.isFinite(Number(data.enemyHp))) {
-      e.hp = Number(data.enemyHp);
-      if (Number.isFinite(Number(data.enemyMaxHp))) e.maxHp = Number(data.enemyMaxHp);
-      this.drawEnemyHealthBar?.();
+    if (!remote && !e) return;
+
+    if (e) {
+      e.actionUntil = this.time.now + (data.defeated ? 1300 : 700);
+      if (Number.isFinite(Number(data.enemyHp))) {
+        e.hp = Number(data.enemyHp);
+        if (Number.isFinite(Number(data.enemyMaxHp))) e.maxHp = Number(data.enemyMaxHp);
+        this.drawEnemyHealthBar?.();
+      }
     }
-    if (!remote) return;
-    const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
-    const hasWeapon = Number(remote.avatarRows?.weapon) > 0;
-    remote.state = `${hasWeapon ? "sword" : "punch"}-${dir}`;
-    remote.animFrame = 0;
-    remote.animTimer = 0;
-    const hitX = e?.sprite?.x ?? remote.x + (dir === "right" ? 22 : -22);
-    const hitY = (e?.sprite?.y ?? remote.y) - 6;
-    if (hasWeapon) this.spawnSwordSlashArc?.(remote.x + (dir === "right" ? 16 : -16), remote.y - 4, dir);
-    else this.spawnPunchSwoosh?.(remote.x + (dir === "right" ? 16 : -16), remote.y - 4, dir);
-    this.spawnSlashEffect?.(hitX, hitY);
-    this.spawnHitSparks?.(hitX, hitY);
-    if (e?.sprite?.active && !data.defeated) {
-      this.setEnemyPose?.("hit");
-      e.sprite.setTint?.(0xff4444);
-      this.time?.delayedCall?.(180, () => {
-        e.sprite?.clearTint?.();
-        if (!e.defeated) this.setEnemyPose?.("idle");
+
+    if (remote) {
+      const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+      remote.facing = dir;
+      for (const sprite of remote.sprites) sprite.setFlipX(dir === "left");
+      const hasWeapon = Number(remote.avatarRows?.weapon) > 0;
+      const animType = hasWeapon ? "sword" : "punch";
+      remote.state = `${animType}-${dir}`;
+      remote.actionUntil = this.time.now + 520;
+      remote.animFrame = 0;
+      remote.animTimer = 0;
+
+      // Lunge forward with dynamic weapon slash!
+      const lunge = dir === "right" ? 16 : -16;
+      this.tweens.add({
+        targets: remote.sprites,
+        x: `+=${lunge}`,
+        scaleX: 1.15,
+        scaleY: 0.9,
+        duration: 130,
+        yoyo: true,
+        ease: "Quad.easeOut"
+      });
+
+      if (hasWeapon) {
+        this.spawnSwordSlashArc?.(remote.x + (dir === "right" ? 18 : -18), remote.y - 4, dir);
+        retroAudio.playSlash?.();
+      } else {
+        this.spawnPunchSwoosh?.(remote.x + (dir === "right" ? 18 : -18), remote.y - 4, dir);
+        retroAudio.playBounce?.();
+      }
+
+      this.time?.delayedCall?.(520, () => {
+        if (remote.state?.startsWith("sword") || remote.state?.startsWith("punch")) remote.state = "idle";
+        remote.actionUntil = 0;
       });
     }
-    this.showFloatingFeedback?.(hitX, hitY - 18, data.defeated ? "DIKALAHKAN!" : `-${Number(data.damage) || 0} HP`, "#ffe28a");
-    this.time?.delayedCall?.(520, () => {
-      if (remote.state?.startsWith("sword") || remote.state?.startsWith("punch")) remote.state = "idle";
-    });
+
+    // Impact on enemy
+    if (e?.sprite?.active) {
+      const hitX = e.sprite.x;
+      const hitY = e.sprite.y - 6;
+      this.spawnSlashEffect?.(hitX, hitY);
+      this.spawnHitSparks?.(hitX, hitY);
+      this.cameras.main?.shake?.(data.defeated ? 220 : 120, data.defeated ? 0.01 : 0.005);
+      this.showFloatingFeedback?.(hitX, hitY - 38, data.defeated ? "DIKALAHKAN!" : `-${Number(data.damage) || 0} HP`, "#ffe28a");
+
+      if (!data.defeated) {
+        this.setEnemyPose?.("hit");
+        e.sprite.setTint?.(0xff4444);
+        const recoilDir = (remote && remote.x > e.sprite.x) ? -16 : 16;
+        this.tweens.add({
+          targets: e.sprite,
+          x: e.sprite.x + recoilDir,
+          duration: 100,
+          yoyo: true,
+          ease: "Back.easeOut",
+          onComplete: () => {
+            e.sprite?.clearTint?.();
+            if (!e.defeated) this.setEnemyPose?.("idle");
+          }
+        });
+      } else {
+        this.markEnemyDefeated?.(false);
+      }
+    }
   }
 
   showRemoteBattleHurt(data = {}) {
     const remote = this.remoteAvatars?.get(data.playerId);
-    if (!remote) return;
     const e = this.stageEnemy;
-    const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
-    remote.state = `hurt-${dir}`;
-    remote.animFrame = 0;
-    remote.animTimer = 0;
-    this.spawnSlashEffect?.(remote.x, remote.y - 6);
-    this.showFloatingFeedback?.(remote.x, remote.y - 20, `-${Number(data.damage) || 0} HP`, "#ff7777");
-    if (e?.sprite?.active) this.setEnemyPose?.("attack");
-    this.time?.delayedCall?.(220, () => { if (e && !e.defeated) this.setEnemyPose?.("idle"); });
-    this.time?.delayedCall?.(480, () => {
-      if (remote.state?.startsWith("hurt")) remote.state = "idle";
-    });
+    if (!remote && !e) return;
+
+    if (e && e.sprite?.active) {
+      e.actionUntil = this.time.now + 650;
+      const homeX = e.homeX || e.sprite.x;
+      const dir = (remote && remote.x > e.sprite.x) ? "right" : "left";
+      e.sprite.setFlipX(dir === "left");
+      const useSpecial = e.cfg?.boss && Math.random() < 0.4 && this.textures.exists(`enemy-${e.enemyId}-special`);
+      this.setEnemyPose?.(useSpecial ? "special" : "attack");
+      retroAudio.playWrong?.();
+
+      // Enemy lunges towards player
+      this.tweens.add({
+        targets: e.sprite,
+        x: homeX + (dir === "right" ? 28 : -28),
+        scaleY: (e.cfg?.boss ? 0.55 : 0.72) * 1.12,
+        duration: 130,
+        yoyo: true,
+        hold: 70,
+        ease: "Quad.easeOut",
+        onComplete: () => {
+          e.sprite.x = homeX;
+          this.setEnemyPose?.("idle");
+        }
+      });
+    }
+
+    if (remote) {
+      const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+      remote.state = `hurt-${dir}`;
+      remote.actionUntil = this.time.now + 480;
+      remote.animFrame = 0;
+      remote.animTimer = 0;
+      this.spawnSlashEffect?.(remote.x, remote.y - 6);
+      this.spawnHitSparks?.(remote.x, remote.y - 6);
+      this.showFloatingFeedback?.(remote.x, remote.y - 20, `-${Number(data.damage) || 0} HP`, "#ff7777");
+
+      // Remote player recoils and flashes red
+      const recoil = dir === "left" ? 12 : -12;
+      this.tweens.add({
+        targets: remote.sprites,
+        x: `+=${recoil}`,
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeOut"
+      });
+      for (const sprite of remote.sprites) {
+        sprite.setTint?.(0xff5555);
+        this.time?.delayedCall?.(220, () => {
+          if (remote.ko) sprite.setTint?.(0x777777);
+          else sprite.clearTint?.();
+        });
+      }
+
+      this.time?.delayedCall?.(480, () => {
+        if (remote.state?.startsWith("hurt")) remote.state = "idle";
+        remote.actionUntil = 0;
+      });
+    }
   }
 
   updateRemoteAvatars(delta) {
@@ -3471,7 +3573,9 @@ export class WorldScene extends Phaser.Scene {
     // A K.O. keeps the fallen pose instead of snapping back to idle.
     if (!this.gameStarted || (this.isHostMode && this.introActive) || this._bossIntroPlaying || this.quizPaused || this.finished) {
       body.setVelocity(0, body.velocity.y);
-      if (!this.playerKo) this.setAvatarAnimation("idle");
+      if (!this.playerKo && !this.avatarState.startsWith("sword") && !this.avatarState.startsWith("punch") && !this.avatarState.startsWith("hurt")) {
+        this.setAvatarAnimation("idle");
+      }
       return;
     }
 
