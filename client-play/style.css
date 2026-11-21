@@ -705,21 +705,11 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   box-shadow: inset 3px 3px 0 rgba(0,0,0,0.4), 1px 1px 0 #000;
   filter: brightness(0.92);
 }
-.mobile-controls .attack-btn {
-  flex-basis: clamp(68px, 19vw, 92px);
-  width: clamp(68px, 19vw, 92px);
-  margin-left: auto;
-  font-size: 7px;
-  background: #f59e0b;
-  color: #171324;
-  font-weight: 900;
-  box-shadow: inset -3px -3px 0 #b45309, inset 3px 3px 0 #fde68a, 3px 3px 0 #000;
-}
 .mobile-controls .jump-button {
-  flex-basis: clamp(68px, 19vw, 92px);
-  width: clamp(68px, 19vw, 92px);
-  margin-left: 6px;
-  font-size: 8px;
+  flex-basis: clamp(74px, 22vw, 100px);
+  width: clamp(74px, 22vw, 100px);
+  margin-left: auto;
+  font-size: 9px;
   background: #82d82c;
   box-shadow: inset -3px -3px 0 #478b19, inset 3px 3px 0 #c5ff83, 3px 3px 0 #000;
 }

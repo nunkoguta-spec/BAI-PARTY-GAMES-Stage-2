@@ -974,7 +974,6 @@ function setupMobileControls() {
   const controls = [
     ["leftButton", "left"],
     ["rightButton", "right"],
-    ["mobileAttackButton", "attack"],
     ["jumpButton", "jump"]
   ];
 

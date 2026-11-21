@@ -354,13 +354,15 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     const scene = getWorldScene();
     if (!scene) return;
 
-    // Switch stage bounds if the watched player is on a different city stage
-    const targetStage = Number.isInteger(player.stageIndex) ? player.stageIndex : -1;
+    const remote = scene.remoteAvatars?.get(selectedPlayerId);
+    const targetStage = Number.isInteger(remote?.stageIndex)
+      ? remote.stageIndex
+      : (Number.isInteger(player.stageIndex) ? player.stageIndex : -1);
+
     if (targetStage >= 0 && scene.stageIndex !== targetStage) {
       scene.setStage?.(targetStage);
     }
 
-    const remote = scene.remoteAvatars?.get(selectedPlayerId);
     if (remote && remote.sprites && remote.sprites[0]) {
       scene.hostFollowPlayer?.(remote);
     }
@@ -663,6 +665,41 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       updateHostTimer(null);
       if (scene) scene.setGameTimer(null, "waiting");
     }
+  });
+
+  socket.on("player:moved", (data) => {
+    if (!data?.playerId) return;
+    const scene = getWorldScene();
+    if (!scene) return;
+    scene.updateRemoteAvatar(data);
+    const listed = players.find(p => p.playerId === data.playerId);
+    if (listed) {
+      listed.stageIndex = data.stageIndex;
+      listed.x = data.x;
+    }
+
+    // In AUTO mode, follow the active race leader (selectedPlayerId)
+    const targetPlayerId = selectedPlayerId;
+    if (data.playerId === targetPlayerId) {
+      let targetStage = Number.isInteger(data.stageIndex) ? data.stageIndex : -1;
+      if (targetStage === -1 && Number.isFinite(data.x)) {
+        targetStage = COURSE.stages.findIndex(s => data.x >= s.startX && data.x < s.endX);
+      }
+      if (targetStage >= 0 && scene.stageIndex !== targetStage) {
+        scene.setStage?.(targetStage);
+      }
+
+      const remote = scene.remoteAvatars?.get(data.playerId);
+      if (remote && scene.hostSpectatorTarget !== remote.sprites[0]) {
+        scene.hostFollowPlayer?.(remote);
+      }
+    }
+  });
+
+  socket.on("tv:player-move", (data) => {
+    if (!data?.playerId) return;
+    const scene = getWorldScene();
+    if (scene) scene.updateRemoteAvatar(data);
   });
 
   socket.on("tv:player-board-train", (data = {}) => {

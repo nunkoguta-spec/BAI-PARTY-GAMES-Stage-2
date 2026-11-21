@@ -55,35 +55,45 @@ function roller(scene, trap) {
 
 // TRAM LEWAT — PERLINTASAN SEBIDANG (BAHNÜBERGANG) -------------------------------------------
 function tram(scene, trap) {
-  const ext = trap.half + trap.len;
-  const crossW = ext * 2 + 36;
+  const crossingHalfW = 28;
+  const crossingW = crossingHalfW * 2;
 
-  // 1. Level Crossing Pavement & Rails (Perlintasan Sebidang)
+  // 1. Level Crossing Tracks & Pavement (Perlintasan Sebidang tegak lurus melintasi jalan)
   const crossBase = scene.add.graphics().setDepth(DEPTH.rail);
-  // Dark asphalt crossing roadbed
-  crossBase.fillStyle(0x1a202c, 0.95);
-  crossBase.fillRect(trap.x - crossW / 2, G - 4, crossW, 8);
-  // Timber crossing panels between rails
-  crossBase.fillStyle(0x4a3a2a, 1);
-  for (let rx = trap.x - crossW / 2 + 6; rx < trap.x + crossW / 2 - 6; rx += 14) {
-    crossBase.fillRect(rx, G - 3, 10, 6);
-  }
-  // White pedestrian warning crossing stripes
-  crossBase.fillStyle(0xffffff, 0.75);
-  for (let wx = trap.x - crossW / 2 + 10; wx < trap.x + crossW / 2 - 10; wx += 24) {
-    crossBase.fillRect(wx, G + 3, 12, 2);
+  // Dark ballast bed across the street (from G - 28 down to G + 8)
+  crossBase.fillStyle(0x18202c, 0.95);
+  crossBase.fillRect(trap.x - crossingHalfW, G - 28, crossingW, 36);
+
+  // Horizontal wooden cross-ties (sleepers) every 5px
+  crossBase.fillStyle(0x453526, 1);
+  for (let ty = G - 26; ty <= G + 4; ty += 5) {
+    crossBase.fillRect(trap.x - crossingHalfW + 3, ty, crossingW - 6, 3);
+    crossBase.fillStyle(0x2d2116, 1);
+    crossBase.fillRect(trap.x - crossingHalfW + 3, ty + 2, crossingW - 6, 1);
+    crossBase.fillStyle(0x453526, 1);
   }
 
-  const rails = scene.add.tileSprite(trap.x, G - 2, crossW, 6, "trap-rails").setOrigin(0.5, 0).setDepth(DEPTH.back);
+  // Two vertical steel rails crossing the street perpendicularly
+  crossBase.fillStyle(0x94a3b8, 1);
+  crossBase.fillRect(trap.x - 14, G - 28, 3, 36);
+  crossBase.fillRect(trap.x + 11, G - 28, 3, 36);
+  crossBase.fillStyle(0xe2e8f0, 1);
+  crossBase.fillRect(trap.x - 13, G - 28, 1, 36);
+  crossBase.fillRect(trap.x + 12, G - 28, 1, 36);
+
+  // White road hazard boundary line on both sides of the crossing
+  crossBase.fillStyle(0xffffff, 0.85);
+  crossBase.fillRect(trap.x - crossingHalfW - 1, G - 2, 2, 8);
+  crossBase.fillRect(trap.x + crossingHalfW - 1, G - 2, 2, 8);
 
   // 2. German Andreaskreuz Warning Signal Posts
-  const sigL = scene.add.sprite(trap.x - ext - 14, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
-  const sigR = scene.add.sprite(trap.x + ext + 14, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+  const sigL = scene.add.sprite(trap.x - crossingHalfW - 12, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+  const sigR = scene.add.sprite(trap.x + crossingHalfW + 12, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
 
   // 3. Red & White Automatic Crossing Gates (Schranken / Palang Pintu)
   const gateL = scene.add.graphics().setDepth(DEPTH.front + 1);
   const gateR = scene.add.graphics().setDepth(DEPTH.front + 1);
-  const gateLen = 42;
+  const gateLen = 34;
 
   function drawGateArm(g, postX, angleDeg, isLeft) {
     g.clear();
@@ -118,22 +128,23 @@ function tram(scene, trap) {
 
   // Initial upright open barrier pose (~75 deg up)
   let currentGateAngle = -75;
-  drawGateArm(gateL, trap.x - ext + 2, currentGateAngle, true);
-  drawGateArm(gateR, trap.x + ext - 2, currentGateAngle, false);
+  drawGateArm(gateL, trap.x - crossingHalfW - 2, currentGateAngle, true);
+  drawGateArm(gateR, trap.x + crossingHalfW + 2, currentGateAngle, false);
 
   // 4. Authentic Front-Facing German Train (Tampak Depan, matching Image 1)
   const textureKey = scene.textures.exists("trap-train-front") ? "trap-train-front" : "trap-tram";
-  const body = scene.add.image(trap.x, G + 1, textureKey)
+  const body = scene.add.image(trap.x, G - 18, textureKey)
     .setOrigin(0.5, 1)
     .setDepth(DEPTH.front)
+    .setScale(0.4)
     .setAlpha(0)
     .setVisible(false);
 
-  // 5. Dual LED Headlight Beams Shining Down the Tracks
+  // 5. Dual LED Headlight Beams
   const beam = scene.add.graphics().setDepth(DEPTH.top);
 
   const obj = {
-    trap, parts: [body, rails, crossBase, gateL, gateR], lastBeat: -1, lastActive: false,
+    trap, parts: [body, crossBase, gateL, gateR], lastBeat: -1, lastActive: false,
     update(now) {
       const s = tramState(trap, now);
       const beat = Math.floor(now / 250);
@@ -143,33 +154,53 @@ function tram(scene, trap) {
       // Animate crossing barrier gates lowering when train warns or approaches
       const targetAngle = (s.lights || s.active) ? 0 : -75;
       if (Math.abs(currentGateAngle - targetAngle) > 1) {
-        currentGateAngle = Phaser.Math.Linear(currentGateAngle, targetAngle, 0.12);
-        drawGateArm(gateL, trap.x - ext + 2, currentGateAngle, true);
-        drawGateArm(gateR, trap.x + ext - 2, currentGateAngle, false);
+        currentGateAngle = Phaser.Math.Linear(currentGateAngle, targetAngle, 0.14);
+        drawGateArm(gateL, trap.x - crossingHalfW - 2, currentGateAngle, true);
+        drawGateArm(gateR, trap.x + crossingHalfW + 2, currentGateAngle, false);
       }
 
-      // Conical front headlight beams shining directly towards viewer / crossing
-      beam.clear();
-      if ((s.lights || s.active) && near(scene, trap.x, 420)) {
-        const trainX = s.active ? s.x : (s.dir > 0 ? trap.x - ext : trap.x + ext);
-        const beamAlpha = s.active ? 0.32 : 0.18;
-        // Left headlight beam
-        beam.fillStyle(0xfff2b0, beamAlpha);
-        beam.fillTriangle(trainX - 18, G - 16, trainX - 32, G + 14, trainX - 4, G + 14);
-        beam.fillStyle(0xffffff, s.active ? 0.9 : 0.6);
-        beam.fillCircle(trainX - 18, G - 16, 3);
-        // Right headlight beam
-        beam.fillStyle(0xfff2b0, beamAlpha);
-        beam.fillTriangle(trainX + 18, G - 16, trainX + 4, G + 14, trainX + 32, G + 14);
-        beam.fillStyle(0xffffff, s.active ? 0.9 : 0.6);
-        beam.fillCircle(trainX + 18, G - 16, 3);
+      // Train motion: RUSHES FORWARD ALONG THE VERTICAL TRACKS (perspective Z/Y motion)
+      // DOES NOT SLIDE SIDEWAYS! Center X is ALWAYS locked at trap.x!
+      if (s.active) {
+        const u = s.u; // 0 to 1
+        const scale = 0.42 + u * 0.72;
+        const currentY = (G - 18) + u * 20;
+        const alpha = u < 0.15 ? (u / 0.15) : (u > 0.85 ? (1 - (u - 0.85) / 0.15) : 1);
+        body.setPosition(trap.x, currentY).setScale(scale).setAlpha(alpha).setVisible(true);
+
+        // Headlight beams shining forward from the approaching train's headlights
+        beam.clear();
+        if (near(scene, trap.x, 420)) {
+          const beamAlpha = 0.22 + u * 0.15;
+          const leftLightX = trap.x - 18 * scale;
+          const rightLightX = trap.x + 18 * scale;
+          const lightY = currentY - 18 * scale;
+
+          // Left headlight beam
+          beam.fillStyle(0xfff2b0, beamAlpha);
+          beam.fillTriangle(leftLightX, lightY, leftLightX - 24 * scale, G + 12, leftLightX + 6 * scale, G + 12);
+          beam.fillStyle(0xffffff, 0.85);
+          beam.fillCircle(leftLightX, lightY, 2.5 * scale);
+
+          // Right headlight beam
+          beam.fillStyle(0xfff2b0, beamAlpha);
+          beam.fillTriangle(rightLightX, lightY, rightLightX - 6 * scale, G + 12, rightLightX + 24 * scale, G + 12);
+          beam.fillStyle(0xffffff, 0.85);
+          beam.fillCircle(rightLightX, lightY, 2.5 * scale);
+        }
+      } else {
+        body.setVisible(false).setAlpha(0);
+        beam.clear();
+        // Warning light pulse when signals are on before the train arrives
+        if (s.lights && near(scene, trap.x, 420)) {
+          beam.fillStyle(0xfff2b0, 0.12);
+          beam.fillTriangle(trap.x, G - 24, trap.x - 22, G + 8, trap.x + 22, G + 8);
+        }
       }
 
       if (s.bell && beat !== obj.lastBeat && near(scene, trap.x, 380)) retroAudio.playBell?.();
       obj.lastBeat = beat;
 
-      // Front-facing train roars across the crossing (position follows s.x, matching server hitbox)
-      body.setVisible(s.active).setAlpha(s.alpha).setX(s.x);
       if (s.active && !obj.lastActive && near(scene, trap.x, 380)) {
         retroAudio.playTrainWhistle?.();
         scene.cameras?.main?.shake(240, 0.0028);
