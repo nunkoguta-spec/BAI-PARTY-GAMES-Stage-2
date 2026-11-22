@@ -7,7 +7,7 @@ export const QUEST = Object.freeze({
   points: 0,
   minFemale: 2,
   minMale: 2,
-  interactRange: 46,
+  interactRange: 70,
   npcs: Object.freeze([
     Object.freeze({
       id: "npc-dinda", name: "DINDA", gender: "f", x: 11100,

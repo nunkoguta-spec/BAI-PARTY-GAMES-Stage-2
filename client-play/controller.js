@@ -511,7 +511,12 @@ function drawQuestPortrait(npc) {
 function openQuestDialog(npc) {
   if (!npc || !gameStarted || quizActive || questOpenNpc) return;
   questOpenNpc = npc;
-  if (phoneScene) phoneScene.quizPaused = true;
+  if (phoneScene) {
+    phoneScene.quizPaused = true;
+    if (phoneScene.player?.body) {
+      phoneScene.player.body.setVelocity(0, 0);
+    }
+  }
   releaseAllMobileInput();
   $("talkButton")?.classList.add("hidden");
   $("questNpcName").textContent = npc.name;
@@ -532,7 +537,20 @@ function questButton(label, handler, primary = false) {
   button.type = "button";
   button.className = `pixel-btn pixel-choice-btn${primary ? " pixel-btn-primary" : ""}`;
   button.textContent = label;
-  button.addEventListener("click", handler);
+  button.style.touchAction = "manipulation";
+  button.style.userSelect = "none";
+  button.style.webkitUserSelect = "none";
+
+  let lastFired = 0;
+  const fire = (e) => {
+    e?.preventDefault?.();
+    const now = Date.now();
+    if (now - lastFired < 280) return;
+    lastFired = now;
+    handler();
+  };
+  button.addEventListener("pointerup", fire);
+  button.addEventListener("click", fire);
   return button;
 }
 
@@ -600,7 +618,20 @@ function submitQuest(npc) {
   });
 }
 
-$("talkButton")?.addEventListener("click", () => openQuestDialog(questNearNpc));
+const talkBtn = $("talkButton");
+if (talkBtn) {
+  talkBtn.style.touchAction = "manipulation";
+  let lastTalk = 0;
+  const fireTalk = (e) => {
+    e?.preventDefault?.();
+    const now = Date.now();
+    if (now - lastTalk < 300) return;
+    lastTalk = now;
+    openQuestDialog(questNearNpc);
+  };
+  talkBtn.addEventListener("pointerup", fireTalk);
+  talkBtn.addEventListener("click", fireTalk);
+}
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && questOpenNpc) closeQuestDialog();
 });

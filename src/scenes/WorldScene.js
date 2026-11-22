@@ -70,6 +70,29 @@ export class WorldScene extends Phaser.Scene {
     try { sessionStorage.setItem("baiStageIndex", String(this.stageIndex)); } catch {}
   }
 
+  rebuildHostStage(stageIndex) {
+    this.stageIndex = stageIndex;
+    this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
+    this.stageStartX = this.currentStage.startX;
+    this.stageEndX = this.currentStage.endX;
+    this.stageWidth = this.stageEndX - this.stageStartX;
+    this.season = seasonOf(this.currentStage);
+
+    this.cameras.main.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+    this.cameras.main.setBackgroundColor(this.season.sky);
+
+    this.createParallaxBackground();
+    this.createSeasonParticles();
+    this.createReferenceStreet();
+    this.createArrivalStation();
+    this.createBahnhof();
+    this.createTrapVisuals();
+    this.createStageEnemies();
+    this.createQuestNpcs();
+    this.updateStageHUD();
+    this.showCityTransition(this.currentStage);
+  }
+
   setStage(targetStageIndex) {
     const stageIndex = Phaser.Math.Clamp(
       Math.floor(Number(targetStageIndex) || 0),
@@ -83,15 +106,7 @@ export class WorldScene extends Phaser.Scene {
 
     if (this.isHostMode) {
       // Host TV view: smoothly update stage bounds & assets without restarting the scene or dropping players!
-      this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
-      this.stageStartX = this.currentStage.startX;
-      this.stageEndX = this.currentStage.endX;
-      this.stageWidth = this.stageEndX - this.stageStartX;
-      this.cameras.main.setBounds(this.stageStartX, 0, this.stageWidth, 270);
-      this.createArrivalStation();
-      this.createBahnhof();
-      this.createStageEnemies();
-      this.updateStageHUD();
+      this.rebuildHostStage(stageIndex);
       return;
     }
 
@@ -491,18 +506,22 @@ export class WorldScene extends Phaser.Scene {
     const put = (key, x, scale, depth, y = ground) =>
       this.add.image(x, y, key).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
 
+    for (const s of this.streetSprites || []) s?.destroy();
+    this.streetSprites = [];
+
     // Shared playable pavement. The skyline and city architecture above it are
     // chapter-specific and must not be replaced by repeating Munich houses.
     const season = this.season || seasonOf(this.currentStage);
-    this.add.tileSprite(this.stageStartX, ground, this.stageWidth, 46, "pack-cobble")
+    const s1 = this.add.tileSprite(this.stageStartX, ground, this.stageWidth, 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.5).setTint(season.street);
     // Extend the visual pavement well beyond the physics map. On wide TV
     // viewports the camera can expose more vertical pixels than the tilemap;
     // stopping at worldHeight revealed the blue camera clear-color below it.
     const visualGroundBottom = Math.max(this.worldHeight, 900);
-    this.add.tileSprite(this.stageStartX, ground + 46, this.stageWidth, visualGroundBottom - ground - 46, "pack-cobble")
+    const s2 = this.add.tileSprite(this.stageStartX, ground + 46, this.stageWidth, visualGroundBottom - ground - 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.4).setTint(season.streetDeep);
 
+    this.streetSprites.push(s1, s2);
     this.createSeasonGroundDetail(season, ground);
 
     // City architecture is baked into each chapter's panoramic backdrop.
@@ -515,8 +534,10 @@ export class WorldScene extends Phaser.Scene {
   // Small season-specific details on the pavement edge (deterministic, so TV
   // and every phone draw exactly the same thing).
   createSeasonGroundDetail(season, ground) {
+    this.seasonGroundDetailGraphic?.destroy();
     const rnd = (n) => { const v = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
     const g = this.add.graphics().setDepth(7.6);
+    this.seasonGroundDetailGraphic = g;
     const x0 = this.stageStartX, x1 = this.stageEndX;
     if (season.ground === "snow") {
       // continuous drift along the curb + patches on the cobbles
@@ -983,7 +1004,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createTrapVisuals() {
+    for (const t of this.trapObjects || []) {
+      for (const p of t.parts || []) p?.destroy?.();
+    }
     this.trapObjects = [];
+    this.trapSign?.destroy?.();
     const stage = COURSE.stages[this.stageIndex];
     const list = trapsForStage(stage?.id);
     if (!list.length) return;
@@ -1344,6 +1369,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createSeasonParticles() {
+    for (const p of this.seasonParticles || []) p.sprite?.destroy?.();
     this.seasonParticles = [];
     const season = this.season || seasonOf(this.currentStage);
     const rnd = (r) => (Array.isArray(r) ? Phaser.Math.FloatBetween(r[0], r[1]) : r);
@@ -1428,6 +1454,7 @@ export class WorldScene extends Phaser.Scene {
     };
     let key = backdropKey(stage);
     if (!this.textures.exists(key)) key = legacy[stage.id] || "city-munich-gameplay";
+    for (const b of this.cityBackdrops || []) b?.destroy();
     if (this.textures.exists(key)) {
       // Match the clear colour to the top row of the art so tall spectator
       // views never show a different blue above the panorama.
@@ -1438,8 +1465,8 @@ export class WorldScene extends Phaser.Scene {
       this.cityBackdrops = [
         this.add.image(stage.startX, 0, key)
           .setOrigin(0, 0)
-          .setDisplaySize(this.stageWidth, 224)
-          .setScrollFactor(1, 0)
+          .setDisplaySize(this.stageWidth, 270)
+          .setScrollFactor(1, 1)
           .setDepth(-100)
       ];
     } else {
@@ -1983,6 +2010,13 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createStageEnemies() {
+    if (this.stageEnemy) {
+      this.stageEnemy.sprite?.destroy();
+      this.stageEnemy.bar?.destroy();
+      this.stageEnemy.name?.destroy();
+      this.enemyBattlePrompt?.destroy();
+      this.stageEnemy = null;
+    }
     const stage = COURSE.stages[this.stageIndex];
     this.stageEnemy = null;
     this.enemyInReach = false;
@@ -3161,7 +3195,8 @@ export class WorldScene extends Phaser.Scene {
       const idleBob = remote.heroState?.startsWith("idle") ? Math.sin(performance.now() / 430 + remote.slot) * 0.45 : 0;
       for (const sprite of remote.sprites) sprite.setPosition(x, y + idleBob);
       for (const sprite of remote.sprites) sprite.setVisible(true);
-      remote.nameContainer?.setPosition(x, y - 24 + idleBob);
+      const slotStackOffset = ((remote.slot || 0) % 4) * 6;
+      remote.nameContainer?.setPosition(x, y - 24 + idleBob - slotStackOffset);
       if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 42);
     }
   }
@@ -3764,119 +3799,180 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // LEADERBOARD HUD (RETRO ARCADE)
+  // LEADERBOARD HUD (RETRO ARCADE - RIGHT SIDE ON HOST VIEW)
   // =====================================================
 
   createLeaderboardHUD() {
     this.leaderboardData = [];
-    this.leaderboardTexts = [];
+    this.leaderboardElements = [];
     this.previousRanks = new Map();
 
-    // Mobile/Desktop controller already has the HTML header & TOP drawer; hide in-canvas leaderboard to keep screen clean
     if (!this.isHostMode) return;
 
     this.leaderboardBg = this.add.graphics();
     this.leaderboardBg.setScrollFactor(0);
-    this.leaderboardBg.setDepth(98);
-
-    this.leaderboardTitle = this.add.text(
-      VIEW_W - 10,
-      8,
-      "LEADERBOARD",
-      {
-        fontFamily: "'Press Start 2P', monospace, sans-serif",
-        fontSize: "7px",
-        color: "#f7c83b",
-        stroke: "#000000",
-        strokeThickness: 2,
-        align: "right"
-      }
-    );
-    this.leaderboardTitle.setOrigin(1, 0);
-    this.leaderboardTitle.setScrollFactor(0);
-    this.leaderboardTitle.setDepth(100);
+    this.leaderboardBg.setDepth(140);
   }
 
   setLeaderboardData(players) {
-    if (this.isHostMode) { this.leaderboardTitle?.setVisible(false); return; } // TV uses the DOM leaderboard HUD
+    if (!this.isHostMode) return;
     if (!Array.isArray(players)) return;
     this.leaderboardData = [...players]
       .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
-      .slice(0, 5);
+      .slice(0, 6);
     this.updateLeaderboardHUD();
   }
 
   updateLeaderboardHUD() {
-    if (!this.leaderboardTitle) return;
+    if (!this.isHostMode || !this.leaderboardBg) return;
 
-    for (const text of this.leaderboardTexts) {
-      text.destroy();
+    for (const el of this.leaderboardElements || []) {
+      el?.destroy?.();
     }
-    this.leaderboardTexts = [];
+    this.leaderboardElements = [];
 
     const data = this.leaderboardData || [];
+    const panelWidth = 148;
+    const panelX = VIEW_W - panelWidth - 8;
+    const panelY = 8;
+    const rowH = 14;
+    const headerH = 22;
+    const contentH = Math.max(1, data.length) * rowH;
+    const panelHeight = headerH + contentH + 4;
+
+    const g = this.leaderboardBg;
+    g.clear();
+
+    // 1. Sleek semi-transparent dark glass container
+    g.fillStyle(0x0a101d, 0.94);
+    g.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4);
+
+    // 2. Gold outer border with dark inner rim
+    g.lineStyle(1.5, 0xf6c84a, 0.95);
+    g.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4);
+    g.lineStyle(1, 0x1e293b, 0.8);
+    g.strokeRoundedRect(panelX + 2, panelY + 2, panelWidth - 4, panelHeight - 4, 3);
+
+    // 3. Header bar banner
+    g.fillStyle(0x151f32, 1);
+    g.fillRoundedRect(panelX + 3, panelY + 3, panelWidth - 6, 16, 3);
+    g.lineStyle(1, 0x334155, 0.9);
+    g.lineBetween(panelX + 4, panelY + 19, panelX + panelWidth - 4, panelY + 19);
+
+    // Header Title
+    const title = this.add.text(
+      panelX + Math.round(panelWidth / 2),
+      panelY + 10.5,
+      "👑 KLASEMEN",
+      {
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: "6px",
+        color: "#f6c84a",
+        stroke: "#000000",
+        strokeThickness: 2
+      }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(142);
+    this.leaderboardElements.push(title);
+
     if (!data.length) {
-      this.leaderboardBg.clear();
+      const emptyText = this.add.text(
+        panelX + Math.round(panelWidth / 2),
+        panelY + headerH + 6,
+        "MENUNGGU...",
+        {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "5px",
+          color: "#64748b"
+        }
+      ).setOrigin(0.5).setScrollFactor(0).setDepth(142);
+      this.leaderboardElements.push(emptyText);
       return;
     }
 
-    const startY = 22;
-    const itemHeight = 12;
-    const panelWidth = 140;
-    const panelHeight = 18 + data.length * itemHeight;
-    const panelX = VIEW_W - panelWidth - 4;
-    const panelY = 4;
+    const slotColors = [
+      { badge: 0x2563eb, border: 0x60a5fa, tag: "P1" },
+      { badge: 0xd97706, border: 0xfbbf24, tag: "P2" },
+      { badge: 0x059669, border: 0x34d399, tag: "P3" },
+      { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }
+    ];
 
-    this.leaderboardBg.clear();
-    this.leaderboardBg.fillStyle(0x251d18, 0.9);
-    this.leaderboardBg.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 3);
-    this.leaderboardBg.lineStyle(1, 0xc7a875, 0.95);
-    this.leaderboardBg.strokeRoundedRect(panelX + 1, panelY + 1, panelWidth - 2, panelHeight - 2, 2);
-    this.leaderboardBg.lineStyle(1, 0x765333, 0.9);
-    this.leaderboardBg.strokeRect(panelX + 4, panelY + 4, panelWidth - 8, panelHeight - 8);
-
+    const startRowY = panelY + headerH;
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
-      const id = entry.playerId;
-      const name = String(entry.name || "Player").slice(0, 8);
-      const score = Number(entry.score) || 0;
-      const isTop = i === 0 && score > 0;
-      const prefix = i === 0 && score > 0 ? "👑" : `${i + 1}.`;
-      const color = isTop ? "#f7c83b" : (i === 1 ? "#cbd5e1" : (i === 2 ? "#e29b52" : "#9299ab"));
+      const y = startRowY + i * rowH;
+      const rank = i + 1;
+      const isTop = rank === 1 && Number(entry.score) > 0;
 
-      const prevRank = this.previousRanks.get(id);
-      const rankUp = prevRank !== undefined && prevRank > i;
-      this.previousRanks.set(id, i);
-
-      const text = this.add.text(
-        VIEW_W - 8,
-        startY + i * itemHeight,
-        `${prefix} ${name} ${score}`,
-        {
-          fontFamily: "'Press Start 2P', monospace, sans-serif",
-          fontSize: "6px",
-          color,
-          stroke: "#000000",
-          strokeThickness: 2,
-          align: "right"
-        }
-      );
-      text.setOrigin(1, 0);
-      text.setScrollFactor(0);
-      text.setDepth(100);
-
-      if (rankUp) {
-        this.tweens.add({
-          targets: text,
-          scaleX: 1.25,
-          scaleY: 1.25,
-          duration: 140,
-          yoyo: true,
-          ease: "Quad.easeOut"
-        });
+      // Row background
+      if (isTop) {
+        g.fillStyle(0x282312, 0.7);
+        g.fillRoundedRect(panelX + 3, y - 1, panelWidth - 6, rowH - 1, 2);
+      } else if (i % 2 === 1) {
+        g.fillStyle(0x131a28, 0.5);
+        g.fillRoundedRect(panelX + 3, y - 1, panelWidth - 6, rowH - 1, 2);
       }
 
-      this.leaderboardTexts.push(text);
+      // Rank Tag
+      const rankColor = rank === 1 ? "#f6c84a" : (rank === 2 ? "#cbd5e1" : (rank === 3 ? "#e29b52" : "#94a3b8"));
+      const rankText = this.add.text(
+        panelX + 8,
+        y + 5.5,
+        rank === 1 ? "1" : `${rank}`,
+        {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "6px",
+          color: rankColor,
+          fontStyle: "bold"
+        }
+      ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(142);
+
+      // Slot badge pill
+      const remote = this.remoteAvatars?.get(entry.playerId);
+      const slotIdx = remote?.slot ?? i;
+      const pal = slotColors[slotIdx % slotColors.length];
+      g.fillStyle(pal.badge, 1);
+      g.fillRoundedRect(panelX + 22, y + 1.5, 12, 9, 2);
+
+      const slotText = this.add.text(
+        panelX + 28,
+        y + 6,
+        pal.tag,
+        {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "4px",
+          color: "#ffffff",
+          fontStyle: "bold"
+        }
+      ).setOrigin(0.5).setScrollFactor(0).setDepth(143);
+
+      // Player Name
+      const name = String(entry.name || "Player").slice(0, 7);
+      const nameText = this.add.text(
+        panelX + 38,
+        y + 6,
+        name,
+        {
+          fontFamily: "Arial, sans-serif",
+          fontSize: "8px",
+          fontStyle: "bold",
+          color: isTop ? "#fef08a" : "#f8fafc"
+        }
+      ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(142);
+
+      // Score
+      const score = Number(entry.score) || 0;
+      const scoreText = this.add.text(
+        panelX + panelWidth - 8,
+        y + 6,
+        `${score}`,
+        {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "5px",
+          color: "#82d82c"
+        }
+      ).setOrigin(1, 0.5).setScrollFactor(0).setDepth(142);
+
+      this.leaderboardElements.push(rankText, slotText, nameText, scoreText);
     }
   }
   createGameTimerHUD() {
