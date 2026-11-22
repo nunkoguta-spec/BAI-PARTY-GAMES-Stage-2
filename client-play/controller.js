@@ -1,16 +1,15 @@
 
 import { io } from "socket.io-client";
-import { SOCKET_SERVER_URL } from "../src/socketConfig.js";
 import { createPhoneGame } from "./phone-game.js";
 import { retroAudio } from "../src/audio/retroAudio.js";
 import { QUEST } from "../src/game/quests.js";
-import { loadPlayerSession, savePlayerSession, clearPlayerSession } from "../src/session.js";
 
 // =====================================================
 // SOCKET.IO
 // =====================================================
 
-const serverUrl = SOCKET_SERVER_URL;
+const serverUrl = import.meta.env.VITE_SERVER_URL
+  || (location.port === "3001" ? location.origin : "");
 const socket = io(serverUrl, {
   autoConnect: true,
   reconnection: true,
@@ -21,14 +20,6 @@ const socket = io(serverUrl, {
 const startupParams = new URLSearchParams(location.search);
 const initialRoomCode = startupParams.get("room") || "";
 const initialPlayerName = startupParams.get("name") || "";
-
-// Sesi tersimpan: dipakai untuk masuk kembali otomatis setelah refresh / koneksi putus.
-const savedSession = loadPlayerSession();
-let pendingAutoJoin = Boolean(
-  savedSession && (!initialRoomCode || initialRoomCode.toUpperCase() === savedSession.roomCode)
-);
-let pendingResume = null;
-let pendingEnded = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -58,7 +49,8 @@ let phoneScene = null;
 const mobileInput = {
   left: false,
   right: false,
-  jump: false
+  jump: false,
+  attack: false
 };
 
 let quizInterval = null;
@@ -121,15 +113,15 @@ function renderAvatarPreview() {
 
 // Zoomed source window [x, y, w, h] per category inside the native 32x32 frame.
 const TILE_CROPS = {
-  skin:    [0, 0, 32, 32],
-  hair:    [0, 0, 32, 32],
-  eyes:    [0, 0, 32, 32],
-  hat:     [0, 0, 32, 32],
-  glasses: [0, 0, 32, 32],
-  top:     [0, 0, 32, 32],
-  bottoms: [0, 0, 32, 32],
-  shoes:   [0, 0, 32, 32],
-  weapon:  [0, 0, 32, 32]
+  skin:    [8, 4, 16, 18],    // Cute face & head portrait
+  hair:    [7, 2, 18, 17],    // Hairstyle on head
+  eyes:    [10, 11, 12, 6],   // Focused eyes closeup
+  top:     [8, 16, 16, 11],   // Centered SHIRT only! (y: 16..27, completely below head!)
+  bottoms: [8, 23, 16, 10],   // Centered PANTS only! (y: 23..33, waist down!)
+  shoes:   [8, 26, 16, 7],    // Centered SHOES only! (y: 26..33, ankles down!)
+  hat:     [6, 0, 20, 14],    // Headwear/Hat
+  glasses: [8, 9, 16, 8],     // Glasses/Goggles
+  weapon:  [15, 8, 14, 22]    // Weapon/Blade
 };
 
 function drawAvatarLayerToContext(tctx, key, row) {
@@ -157,12 +149,22 @@ function renderCategoryTiles() {
   const isLoaded = image?.complete && image.naturalWidth;
   const [cx, cy, cw, ch] = TILE_CROPS[activeCategory] || [0, 0, 32, 32];
 
-  // Layers drawn under the item so each card is readable on its own.
-  const underlay = ["skin"];
-  if (activeCategory === "top") underlay.push("bottoms", "shoes");
-  if (activeCategory === "bottoms") underlay.push("shoes");
-  if (["hair", "hat", "glasses", "eyes"].includes(activeCategory)) underlay.push("eyes");
-  if (["hat", "glasses"].includes(activeCategory)) underlay.push("hair");
+  // Layers drawn under and over the active category item:
+  const underlay = [];
+  const overlay = [];
+  if (activeCategory === "hair" || activeCategory === "hat" || activeCategory === "glasses") {
+    underlay.push("skin", "eyes");
+  } else if (activeCategory === "eyes") {
+    underlay.push("skin");
+  } else if (activeCategory === "top") {
+    underlay.push("skin");
+  } else if (activeCategory === "bottoms") {
+    underlay.push("skin");
+  } else if (activeCategory === "shoes") {
+    underlay.push("skin");
+  } else if (activeCategory === "skin") {
+    overlay.push("eyes", "hair");
+  }
 
   for (let i = 0; i < count; i++) {
     const selected = avatarSelection[activeCategory] === i;
@@ -185,25 +187,38 @@ function renderCategoryTiles() {
       const tctx = thumbCanvas.getContext("2d");
       if (tctx) {
         tctx.imageSmoothingEnabled = false;
-        {
-          const temp = document.createElement("canvas");
-          temp.width = 32;
-          temp.height = 32;
-          const a = temp.getContext("2d");
-          a.imageSmoothingEnabled = false;
+        const temp = document.createElement("canvas");
+        temp.width = 32;
+        temp.height = 32;
+        const a = temp.getContext("2d");
+        a.imageSmoothingEnabled = false;
 
-          for (const under of underlay) {
-            if (under === activeCategory) continue;
-            const urow = Math.min(AVATAR_LIMITS[under] - 1, avatarSelection[under] || 0);
-            drawAvatarLayerToContext(a, under, urow);
-          }
-
-          if (isLoaded) {
-            drawAvatarLayerToContext(a, activeCategory, i);
-          }
-
-          tctx.drawImage(temp, cx, cy, cw, ch, 0, 0, 64, 64);
+        // 1. Draw underlay layers
+        for (const under of underlay) {
+          if (under === activeCategory) continue;
+          const urow = Math.min(AVATAR_LIMITS[under] - 1, avatarSelection[under] || 0);
+          drawAvatarLayerToContext(a, under, urow);
         }
+
+        // 2. Draw active category item
+        if (isLoaded) {
+          drawAvatarLayerToContext(a, activeCategory, i);
+        }
+
+        // 3. Draw overlay layers (e.g. eyes and hair on top of skin)
+        for (const over of overlay) {
+          if (over === activeCategory) continue;
+          const orow = Math.min(AVATAR_LIMITS[over] - 1, avatarSelection[over] || 0);
+          drawAvatarLayerToContext(a, over, orow);
+        }
+
+        // 4. Integer pixel-perfect scaling centered inside the 64x64 card canvas
+        const scale = Math.min(Math.floor(56 / cw), Math.floor(56 / ch)) || 1;
+        const dw = cw * scale;
+        const dh = ch * scale;
+        const dx = Math.round((64 - dw) / 2);
+        const dy = Math.round((64 - dh) / 2);
+        tctx.drawImage(temp, cx, cy, cw, ch, dx, dy, dw, dh);
       }
       tile.append(thumbCanvas);
     }
@@ -233,11 +248,9 @@ function setupAvatarCustomizer() {
     });
   });
 
-  // "Selesai": choices already autosave, so just move on to the room code field.
+  // "Selesai": choices already autosave, so trigger join!
   $("avatarDoneButton")?.addEventListener("click", () => {
-    const roomInput = $("roomCode");
-    roomInput?.scrollIntoView({ behavior: "smooth", block: "center" });
-    roomInput?.focus({ preventScroll: true });
+    $("joinButton")?.click();
   });
 
   let loadedCount = 0;
@@ -354,6 +367,13 @@ function setMobileInput(action, pressed) {
   if (action === "jump" && pressed) {
     retroAudio.playJump();
   }
+  if (action === "attack" && pressed) {
+    if (phoneScene?.enemyInReach) {
+      phoneScene.attackStageEnemy();
+    } else {
+      phoneScene?.performAttackSlash?.();
+    }
+  }
   if (phoneScene?.mobileInput && phoneScene.mobileInput !== mobileInput) {
     phoneScene.mobileInput[action] = pressed;
   }
@@ -363,6 +383,7 @@ function releaseAllMobileInput() {
   setMobileInput("left", false);
   setMobileInput("right", false);
   setMobileInput("jump", false);
+  setMobileInput("attack", false);
 }
 
 // =====================================================
@@ -371,27 +392,11 @@ function releaseAllMobileInput() {
 
 function enterRoom(data) {
   roomCode = data.roomCode;
-  if (data.playerName) playerName = data.playerName;
   gameStarted = data.status === "playing";
   window.baiGameStarted = gameStarted;
   currentCourse = data.course || null;
-
-  // Simpan sesi supaya refresh / reconnect bisa masuk kembali ke posisi terakhir.
-  if (data.playerToken) {
-    savePlayerSession({ roomCode, playerToken: data.playerToken, name: playerName, avatar: { ...avatarSelection } });
-  }
-
-  // Pemain yang kembali melanjutkan dari stage & posisi terakhir; pemain baru mulai dari stage 1.
-  const resume = data.resumed ? data.resume : null;
-  const resumeStage = Number.isInteger(resume?.stageIndex) ? resume.stageIndex : 0;
-  pendingResume = resume ? { ...resume, status: data.status } : null;
-  window.baiStageIndex = resumeStage;
-  try { sessionStorage.setItem("baiStageIndex", String(resumeStage)); } catch {}
-  if (resume) {
-    window._baiGameStartIntroPlayed = true; // jangan ulang countdown awal
-    if (Number.isFinite(Number(resume.score))) { score = Number(resume.score); $("score").textContent = score; }
-  }
-  pendingEnded = data.ended || null;
+  window.baiStageIndex = 0;
+  try { sessionStorage.setItem("baiStageIndex", "0"); } catch {}
   if (currentCourse && phoneScene?.applyCourse) phoneScene.applyCourse(currentCourse);
   if (phoneScene) {
     phoneScene.gameStarted = gameStarted;
@@ -412,7 +417,6 @@ function enterRoom(data) {
 
   startPhoneGame();
   refreshGameSize();
-  if (pendingEnded) showGameOver(pendingEnded);
 }
 
 // =====================================================
@@ -497,6 +501,12 @@ function drawQuestPortrait(npc) {
   if (!ctx) return;
   ctx.clearRect(0, 0, 64, 64);
   ctx.imageSmoothingEnabled = false;
+  if (npc.portrait) {
+    const img = new Image();
+    img.onload = () => { ctx.clearRect(0, 0, 64, 64); ctx.drawImage(img, 0, 0, 64, 64); };
+    img.src = npc.portrait;
+    return;
+  }
   for (const [key] of AVATAR_PREVIEW_PARTS) {
     const image = avatarPreviewImages.get(key);
     if (!image?.complete || !image.naturalWidth) continue;
@@ -507,7 +517,12 @@ function drawQuestPortrait(npc) {
 function openQuestDialog(npc) {
   if (!npc || !gameStarted || quizActive || questOpenNpc) return;
   questOpenNpc = npc;
-  if (phoneScene) phoneScene.quizPaused = true;
+  if (phoneScene) {
+    phoneScene.quizPaused = true;
+    if (phoneScene.player?.body) {
+      phoneScene.player.body.setVelocity(0, 0);
+    }
+  }
   releaseAllMobileInput();
   $("talkButton")?.classList.add("hidden");
   $("questNpcName").textContent = npc.name;
@@ -528,7 +543,20 @@ function questButton(label, handler, primary = false) {
   button.type = "button";
   button.className = `pixel-btn pixel-choice-btn${primary ? " pixel-btn-primary" : ""}`;
   button.textContent = label;
-  button.addEventListener("click", handler);
+  button.style.touchAction = "manipulation";
+  button.style.userSelect = "none";
+  button.style.webkitUserSelect = "none";
+
+  let lastFired = 0;
+  const fire = (e) => {
+    e?.preventDefault?.();
+    const now = Date.now();
+    if (now - lastFired < 280) return;
+    lastFired = now;
+    handler();
+  };
+  button.addEventListener("pointerup", fire);
+  button.addEventListener("click", fire);
   return button;
 }
 
@@ -596,7 +624,20 @@ function submitQuest(npc) {
   });
 }
 
-$("talkButton")?.addEventListener("click", () => openQuestDialog(questNearNpc));
+const talkBtn = $("talkButton");
+if (talkBtn) {
+  talkBtn.style.touchAction = "manipulation";
+  let lastTalk = 0;
+  const fireTalk = (e) => {
+    e?.preventDefault?.();
+    const now = Date.now();
+    if (now - lastTalk < 300) return;
+    lastTalk = now;
+    openQuestDialog(questNearNpc);
+  };
+  talkBtn.addEventListener("pointerup", fireTalk);
+  talkBtn.addEventListener("click", fireTalk);
+}
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && questOpenNpc) closeQuestDialog();
 });
@@ -873,20 +914,6 @@ function startPhoneGame() {
         bindQuestScene(scene);
         if (currentCourse && scene.applyCourse) scene.applyCourse(currentCourse);
 
-        if (pendingResume) {
-          const r = pendingResume;
-          pendingResume = null;
-          const rx = Number(r.x);
-          const ry = Number(r.y);
-          if (scene.player && Number.isFinite(rx) && Number.isFinite(ry)) {
-            scene.player.setPosition(rx, ry);
-            scene.player.body?.reset(rx, ry);
-            scene.syncAvatarLayers?.();
-          }
-          if (r.finished || r.status === "ended") scene.finished = true;
-        }
-        if (pendingEnded) scene.finished = true;
-
         $("playerStatus").textContent = gameStarted
           ? "Game berlangsung."
           : "Menunggu host memulai game.";
@@ -934,15 +961,11 @@ function joinRoom(code) {
   const joinButton = $("joinButton");
   joinButton.disabled = true;
 
-  const sessionForRoom = loadPlayerSession();
-  const playerToken = sessionForRoom && sessionForRoom.roomCode === code ? sessionForRoom.playerToken : undefined;
-
   socket.emit(
     "room:join",
     {
       roomCode: code,
       name: playerName,
-      playerToken,
       avatar: { ...avatarSelection }
     },
     (result) => {
@@ -950,7 +973,6 @@ function joinRoom(code) {
       joinButton.disabled = false;
 
       if (!result?.ok) {
-        if (/tidak ditemukan/i.test(result?.error || "")) clearPlayerSession();
         showMessage(
           result?.error || "Gagal masuk room.",
           true
@@ -992,6 +1014,8 @@ function setupMobileControls() {
     ["jumpButton", "jump"]
   ];
 
+  const activeTouches = new Map(); // touchId -> action
+
   for (const [id, action] of controls) {
     const button = $(id);
 
@@ -1009,66 +1033,63 @@ function setupMobileControls() {
       event.preventDefault();
     });
 
-    if (window.PointerEvent) {
-      button.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        setMobileInput(action, true);
+    // Native multi-touch for iOS Safari & Android Chrome
+    button.addEventListener("touchstart", (event) => {
+      event.preventDefault();
+      for (let i = 0; i < event.changedTouches.length; i++) {
+        activeTouches.set(event.changedTouches[i].identifier, action);
+      }
+      setMobileInput(action, true);
+    }, { passive: false });
 
-        try {
-          button.setPointerCapture?.(event.pointerId);
-        } catch (error) {
-          console.warn("[CONTROLS] Pointer capture:", error);
-        }
-      });
-
-      const release = (event) => {
-        event.preventDefault();
+    const onTouchEnd = (event) => {
+      event.preventDefault();
+      for (let i = 0; i < event.changedTouches.length; i++) {
+        activeTouches.delete(event.changedTouches[i].identifier);
+      }
+      // If no other touch is currently pressing this action, release it
+      const remainingActions = [...activeTouches.values()];
+      if (!remainingActions.includes(action)) {
         setMobileInput(action, false);
-      };
+      }
+    };
 
-      button.addEventListener("pointerup", release);
-      button.addEventListener("pointercancel", release);
+    button.addEventListener("touchend", onTouchEnd, { passive: false });
+    button.addEventListener("touchcancel", onTouchEnd, { passive: false });
 
-      button.addEventListener("lostpointercapture", () => {
-        setMobileInput(action, false);
-      });
-    } else {
-      button.addEventListener(
-        "touchstart",
-        (event) => {
-          event.preventDefault();
-          setMobileInput(action, true);
-        },
-        { passive: false }
-      );
-
-      const releaseTouch = (event) => {
-        event.preventDefault();
-        setMobileInput(action, false);
-      };
-
-      button.addEventListener(
-        "touchend",
-        releaseTouch,
-        { passive: false }
-      );
-
-      button.addEventListener(
-        "touchcancel",
-        releaseTouch,
-        { passive: false }
-      );
-
-      button.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        setMobileInput(action, true);
-      });
-
-      window.addEventListener("mouseup", () => {
-        setMobileInput(action, false);
-      });
-    }
+    // Mouse fallback for PC browser testing
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      setMobileInput(action, true);
+    });
+    button.addEventListener("mouseup", (event) => {
+      event.preventDefault();
+      setMobileInput(action, false);
+    });
+    button.addEventListener("mouseleave", () => {
+      setMobileInput(action, false);
+    });
   }
+
+  // Safety release on window if finger slides off screen
+  window.addEventListener("touchend", (event) => {
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      activeTouches.delete(event.changedTouches[i].identifier);
+    }
+    const remainingActions = [...activeTouches.values()];
+    for (const [_, action] of controls) {
+      if (!remainingActions.includes(action)) {
+        setMobileInput(action, false);
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener("touchcancel", () => {
+    activeTouches.clear();
+    releaseAllMobileInput();
+  }, { passive: true });
+
+  window.addEventListener("mouseup", releaseAllMobileInput);
 }
 
 if (initialRoomCode) $("roomCode").value = initialRoomCode.toUpperCase();
@@ -1447,9 +1468,7 @@ socket.on("tv:player-finished", (result) => {
   if (phoneScene) phoneScene.updateRemoteAvatar({ ...result, state: "idle" });
 });
 
-socket.on("game:ended", (payload = {}) => showGameOver(payload));
-
-function showGameOver({ leaderboard, winner, reason } = {}) {
+socket.on("game:ended", ({ leaderboard, winner, reason } = {}) => {
   stopQuizTimer();
   updatePlayerGameTimer(null);
   closeQuizUI();
@@ -1475,7 +1494,7 @@ function showGameOver({ leaderboard, winner, reason } = {}) {
       finalContainer.appendChild(row);
     });
   }
-}
+});
 
 socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
   quizActive = false;
@@ -1484,12 +1503,15 @@ socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
   if (phoneScene) {
     phoneScene.finished = false;
     phoneScene.finishRequestSent = false;
+    phoneScene.introActive = false;
+    phoneScene._gameStartIntroPlaying = false;
     phoneScene.physics?.world?.resume?.();
     phoneScene.setStage?.(0);
     phoneScene.player?.setPosition(Number(x) || 240, Number(y) || 208);
     phoneScene.player?.body?.reset(Number(x) || 240, Number(y) || 208);
     phoneScene.syncAvatarLayers?.();
   }
+  window._baiGameStartIntroPlayed = false;
   if (Number.isFinite(Number(resetScore))) {
     score = Number(resetScore);
     $("score").textContent = score;
@@ -1499,7 +1521,6 @@ socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
 });
 
 socket.on("player:kicked", ({ reason } = {}) => {
-  clearPlayerSession();
   alert(reason || "Anda telah dikeluarkan dari permainan oleh host.");
   location.reload();
 });
@@ -1510,12 +1531,13 @@ socket.on("room:status", ({ status, endsAt, startedAt, remainingMs, leaderboard,
   window.baiGameStarted = gameStarted;
   if (phoneScene) {
     phoneScene.gameStarted = gameStarted;
+    phoneScene.introActive = false;
+    phoneScene._gameStartIntroPlaying = false;
     if (startedAt) phoneScene.gameStartedAt = startedAt;
     if (status === "ended") phoneScene.finished = true;
     if (gameStarted && !wasPlaying && !window._baiGameStartIntroPlayed && (phoneScene.stageIndex === 0 || !phoneScene.stageIndex)) {
       window._baiGameStartIntroPlayed = true;
       playDomGameStartCountdown();
-      phoneScene.playGameStartIntro?.(undefined, { silent: true });
     }
   }
   if (status === "ended") {
@@ -1593,72 +1615,7 @@ socket.on("connect", () => {
   }
 
   console.log("[CLIENT] Connected:", socket.id);
-
-  if (roomCode) {
-    rejoinAfterReconnect();
-  } else if (pendingAutoJoin && savedSession) {
-    pendingAutoJoin = false;
-    autoJoinFromSavedSession();
-  }
 });
-
-// Halaman di-refresh: masuk lagi ke room yang sama tanpa harus mengetik ulang.
-function autoJoinFromSavedSession() {
-  if (!savedSession || roomCode) return;
-  $("roomCode").value = savedSession.roomCode;
-  $("playerName").value = savedSession.name || $("playerName").value;
-  if (savedSession.avatar) {
-    for (const [key, limit] of Object.entries(AVATAR_LIMITS)) {
-      const value = Number(savedSession.avatar[key]);
-      if (Number.isInteger(value) && value >= 0 && value < limit) avatarSelection[key] = value;
-    }
-  }
-  showMessage("Menyambungkan kembali ke room...");
-  joinRoom(savedSession.roomCode);
-}
-
-// Socket.IO memberi socket.id baru setiap reconnect, jadi pemain harus didaftarkan ulang ke server.
-let rejoining = false;
-function rejoinAfterReconnect() {
-  if (rejoining || !roomCode) return;
-  const session = loadPlayerSession();
-  rejoining = true;
-  socket.emit(
-    "room:join",
-    {
-      roomCode,
-      name: playerName,
-      playerToken: session?.roomCode === roomCode ? session.playerToken : undefined,
-      avatar: { ...avatarSelection }
-    },
-    (result) => {
-      rejoining = false;
-      if (!result?.ok) {
-        if (/tidak ditemukan/i.test(result?.error || "")) {
-          clearPlayerSession();
-          alert("Room sudah ditutup oleh host. Silakan masuk lagi dengan kode room yang baru.");
-          location.href = `${location.pathname}`;
-          return;
-        }
-        $("playerStatus").textContent = result?.error || "Gagal tersambung kembali.";
-        return;
-      }
-      if (result.playerToken) {
-        savePlayerSession({ roomCode, playerToken: result.playerToken, name: playerName, avatar: { ...avatarSelection } });
-      }
-      if (phoneScene) phoneScene.localPlayerId = socket.id;
-      if (result.course) {
-        currentCourse = result.course;
-        phoneScene?.applyCourse?.(result.course);
-      }
-      if (result.ended) showGameOver(result.ended);
-      else if (!quizActive) {
-        $("playerStatus").textContent = gameStarted ? "Game berlangsung." : "Menunggu host memulai game.";
-      }
-      console.log("[CLIENT] Tersambung kembali ke room", roomCode);
-    }
-  );
-}
 
 socket.on("disconnect", (reason) => {
   const connection = $("connection");

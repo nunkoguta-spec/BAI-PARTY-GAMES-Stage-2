@@ -32,6 +32,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image("trap-sign", `${ASSET}/traps/sign.png`);
     // "Not ordinary" traps: tram, rails, signal, icicles, canopy, gull, wrecking ball, censer.
     this.load.image("trap-tram", `${ASSET}/traps/tram.png`);
+    this.load.image("trap-train-front", `${ASSET}/traps/train-front.png`);
     this.load.image("trap-rails", `${ASSET}/traps/rails.png`);
     this.load.spritesheet("trap-signal", `${ASSET}/traps/signal.png`, { frameWidth: 14, frameHeight: 40 });
     this.load.spritesheet("trap-icicle", `${ASSET}/traps/icicle.png`, { frameWidth: 48, frameHeight: 30 });
@@ -163,6 +164,8 @@ export class BootScene extends Phaser.Scene {
     // Avatar idle.
     const idle = `${ASSET}/avatar/Idle`;
 
+    this.load.spritesheet("npc-deandra", `${ASSET}/npc/deandra_idle_front.png`, { frameWidth: 32, frameHeight: 32 });
+
     const idleSheets = [
       ["avatar-body", `${idle}/Character/Character_Idle_Front-Sheet.png`],
       ["avatar-bottoms", `${idle}/Clothing/Clothing_Bottoms_Idle_Front-Sheet.png`],
@@ -254,6 +257,19 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
+    // Official Sword Slash Attack sheets (5-frame high quality slash animation)
+    const sword = `${ASSET}/avatar/Sword`;
+    for (const dir of ["Left", "Right"]) {
+      const lower = dir.toLowerCase();
+      for (const [name, folder, file] of [
+        ["body", "Character", "Character"], ["bottoms", "Clothing", "Clothing_Bottoms"],
+        ["shoes", "Clothing", "Clothing_Shoes"], ["top", "Clothing", "Clothing_Tops"],
+        ["eyes", "Eyes", "Eyes"], ["hair", "Hair", "Hair"], ["sword", "Swords", "Sword"]
+      ]) {
+        this.load.spritesheet(`avatar-${name}-sword-${lower}`, `${sword}/${folder}/${file}_Sword_${dir}-Sheet.png`, { frameWidth: FRAME, frameHeight: FRAME });
+      }
+    }
+
     const hurt = `${ASSET}/avatar/Hurt`;
     for (const [key, url] of [
       ["avatar-body-hurt-left", `${hurt}/Character/Character_Hurt_Left-Sheet.png`],
@@ -275,6 +291,7 @@ export class BootScene extends Phaser.Scene {
     const gear = `${ASSET}/avatar-gear`;
     const gearSheets = [["idle", "Idle", "Front"], ["walk", "Walk", "Left"], ["walk", "Walk", "Right"], ["jump", "Jump", "Left"], ["jump", "Jump", "Right"],
       ["interact", "Interact", "Left"], ["interact", "Interact", "Right"], ["punch", "Punch", "Left"], ["punch", "Punch", "Right"],
+      ["sword", "Sword", "Left"], ["sword", "Sword", "Right"],
       ["hurt", "Hurt", "Left"], ["hurt", "Hurt", "Right"]];
     for (const part of [["Hat", "hat"], ["Glasses", "glasses"], ["Weapon", "weapon"]]) {
       for (const [pose, anim, dir] of gearSheets) {

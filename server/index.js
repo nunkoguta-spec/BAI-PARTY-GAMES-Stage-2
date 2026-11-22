@@ -1,11 +1,8 @@
 
 import express from "express";
 import http from "node:http";
-import path from "node:path";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { Server } from "socket.io";
-import { randomInt, randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { COURSE } from "../src/game/course.js";
 import { QUEST, questNpcById } from "../src/game/quests.js";
 import { BATTLE, TIER_LABELS, battleConfig, battleEnemyX, battlePlan } from "../src/game/battle.js";
@@ -14,9 +11,6 @@ import { TRAP, findTrapHit, trapCenterX } from "../src/game/traps.js";
 
 const app = express();
 const httpServer = http.createServer(app);
-
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIST_DIR = path.join(ROOT_DIR, "dist");
 
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -39,65 +33,6 @@ app.use(express.json());
 
 const rooms = new Map();
 
-// =====================================================
-// SESSION RECOVERY (refresh / koneksi putus)
-// Pemain yang terputus tidak langsung dihapus: mereka punya waktu PLAYER_GRACE_MS
-// untuk kembali dengan playerToken yang sama. Room juga tidak langsung dihapus
-// ketika kosong, supaya host yang refresh bisa masuk kembali ke room yang sama.
-// =====================================================
-const PLAYER_GRACE_MS = 3 * 60_000;
-const ROOM_IDLE_MS = 20 * 60_000;
-
-function newToken() {
-  return randomBytes(18).toString("hex");
-}
-
-function roomStatusPayload(room) {
-  const payload = { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() };
-  if (room.status === "paused") payload.remainingMs = room.pausedRemaining;
-  if (room.status === "ended" && room.result) Object.assign(payload, room.result);
-  return payload;
-}
-
-function destroyRoom(room) {
-  for (const player of room.players.values()) {
-    clearTimeout(player.koTimer);
-    clearTimeout(player.dropTimer);
-  }
-  clearTimeout(room.gameTimer);
-  clearTimeout(room.finishGraceTimer);
-  clearTimeout(room.cleanupTimer);
-  rooms.delete(room.code);
-  console.log(`[ROOM] Deleted ${room.code}`);
-}
-
-function scheduleRoomCleanup(room) {
-  clearTimeout(room.cleanupTimer);
-  if (room.members.size > 0) return;
-  room.cleanupTimer = setTimeout(() => {
-    if (rooms.get(room.code) !== room || room.members.size > 0) return;
-    destroyRoom(room);
-  }, ROOM_IDLE_MS);
-}
-
-// Pindahkan pemain lama ke socket baru (id berubah setiap refresh / reconnect).
-function rebindPlayer(room, player, newId) {
-  const oldId = player.id;
-  clearTimeout(player.dropTimer);
-  player.dropTimer = null;
-  if (oldId !== newId) {
-    room.players.delete(oldId);
-    room.members.delete(oldId);
-    if (room.finishedPlayers.delete(oldId)) room.finishedPlayers.add(newId);
-    player.id = newId;
-    room.players.set(newId, player);
-    io.to(room.code).emit("player:left", { playerId: oldId });
-  }
-  room.members.add(newId);
-  player.connected = true;
-  player.disconnectedAt = null;
-}
-
 const DEFAULT_SETTINGS = Object.freeze({ gameMinutes: 10, correctPoints: 10, questionLimit: 0, hazardPenalty: COURSE.hazardPenalty, finishBonusSeconds: COURSE.finishBonusSeconds, courseWidth: COURSE.width, finishX: COURSE.finishX });
 const WORLD_WIDTH = COURSE.width;
 const WORLD_HEIGHT = COURSE.height;
@@ -116,16 +51,6 @@ app.get("/health", (_req, res) => {
     rooms: rooms.size
   });
 });
-
-// Serve the production Vite build from the same origin as Socket.IO.
-// This lets a single Cloudflare Tunnel hostname carry both the game and WSS.
-if (existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR, {
-    extensions: ["html"],
-    etag: true,
-    maxAge: "1h"
-  }));
-}
 
 // =====================================================
 // ROOM HELPERS
@@ -205,7 +130,7 @@ function broadcastPlayerList(room) {
       hp: player.hp,
       maxHp: BATTLE.playerMaxHp,
       ko: Boolean(player.ko),
-      connected: player.connected !== false
+      connected: true
     }))
   );
   io.to(room.code).emit("room:status", { status: room.status });
@@ -328,7 +253,6 @@ function endGame(room, reason = "host") {
   room.status = "ended";
   const leaderboard = publicLeaderboard(room);
   const winner = leaderboard[0] || null;
-  room.result = { reason, leaderboard, winner };
   io.to(room.code).emit("room:status", { status: "ended", reason, leaderboard, winner });
   io.to(room.code).emit("game:ended", { reason, leaderboard, winner });
 }
@@ -387,7 +311,6 @@ function removePlayer(room, playerId) {
   if (!player) return;
 
   clearTimeout(player.koTimer);
-  clearTimeout(player.dropTimer);
 
   room.players.delete(playerId);
   room.members.delete(playerId);
@@ -429,7 +352,7 @@ io.on("connection", (socket) => {
 
   socket.on("room:create", (payload = {}, callback = () => {}) => {
     const code = createRoomCode();
-    const hostToken = newToken();
+    const hostToken = randomInt(100000, 999999).toString(36) + "-" + Date.now().toString(36);
 
     const room = {
       code,
@@ -444,9 +367,7 @@ io.on("connection", (socket) => {
       startedAt: null,
       pausedRemaining: 0,
       finishGraceTimer: null,
-      finishedPlayers: new Set(),
-      cleanupTimer: null,
-      result: null
+      finishedPlayers: new Set()
     };
 
     rooms.set(code, room);
@@ -461,29 +382,6 @@ io.on("connection", (socket) => {
     });
 
     console.log(`[ROOM] Created ${code} (host: ${socket.id})`);
-  });
-
-  // =====================================================
-  // HOST RESUME (host refresh / reconnect)
-  // =====================================================
-
-  socket.on("room:resume-host", (payload = {}, callback = () => {}) => {
-    const code = String(payload.roomCode || "").trim().toUpperCase();
-    const room = rooms.get(code);
-    if (!room) {
-      callback({ ok: false, gone: true, error: "Room sudah tidak ada." });
-      return;
-    }
-    if (!payload.hostToken || payload.hostToken !== room.hostToken) {
-      callback({ ok: false, error: "Token host tidak valid." });
-      return;
-    }
-    clearTimeout(room.cleanupTimer);
-    room.hostId = socket.id;
-    room.members.add(socket.id);
-    socket.join(room.code);
-    callback({ ok: true, roomCode: room.code, hostToken: room.hostToken, status: room.status });
-    console.log(`[ROOM] Host resumed ${room.code} (host: ${socket.id})`);
   });
 
   // =====================================================
@@ -564,7 +462,6 @@ io.on("connection", (socket) => {
       resetPlayerHp(player);
     }
     room.status = "waiting";
-    room.result = null;
     room.startedAt = null;
     room.endsAt = null;
     room.pausedRemaining = 0;
@@ -668,62 +565,20 @@ io.on("connection", (socket) => {
       return;
     }
 
-    clearTimeout(room.cleanupTimer);
-
-    // Pemain lama (refresh / reconnect) dikenali lewat playerToken, bukan socket.id.
-    const token = String(payload.playerToken || "");
-    let existing = null;
-    if (token) {
-      for (const candidate of room.players.values()) {
-        if (candidate.token === token) { existing = candidate; break; }
-      }
-    }
-    if (!existing && room.players.has(socket.id)) existing = room.players.get(socket.id);
-
-    if (existing) {
-      rebindPlayer(room, existing, socket.id);
-      socket.join(code);
-
+    if (room.players.has(socket.id)) {
       callback({
         ok: true,
-        resumed: true,
         roomCode: code,
         playerId: socket.id,
-        playerName: existing.name,
-        playerToken: existing.token,
         status: room.status,
-        course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
-        resume: {
-          stageIndex: Number.isInteger(existing.stageIndex) ? existing.stageIndex : 0,
-          x: existing.x,
-          y: existing.y,
-          score: existing.score,
-          hp: existing.hp,
-          maxHp: BATTLE.playerMaxHp,
-          finished: Boolean(existing.finished)
-        },
-        ended: room.status === "ended" && room.result
-          ? { reason: room.result.reason, leaderboard: room.result.leaderboard, winner: room.result.winner }
-          : null
-      });
+        });
       socket.emit("room:settings", room.settings);
-      socket.emit("room:status", roomStatusPayload(room));
-      socket.emit(
-        "players:state",
-        [...room.players.values()].filter((other) => other.id !== socket.id).map(publicPlayerPosition)
-      );
-      socket.to(room.code).emit("player:joined", publicPlayerPosition(existing));
-      broadcastPlayerList(room);
-      broadcastLeaderboard(room);
-      console.log(`[REJOIN] ${existing.name} resumed ${code}`);
+      socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
       return;
     }
 
     const player = {
       id: socket.id,
-      token: newToken(),
-      connected: true,
-      dropTimer: null,
       name,
       avatar: sanitizeAvatar(payload.avatar),
       score: 0,
@@ -763,14 +618,10 @@ io.on("connection", (socket) => {
       roomCode: code,
       playerId: socket.id,
       playerName: name,
-      playerToken: player.token,
       status: room.status,
-      ended: room.status === "ended" && room.result
-        ? { reason: room.result.reason, leaderboard: room.result.leaderboard, winner: room.result.winner }
-        : null,
       course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
       });
-    socket.emit("room:status", roomStatusPayload(room));
+    socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
 
     // Kirim posisi pemain lama ke HP pemain baru.
     socket.emit(
@@ -1115,6 +966,7 @@ io.on("connection", (socket) => {
       broadcastLeaderboard(room);
       broadcastPlayerList(room);
       io.to(room.code).emit("tv:enemy-hit", { playerId: player.id, stageId: stage.id, damage: enemy.enemyDamage, enemyHp: enemy.enemyHp, enemyMaxHp: enemy.enemyMaxHp });
+      io.to(room.code).emit("battle:player-strike", { playerId: player.id, stageId: stage.id, damage: enemy.enemyDamage, enemyHp: enemy.enemyHp, enemyMaxHp: enemy.enemyMaxHp, defeated, solved: battle.solved, total: battle.total });
       callback({
         ok: true, correct: true, defeated, solved: battle.solved, total: battle.total,
         points, totalScore: player.score, hp: player.hp, maxHp: BATTLE.playerMaxHp, ko: false, ...enemy,
@@ -1128,6 +980,7 @@ io.on("connection", (socket) => {
     battle.shown = null;
     const hit = damagePlayerHp(room, player, cfg.wrongDamage, "battle-wrong");
     const enemy = enemyHpPayload(battle, cfg);
+    io.to(room.code).emit("battle:enemy-strike", { playerId: player.id, stageId: stage.id, damage: hit.applied, playerHp: player.hp, ko: hit.ko });
     callback({
       ok: true, correct: false, defeated: false, solved: battle.solved, total: battle.total,
       points: 0, wrongDamage: hit.applied, ko: hit.ko, koPenalty: hit.penalty, respawnMs: BATTLE.koRespawnMs,
@@ -1217,7 +1070,7 @@ io.on("connection", (socket) => {
     if (payload.facing === "left" || payload.facing === "right") player.facing = payload.facing;
     if ([-1, 0, 1].includes(Math.sign(Number(payload.vx)))) player.vx = Math.max(-500, Math.min(500, Number(payload.vx) || 0));
     if (Number.isFinite(Number(payload.vy))) player.vy = Math.max(-700, Math.min(700, Number(payload.vy)));
-    if (["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "punch-left", "punch-right"].includes(payload.state)) player.state = payload.state;
+    if (["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "punch-left", "punch-right", "sword-left", "sword-right", "hurt-left", "hurt-right"].includes(payload.state)) player.state = payload.state;
     if (typeof payload.grounded === "boolean") player.grounded = payload.grounded;
 
     const movementData = publicPlayerPosition(player);
@@ -1318,7 +1171,6 @@ io.on("connection", (socket) => {
         room.hostId = socket.id;
       }
 
-      clearTimeout(room.cleanupTimer);
       room.members.add(socket.id);
       socket.join(code);
 
@@ -1335,7 +1187,7 @@ io.on("connection", (socket) => {
 
       socket.emit("players:state", [...room.players.values()].map(publicPlayerPosition));
       socket.emit("room:settings", room.settings);
-      socket.emit("room:status", roomStatusPayload(room));
+      socket.emit("room:status", { status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
       broadcastPlayerList(room);
       broadcastLeaderboard(room);
     }
@@ -1384,25 +1236,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`[DISCONNECT] ${socket.id}`);
 
-    for (const room of [...rooms.values()]) {
-      const player = room.players.get(socket.id);
-
-      if (player) {
-        // Jangan hapus langsung: beri waktu untuk refresh / reconnect dengan token yang sama.
-        player.connected = false;
-        player.disconnectedAt = Date.now();
-        player.vx = 0;
-        player.vy = 0;
-        player.state = "idle";
-        room.members.delete(socket.id);
-        clearTimeout(player.dropTimer);
-        player.dropTimer = setTimeout(() => {
-          if (rooms.get(room.code) !== room) return;
-          if (room.players.get(player.id) !== player || player.connected) return;
-          removePlayer(room, player.id);
-          scheduleRoomCleanup(room);
-        }, PLAYER_GRACE_MS);
-        broadcastPlayerList(room);
+    for (const room of rooms.values()) {
+      if (room.players.has(socket.id)) {
+        removePlayer(room, socket.id);
       } else if (room.hostId === socket.id) {
         room.hostId = null;
         room.members.delete(socket.id);
@@ -1410,7 +1246,17 @@ io.on("connection", (socket) => {
         room.members.delete(socket.id);
       }
 
-      scheduleRoomCleanup(room);
+      if (room.members.size === 0) {
+        for (const player of room.players.values()) {
+          clearTimeout(player.koTimer);
+        }
+
+        clearTimeout(room.gameTimer);
+        clearTimeout(room.finishGraceTimer);
+        rooms.delete(room.code);
+
+        console.log(`[ROOM] Deleted ${room.code}`);
+      }
     }
   });
 });

@@ -4,7 +4,6 @@ import { DEFAULT_AVATAR } from "../avatar/defaultAvatar.js";
 import { retroAudio } from "../audio/retroAudio.js";
 import { COURSE } from "../game/course.js";
 import { seasonOf, backdropKey } from "../game/seasons.js";
-import { createStreetDressing } from "./streetDressing.js";
 import { QUEST } from "../game/quests.js";
 import { BATTLE, battleConfig, battleEnemyX } from "../game/battle.js";
 import { BATTLE_QUESTIONS } from "../game/battleQuestions.js";
@@ -71,6 +70,29 @@ export class WorldScene extends Phaser.Scene {
     try { sessionStorage.setItem("baiStageIndex", String(this.stageIndex)); } catch {}
   }
 
+  rebuildHostStage(stageIndex) {
+    this.stageIndex = stageIndex;
+    this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
+    this.stageStartX = this.currentStage.startX;
+    this.stageEndX = this.currentStage.endX;
+    this.stageWidth = this.stageEndX - this.stageStartX;
+    this.season = seasonOf(this.currentStage);
+
+    this.cameras.main.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+    this.cameras.main.setBackgroundColor(this.season.sky);
+
+    this.createParallaxBackground();
+    this.createSeasonParticles();
+    this.createReferenceStreet();
+    this.createArrivalStation();
+    this.createBahnhof();
+    this.createTrapVisuals();
+    this.createStageEnemies();
+    this.createQuestNpcs();
+    this.updateStageHUD();
+    this.showCityTransition(this.currentStage);
+  }
+
   setStage(targetStageIndex) {
     const stageIndex = Phaser.Math.Clamp(
       Math.floor(Number(targetStageIndex) || 0),
@@ -81,7 +103,65 @@ export class WorldScene extends Phaser.Scene {
     this.stageIndex = stageIndex;
     window.baiStageIndex = stageIndex;
     try { sessionStorage.setItem("baiStageIndex", String(stageIndex)); } catch {}
-    this.scene.restart({ stageIndex, isHostMode: this.isHostMode });
+
+    this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
+    this.stageStartX = this.currentStage.startX;
+    this.stageEndX = this.currentStage.endX;
+    this.stageWidth = this.stageEndX - this.stageStartX;
+    this.season = seasonOf(this.currentStage);
+
+    const camera = this.cameras.main;
+    camera.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+    camera.setBackgroundColor(this.season.sky);
+
+    this.createParallaxBackground();
+    this.createSeasonParticles();
+    this.createReferenceStreet();
+    this.createArrivalStation();
+    this.createBahnhof();
+    this.createTrapVisuals();
+    this.createStageEnemies();
+    this.createQuestNpcs();
+    this.updateStageHUD();
+    this.showCityTransition(this.currentStage);
+
+    if (this.isHostMode) {
+      // Restore all remote avatars so they are 100% visible in the new stage
+      for (const remote of this.remoteAvatars.values()) {
+        if (remote.sprites) {
+          this.tweens.killTweensOf(remote.sprites);
+          for (const s of remote.sprites) {
+            s.setAlpha(1);
+            s.setScale(1);
+            s.setVisible(true);
+          }
+        }
+        if (remote.nameLabel) {
+          remote.nameLabel.setVisible(true);
+          remote.nameLabel.setAlpha(1);
+        }
+        if (remote.nameContainer) {
+          remote.nameContainer.setVisible(true);
+          remote.nameContainer.setAlpha(1);
+        }
+        this.buildPlayerNameplate(remote);
+      }
+
+      if (this.hostSpectatorTarget) {
+        camera.setDeadzone(0, 0);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
+      }
+      return;
+    }
+
+    const spawnX = this.stageStartX + 160;
+    if (this.player) {
+      this.player.setPosition(spawnX, 208);
+      this.player.body?.reset(spawnX, 208);
+      this.syncAvatarLayers();
+      camera.setDeadzone(0, 0);
+      camera.startFollow(this.player, true, 0.18, 0.18);
+    }
   }
 
   create(data = {}) {
@@ -94,19 +174,6 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createWorld(data = {}) {
-    // Scene instances are reused by scene.restart()/start(): clear flags a previous
-    // run could have left set (a stuck flag = player cannot move = "freeze").
-    this.introActive = false;
-    this._gameStartIntroPlaying = false;
-    this._bossIntroPlaying = false;
-    this.quizPaused = false;
-    this.battleActive = false;
-    this.playerKo = false;
-    this.trapKnockUntil = 0;
-    this._hostHudKey = null;
-    this._introSince = null;
-    this._bossSince = null;
-
     // DATA AVATAR MULTIPLAYER
     this.remoteAvatars = new Map();
 
@@ -137,8 +204,7 @@ export class WorldScene extends Phaser.Scene {
     this.stageEndX = this.currentStage.endX;
     this.stageWidth = this.stageEndX - this.stageStartX;
 
-    // Stage 1 already has the start countdown; the city card would stack on top of it.
-    if (this.stageIndex > 0) this.showCityTransition(this.currentStage);
+    this.showCityTransition(this.currentStage);
 
     this.createParallaxBackground();
     this.createSeasonParticles();
@@ -214,9 +280,6 @@ export class WorldScene extends Phaser.Scene {
         this.syncAvatarLayers,
         this
       );
-      this.events.once("shutdown", () => {
-        this.events.off("postupdate", this.syncAvatarLayers, this);
-      });
 
       // COLLISION PLAYER — ground only. All gameplay obstacles are disabled.
       this.finished = false;
@@ -262,8 +325,8 @@ export class WorldScene extends Phaser.Scene {
       this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
 
       camera.setRoundPixels(true);
-      camera.setDeadzone(VIEW_W * 0.45, VIEW_H * 0.35);
-      camera.startFollow(this.player, true, 0.085, 0.085);
+      camera.setDeadzone(0, 0);
+      camera.startFollow(this.player, true, 0.18, 0.18);
       this.handleViewportResize();
 
       // No hazards, spikes, slugs, or obstacle overlap handlers.
@@ -302,8 +365,9 @@ export class WorldScene extends Phaser.Scene {
       this.hostFollowPlayer = (player) => {
         if (!player?.sprites?.[0]) return;
         camera.setZoom(1);
+        camera.setDeadzone(0, 0);
         this.hostSpectatorTarget = player.sprites[0];
-        camera.startFollow(this.hostSpectatorTarget, true, 0.085, 0.085);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
       };
       this.hostClearFollow = () => {
         this.hostSpectatorTarget = null;
@@ -407,11 +471,8 @@ export class WorldScene extends Phaser.Scene {
   updateStageHUD() {
     if (!this.stageLabel || !this.currentStage) return;
     if (this.isHostMode) {
-      if (this._hostHudKey !== this.currentStage.id) {
-        this._hostHudKey = this.currentStage.id;
-        this.stageLabel.setText(`${this.currentStage.name}\n${this.currentStage.landmark || ""}`.toUpperCase());
-        window.dispatchEvent(new CustomEvent("bai-stage", { detail: this.currentStage }));
-      }
+      this.stageLabel.setText(`${this.currentStage.name}\n${this.currentStage.landmark || ""}`.toUpperCase());
+      window.dispatchEvent(new CustomEvent("bai-stage", { detail: this.currentStage }));
       return;
     }
     this.stageLabel.setText(this.currentStage.name);
@@ -497,38 +558,38 @@ export class WorldScene extends Phaser.Scene {
     const put = (key, x, scale, depth, y = ground) =>
       this.add.image(x, y, key).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
 
+    for (const s of this.streetSprites || []) s?.destroy();
+    this.streetSprites = [];
+
     // Shared playable pavement. The skyline and city architecture above it are
     // chapter-specific and must not be replaced by repeating Munich houses.
     const season = this.season || seasonOf(this.currentStage);
-    this.add.tileSprite(this.stageStartX, ground, this.stageWidth, 46, "pack-cobble")
+    const s1 = this.add.tileSprite(this.stageStartX, ground, this.stageWidth, 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.5).setTint(season.street);
     // Extend the visual pavement well beyond the physics map. On wide TV
     // viewports the camera can expose more vertical pixels than the tilemap;
     // stopping at worldHeight revealed the blue camera clear-color below it.
     const visualGroundBottom = Math.max(this.worldHeight, 900);
-    this.add.tileSprite(this.stageStartX, ground + 46, this.stageWidth, visualGroundBottom - ground - 46, "pack-cobble")
+    const s2 = this.add.tileSprite(this.stageStartX, ground + 46, this.stageWidth, visualGroundBottom - ground - 46, "pack-cobble")
       .setOrigin(0, 0).setDepth(7.4).setTint(season.streetDeep);
 
+    this.streetSprites.push(s1, s2);
     this.createSeasonGroundDetail(season, ground);
 
     // City architecture is baked into each chapter's panoramic backdrop.
     // Do not stamp repeating Munich houses over the other city scenes.
 
-    // Per-city street dressing (props, quay bollards, mood tint, vignette).
-    const avoid = [];
-    for (const t of trapsForStage(this.currentStage.id)) {
-      if (t.type === "roller") avoid.push(t.from, t.to); else avoid.push(t.x);
-    }
-    const enemyX = battleEnemyX(this.currentStage.id);
-    if (enemyX) avoid.push(enemyX - 40, enemyX, enemyX + 40);
-    this.streetDressing = createStreetDressing(this, this.currentStage, { avoid, groundY: ground, tint: season.prop });
+    // Neutral street furniture repeats lightly without changing each city's silhouette.
+    // Disabled: lamps, trees and bushes are already part of the new panoramas.
   }
 
   // Small season-specific details on the pavement edge (deterministic, so TV
   // and every phone draw exactly the same thing).
   createSeasonGroundDetail(season, ground) {
+    this.seasonGroundDetailGraphic?.destroy();
     const rnd = (n) => { const v = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
     const g = this.add.graphics().setDepth(7.6);
+    this.seasonGroundDetailGraphic = g;
     const x0 = this.stageStartX, x1 = this.stageEndX;
     if (season.ground === "snow") {
       // continuous drift along the curb + patches on the cobbles
@@ -615,9 +676,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Station exit sign (e.g. "FRANKFURT HBF • AUSGANG")
-    const signBox = this.add.rectangle(0, -126, 148, 18, 0x101c2b, 0.95)
+    const signBox = this.add.rectangle(0, -118, 148, 18, 0x101c2b, 0.95)
       .setStrokeStyle(1.5, 0xf6c84a);
-    const signText = this.add.text(0, -126, `${stage.name} HBF • AUSGANG`, {
+    const signText = this.add.text(0, -118, `${stage.name} HBF • AUSGANG`, {
       fontFamily: "'Press Start 2P', monospace",
       fontSize: "6px",
       color: "#fff3c5"
@@ -934,24 +995,13 @@ export class WorldScene extends Phaser.Scene {
     retroAudio.playTrainWhistle?.();
 
     if (remote?.sprites) {
-      // Remote character walks towards the Bahnhof entrance doors and enters
+      // Remote character walks towards the Bahnhof entrance doors
       const doorX = this.stageEndX - 200;
       this.tweens.add({
         targets: remote.sprites,
         x: doorX,
         duration: 550,
-        ease: "Linear",
-        onComplete: () => {
-          this.tweens.add({
-            targets: remote.sprites,
-            alpha: 0,
-            scaleY: 0.8,
-            duration: 200,
-            onComplete: () => {
-              if (remote.nameLabel) remote.nameLabel.setVisible(false);
-            }
-          });
-        }
+        ease: "Linear"
       });
     }
   }
@@ -995,7 +1045,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createTrapVisuals() {
+    for (const t of this.trapObjects || []) {
+      for (const p of t.parts || []) p?.destroy?.();
+    }
     this.trapObjects = [];
+    this.trapSign?.destroy?.();
     const stage = COURSE.stages[this.stageIndex];
     const list = trapsForStage(stage?.id);
     if (!list.length) return;
@@ -1030,6 +1084,12 @@ export class WorldScene extends Phaser.Scene {
       this.networkCharacterState = { state: `hurt-${this.playerFacing}`, grounded: false, vx: dir * TRAP.knockbackX, vy: -TRAP.knockbackY };
       this.setAvatarAnimation(`hurt-${this.playerFacing}`);
       this.trapKnockUntil = this.time.now + 350;
+      this.time.delayedCall(360, () => {
+        if (!this.player?.body || this.playerKo) return;
+        this.player.body.setVelocity(0, 0);
+        this.setAvatarAnimation("idle");
+        this.networkCharacterState = { state: "idle", grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+      });
       this.cameras.main.shake(140, 0.006);
       const damage = Number(data.damage) || 15;
       const newHp = Math.max(0, this.playerHp - damage);
@@ -1138,6 +1198,12 @@ export class WorldScene extends Phaser.Scene {
     this.player.body.reset(result.respawnX, result.respawnY);
     this.syncAvatarLayers();
     this.setAvatarAnimation(`hurt-${this.playerFacing}`);
+    this.time.delayedCall(420, () => {
+      if (!this.player?.body || this.playerKo) return;
+      this.player.body.setVelocity(0, 0);
+      this.setAvatarAnimation("idle");
+      this.networkCharacterState = { state: "idle", grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+    });
     this.time.delayedCall(1600, () => { this.hitCooldown = false; });
   }
 
@@ -1259,7 +1325,12 @@ export class WorldScene extends Phaser.Scene {
     for (const npc of QUEST.npcs) {
       if (npc.x < this.stageStartX || npc.x > this.stageEndX) continue;
       const sprites = [];
-      partDefs.forEach(([texture, key], i) => {
+      if (npc.sprite && this.textures.exists(npc.sprite)) {
+        // Custom NPC sprite: one 4-frame idle sheet, single row.
+        const sprite = this.add.sprite(npc.x, baseY, npc.sprite, 0);
+        sprite.setOrigin(0.5, 0.5).setDepth(18);
+        sprites.push({ sprite, texture: npc.sprite, row: 0 });
+      } else partDefs.forEach(([texture, key], i) => {
         if (!this.textures.exists(texture)) return;
         const sprite = this.add.sprite(
           npc.x, baseY, texture,
@@ -1344,6 +1415,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   createSeasonParticles() {
+    for (const p of this.seasonParticles || []) p.sprite?.destroy?.();
     this.seasonParticles = [];
     const season = this.season || seasonOf(this.currentStage);
     const rnd = (r) => (Array.isArray(r) ? Phaser.Math.FloatBetween(r[0], r[1]) : r);
@@ -1428,6 +1500,7 @@ export class WorldScene extends Phaser.Scene {
     };
     let key = backdropKey(stage);
     if (!this.textures.exists(key)) key = legacy[stage.id] || "city-munich-gameplay";
+    for (const b of this.cityBackdrops || []) b?.destroy();
     if (this.textures.exists(key)) {
       // Match the clear colour to the top row of the art so tall spectator
       // views never show a different blue above the panorama.
@@ -1438,8 +1511,8 @@ export class WorldScene extends Phaser.Scene {
       this.cityBackdrops = [
         this.add.image(stage.startX, 0, key)
           .setOrigin(0, 0)
-          .setDisplaySize(this.stageWidth, 224)
-          .setScrollFactor(1, 0)
+          .setDisplaySize(this.stageWidth, 270)
+          .setScrollFactor(1, 1)
           .setDepth(-100)
       ];
     } else {
@@ -1983,6 +2056,13 @@ export class WorldScene extends Phaser.Scene {
   // =====================================================
 
   createStageEnemies() {
+    if (this.stageEnemy) {
+      this.stageEnemy.sprite?.destroy();
+      this.stageEnemy.bar?.destroy();
+      this.stageEnemy.name?.destroy();
+      this.enemyBattlePrompt?.destroy();
+      this.stageEnemy = null;
+    }
     const stage = COURSE.stages[this.stageIndex];
     this.stageEnemy = null;
     this.enemyInReach = false;
@@ -2090,6 +2170,10 @@ export class WorldScene extends Phaser.Scene {
   updateStageEnemies(delta) {
     const e = this.stageEnemy;
     if (!e || e.defeated || !e.sprite?.active) return;
+    if (this.time.now < (e.actionUntil || 0)) {
+      this.drawEnemyHealthBar();
+      return;
+    }
 
     if (this.isHostMode || !this.player) {
       // Host / spectator view: enemy patrols with animated walking step
@@ -2346,6 +2430,39 @@ export class WorldScene extends Phaser.Scene {
     this.tweens.add({ targets: g, alpha: 0, scale: 1.5, x: x + sign * 14, duration: 200, onComplete: () => g.destroy() });
   }
 
+  spawnSwordSlashArc(x, y, dir) {
+    const g = this.add.graphics({ x, y }).setDepth(43);
+    const sign = dir === "right" ? 1 : -1;
+    // Outer vibrant cyan-glow arc
+    g.lineStyle(4, 0x38bdf8, 0.7);
+    g.beginPath();
+    g.arc(sign * 12, 0, 18, -0.65 * Math.PI, 0.65 * Math.PI, sign < 0);
+    g.strokePath();
+
+    // Inner bright white razor blade arc
+    g.lineStyle(2, 0xffffff, 1);
+    g.beginPath();
+    g.arc(sign * 13, 0, 18, -0.6 * Math.PI, 0.6 * Math.PI, sign < 0);
+    g.strokePath();
+
+    // Sharp blade tip spark
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(sign * 22, -6, 2.5);
+    g.fillStyle(0x38bdf8, 0.9);
+    g.fillCircle(sign * 24, 0, 2);
+
+    this.tweens.add({
+      targets: g,
+      alpha: 0,
+      scaleX: 1.45,
+      scaleY: 1.45,
+      x: x + sign * 18,
+      duration: 190,
+      ease: "Quad.easeOut",
+      onComplete: () => g.destroy()
+    });
+  }
+
   spawnHitSparks(x, y) {
     const colors = [0xfff2b0, 0xff4444, 0xffa500, 0xffffff];
     for (let i = 0; i < 10; i++) {
@@ -2397,19 +2514,27 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  // Correct answer: the player lunges & punches, the enemy flinches in hit pose and loses HP!
+  // Correct answer: the player lunges & strikes with weapon (or punch), the enemy flinches in hit pose and loses HP!
   playPlayerAttack(solved, total, defeated) {
     return new Promise((resolve) => {
       const e = this.stageEnemy;
       if (!e || !this.player) { resolve(); return; }
+      if (e) e.actionUntil = this.time.now + (defeated ? 1300 : 700);
       const dir = e.sprite.x >= this.player.x ? "right" : "left";
       this.playerFacing = dir;
-      this.setAvatarAnimation(`punch-${dir}`);
-      this.networkCharacterState = { state: `punch-${dir}`, grounded: true, vx: 0, vy: 0 };
+      const hasWeapon = Number(this.localAvatarSelection?.weapon) > 0;
+      const animType = hasWeapon ? "sword" : "punch";
+      this.setAvatarAnimation(`${animType}-${dir}`);
+      this.networkCharacterState = { state: `${animType}-${dir}`, grounded: true, vx: 0, vy: 0 };
       retroAudio.playCorrect?.();
 
       const lunge = dir === "right" ? 16 : -16;
-      this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 18 : -18), this.player.y - 4, dir);
+      if (hasWeapon) {
+        retroAudio.playSlash?.();
+        this.spawnSwordSlashArc(this.player.x + (dir === "right" ? 18 : -18), this.player.y - 4, dir);
+      } else {
+        this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 18 : -18), this.player.y - 4, dir);
+      }
 
       this.tweens.add({
         targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
@@ -2426,8 +2551,13 @@ export class WorldScene extends Phaser.Scene {
         this.setEnemyProgress(solved, total);
         this.spawnSlashEffect(e.sprite.x + (dir === "right" ? -14 : 14), e.sprite.y - 6);
         this.spawnHitSparks(e.sprite.x + (dir === "right" ? -14 : 14), e.sprite.y - 6);
-        this.cameras.main.shake(120, 0.005);
-        retroAudio.playBounce?.();
+        this.cameras.main.shake(defeated ? 220 : 120, defeated ? 0.01 : 0.005);
+        if (hasWeapon) {
+          retroAudio.playShatter?.();
+        } else {
+          retroAudio.playBounce?.();
+        }
+        if (defeated) retroAudio.playCoin?.();
         const dmg = Math.round(e.maxHp / Math.max(1, total));
         this.showFloatingFeedback(e.sprite.x, e.sprite.y - 38, defeated ? "DIKALAHKAN!" : `-${dmg} HP`, "#ffe28a");
 
@@ -2464,6 +2594,7 @@ export class WorldScene extends Phaser.Scene {
     return new Promise((resolve) => {
       const e = this.stageEnemy;
       if (!e || !this.player) { this.releaseHp(); resolve(); return; }
+      if (e) e.actionUntil = this.time.now + 700;
       const dir = e.sprite.x >= this.player.x ? "right" : "left";
       const useSpecial = e.cfg.boss && Math.random() < 0.4 && this.textures.exists(`enemy-${e.enemyId}-special`);
       retroAudio.playWrong?.();
@@ -2564,21 +2695,46 @@ export class WorldScene extends Phaser.Scene {
   // MULTIPLAYER REMOTE AVATAR
   // =====================================================
 
-  drawParchmentNameplate(graphics, label, x, bottomY) {
-    if (!graphics?.active || !label?.active) return;
-    const width = Math.ceil(label.width + 2);
-    const height = Math.ceil(label.height + 2);
-    const left = Math.round(x - width / 2);
-    const top = Math.round(bottomY - height);
-    graphics.clear();
-    graphics.fillStyle(0x3b291d, 0.92);
-    graphics.fillRect(left - 2, top - 2, width + 4, height + 4);
-    graphics.fillStyle(0xe8d7ad, 1);
-    graphics.fillRect(left, top, width, height);
-    graphics.lineStyle(1, 0x765333, 1);
-    graphics.strokeRect(left + 1, top + 1, width - 2, height - 2);
-    graphics.lineStyle(1, 0xf7edcf, 0.9);
-    graphics.lineBetween(left + 3, top + 3, left + width - 4, top + 3);
+  buildPlayerNameplate(remote) {
+    if (!remote?.namePlate?.active || !remote?.nameLabel?.active) return;
+    const slot = remote.slot ?? 0;
+    const slotColors = [
+      { badge: 0x2563eb, border: 0x60a5fa, tag: "P1" }, // Blue
+      { badge: 0xd97706, border: 0xfbbf24, tag: "P2" }, // Gold / Orange
+      { badge: 0x059669, border: 0x34d399, tag: "P3" }, // Green
+      { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }  // Purple
+    ];
+    const pal = slotColors[slot % slotColors.length];
+
+    const labelW = Math.max(28, Math.ceil(remote.nameLabel.displayWidth || remote.nameLabel.width || 28));
+    const badgeW = 14;
+    const pad = 3;
+    const totalW = badgeW + labelW + pad * 2 + 2;
+    const totalH = 13;
+
+    const left = -Math.round(totalW / 2);
+    const top = -totalH;
+
+    const g = remote.namePlate;
+    g.clear();
+
+    // 1. Sleek dark translucent pill
+    g.fillStyle(0x0a101d, 0.92);
+    g.fillRoundedRect(left, top, totalW, totalH, 3);
+    g.lineStyle(1, pal.border, 0.95);
+    g.strokeRoundedRect(left, top, totalW, totalH, 3);
+
+    // 2. Colored slot badge pill on left [P1] / [P2]
+    g.fillStyle(pal.badge, 1);
+    g.fillRoundedRect(left + 1, top + 1, badgeW, totalH - 2, 2);
+
+    // 3. Small downward pointer arrow (caret) pointing at avatar's head
+    g.fillStyle(pal.border, 1);
+    g.fillTriangle(-3, 0, 3, 0, 0, 3);
+
+    // 4. Position text elements precisely inside the container
+    remote.slotLabel?.setPosition(left + 1 + Math.round(badgeW / 2), -2);
+    remote.nameLabel.setPosition(left + badgeW + pad + Math.round(labelW / 2) + 1, -2);
   }
 
   createRemoteAvatar(data) {
@@ -2663,24 +2819,44 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const slot = this.remoteAvatars.size;
+    const slotColors = [
+      { badge: 0x2563eb, border: 0x60a5fa, tag: "P1" },
+      { badge: 0xd97706, border: 0xfbbf24, tag: "P2" },
+      { badge: 0x059669, border: 0x34d399, tag: "P3" },
+      { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }
+    ];
+    const pal = slotColors[slot % slotColors.length];
+    const displayName = String(data.name || `Player ${slot + 1}`).slice(0, 10) || `P${slot + 1}`;
+
     const nameLabel = this.add.text(
-      x, y - 29,
-      `P${slot + 1} ${String(data.name || "Player").slice(0, 8)}`,
+      0, 0,
+      displayName,
+      {
+        fontFamily: "Arial, sans-serif",
+        fontSize: "8px",
+        fontStyle: "bold",
+        color: "#f8fafc",
+        align: "center"
+      }
+    ).setOrigin(0.5, 1);
+
+    const slotLabel = this.add.text(
+      0, 0,
+      pal.tag,
       {
         fontFamily: "'Press Start 2P', monospace",
-        fontSize: "8px",
-        color: "#563b27",
-        align: "center",
-        resolution: 2
+        fontSize: "5px",
+        color: "#ffffff",
+        fontStyle: "bold"
       }
-    ).setPadding(4, 3, 4, 3).setOrigin(0.5, 1).setDepth(33);
-    nameLabel.setVisible(true);
-    const namePlate = this.add.graphics().setDepth(32);
-    this.drawParchmentNameplate(namePlate, nameLabel, x, y - 29);
+    ).setOrigin(0.5, 1);
 
-    const hpBar = this.add.graphics().setDepth(34);
+    const namePlate = this.add.graphics();
+    const hpBar = this.add.graphics();
+    const nameContainer = this.add.container(x, y - 24).setDepth(33);
+    nameContainer.add([namePlate, hpBar, nameLabel, slotLabel]);
 
-    this.remoteAvatars.set(data.playerId, {
+    const remoteObj = {
       hpBar,
       hp: Number.isFinite(Number(data.hp)) ? Number(data.hp) : BATTLE.playerMaxHp,
       maxHp: Number(data.maxHp) || BATTLE.playerMaxHp,
@@ -2689,7 +2865,9 @@ export class WorldScene extends Phaser.Scene {
       name: data.name || "Player",
       sprites,
       nameLabel,
+      slotLabel,
       namePlate,
+      nameContainer,
       slot,
       x,
       y,
@@ -2705,7 +2883,11 @@ export class WorldScene extends Phaser.Scene {
       lastUpdate: performance.now(),
       snapshots: [{ time: performance.now(), x, y }],
       serverNow: Number(data.serverNow) || Date.now()
-    });
+    };
+
+    this.buildPlayerNameplate(remoteObj);
+    this.drawRemoteHpBar(remoteObj);
+    this.remoteAvatars.set(data.playerId, remoteObj);
 
     console.log(
       "[MULTIPLAYER] Avatar pemain dibuat:",
@@ -2729,6 +2911,27 @@ export class WorldScene extends Phaser.Scene {
     if (!remote) {
       this.createRemoteAvatar(data);
       return;
+    }
+
+    // Ensure remote avatar and name are visible (restore from any previous fade-out or stage transition)
+    if (remote.sprites) {
+      this.tweens.killTweensOf(remote.sprites);
+      for (const s of remote.sprites) {
+        if (s.alpha < 1) s.setAlpha(1);
+        if (s.scaleY !== 1) s.setScale(1);
+        s.setVisible(true);
+      }
+    }
+    if (remote.nameLabel) {
+      remote.nameLabel.setVisible(true);
+      remote.nameLabel.setAlpha(1);
+    }
+    if (remote.nameContainer) {
+      remote.nameContainer.setVisible(true);
+      remote.nameContainer.setAlpha(1);
+    }
+    if (Number.isInteger(data.stageIndex)) {
+      remote.stageIndex = data.stageIndex;
     }
 
     // Costume data is carried with the authoritative server snapshot. Refresh
@@ -2763,8 +2966,10 @@ export class WorldScene extends Phaser.Scene {
       remote.serverNow = Number(data.serverNow) || Date.now();
     }
 
-    if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "hurt"].includes(data.state)) {
-      remote.state = data.state;
+    if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "hurt", "hurt-left", "hurt-right", "punch-left", "punch-right", "sword-left", "sword-right"].includes(data.state)) {
+      if (this.time.now >= (remote.actionUntil || 0)) {
+        remote.state = data.state;
+      }
     }
     if (typeof data.finished === "boolean") remote.finished = data.finished;
     if (Number.isFinite(Number(data.hp))) this.setRemoteHp(remote, data);
@@ -2780,10 +2985,10 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    if (data.name) {
+    if (data.name && data.name !== remote.name && remote.nameLabel?.active) {
       remote.name = String(data.name).slice(0, 24);
-      remote.nameLabel.setText(`P${(remote.slot ?? 0) + 1} ${String(remote.name || "Player").slice(0, 8)}`);
-      this.drawParchmentNameplate(remote.namePlate, remote.nameLabel, remote.x, remote.y - 29);
+      remote.nameLabel.setText(String(remote.name || "Player").slice(0, 10));
+      this.buildPlayerNameplate(remote);
     }
   }
 
@@ -2793,9 +2998,17 @@ export class WorldScene extends Phaser.Scene {
     if (!remote) return;
     const prevHp = remote.hp;
     const wasKo = remote.ko;
-    remote.maxHp = Number(data.maxHp) || remote.maxHp || BATTLE.playerMaxHp;
-    remote.hp = Phaser.Math.Clamp(Number(data.hp), 0, remote.maxHp);
-    if (typeof data.ko === "boolean") remote.ko = data.ko;
+    const newMax = Number(data.maxHp) || remote.maxHp || BATTLE.playerMaxHp;
+    const newHp = Phaser.Math.Clamp(Number(data.hp), 0, newMax);
+    const newKo = typeof data.ko === "boolean" ? data.ko : remote.ko;
+
+    const hpChanged = (newHp !== prevHp) || (newMax !== remote.maxHp);
+    const koChanged = (newKo !== wasKo);
+
+    remote.maxHp = newMax;
+    remote.hp = newHp;
+    remote.ko = newKo;
+
     const damage = Number(data.damage) || Math.max(0, (Number(prevHp) || 0) - remote.hp);
     if (damage > 0 && remote.nameLabel?.active) {
       this.showFloatingFeedback(remote.x, remote.y - 14, `-${damage}`, "#ff7777");
@@ -2819,9 +3032,12 @@ export class WorldScene extends Phaser.Scene {
       }
       this.showFloatingFeedback(remote.x, remote.y - 26, "RESPAWN!", "#82d82c");
     }
+    if (hpChanged || koChanged) {
+      this.drawRemoteHpBar(remote);
+    }
   }
 
-  drawRemoteHpBar(remote, x, y) {
+  drawRemoteHpBar(remote) {
     const g = remote.hpBar;
     if (!g?.active) return;
     const ratio = Phaser.Math.Clamp((remote.hp ?? BATTLE.playerMaxHp) / (remote.maxHp || BATTLE.playerMaxHp), 0, 1);
@@ -2830,10 +3046,10 @@ export class WorldScene extends Phaser.Scene {
       g.clear();
       return;
     }
-    const w = 24, h = 3;
-    const left = Math.round(x - w / 2);
-    // y - 48 sits cleanly above the nameplate (which extends up to y - 44), preventing any overlap
-    const top = Math.round(y - 48);
+    const w = 26, h = 3;
+    const left = -Math.round(w / 2);
+    // Positioned right above the compact nameplate (nameplate top is at -13)
+    const top = -19;
     g.clear();
     g.fillStyle(0x0a0c16, 0.95).fillRect(left - 1, top - 1, w + 2, h + 2);
     g.fillStyle(0x381215, 1).fillRect(left, top, w, h);
@@ -2859,9 +3075,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     remote.finishBanner?.destroy();
-    remote.hpBar?.destroy();
-    remote.nameLabel.destroy();
-    remote.namePlate?.destroy();
+    remote.nameContainer?.destroy(true);
     remote.hero?.destroy();
 
     this.remoteAvatars.delete(playerId);
@@ -2870,6 +3084,152 @@ export class WorldScene extends Phaser.Scene {
       "[MULTIPLAYER] Avatar pemain dihapus:",
       playerId
     );
+  }
+
+  // Other players see a clear attack pose + slash when someone lands a hit, and a hurt pose when the enemy hits back.
+  showRemoteBattleStrike(data = {}) {
+    const remote = this.remoteAvatars?.get(data.playerId);
+    const e = this.stageEnemy;
+    if (!remote && !e) return;
+
+    if (e) {
+      e.actionUntil = this.time.now + (data.defeated ? 1300 : 700);
+      if (Number.isFinite(Number(data.enemyHp))) {
+        e.hp = Number(data.enemyHp);
+        if (Number.isFinite(Number(data.enemyMaxHp))) e.maxHp = Number(data.enemyMaxHp);
+        this.drawEnemyHealthBar?.();
+      }
+    }
+
+    if (remote) {
+      const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+      remote.facing = dir;
+      for (const sprite of remote.sprites) sprite.setFlipX(dir === "left");
+      const hasWeapon = Number(remote.avatarRows?.weapon) > 0;
+      const animType = hasWeapon ? "sword" : "punch";
+      remote.state = `${animType}-${dir}`;
+      remote.actionUntil = this.time.now + 520;
+      remote.animFrame = 0;
+      remote.animTimer = 0;
+
+      // Lunge forward with dynamic weapon slash!
+      const lunge = dir === "right" ? 16 : -16;
+      this.tweens.add({
+        targets: remote.sprites,
+        x: `+=${lunge}`,
+        scaleX: 1.15,
+        scaleY: 0.9,
+        duration: 130,
+        yoyo: true,
+        ease: "Quad.easeOut"
+      });
+
+      if (hasWeapon) {
+        this.spawnSwordSlashArc?.(remote.x + (dir === "right" ? 18 : -18), remote.y - 4, dir);
+        retroAudio.playSlash?.();
+      } else {
+        this.spawnPunchSwoosh?.(remote.x + (dir === "right" ? 18 : -18), remote.y - 4, dir);
+        retroAudio.playBounce?.();
+      }
+
+      this.time?.delayedCall?.(520, () => {
+        if (remote.state?.startsWith("sword") || remote.state?.startsWith("punch")) remote.state = "idle";
+        remote.actionUntil = 0;
+      });
+    }
+
+    // Impact on enemy
+    if (e?.sprite?.active) {
+      const hitX = e.sprite.x;
+      const hitY = e.sprite.y - 6;
+      this.spawnSlashEffect?.(hitX, hitY);
+      this.spawnHitSparks?.(hitX, hitY);
+      this.cameras.main?.shake?.(data.defeated ? 220 : 120, data.defeated ? 0.01 : 0.005);
+      this.showFloatingFeedback?.(hitX, hitY - 38, data.defeated ? "DIKALAHKAN!" : `-${Number(data.damage) || 0} HP`, "#ffe28a");
+
+      if (!data.defeated) {
+        this.setEnemyPose?.("hit");
+        e.sprite.setTint?.(0xff4444);
+        const recoilDir = (remote && remote.x > e.sprite.x) ? -16 : 16;
+        this.tweens.add({
+          targets: e.sprite,
+          x: e.sprite.x + recoilDir,
+          duration: 100,
+          yoyo: true,
+          ease: "Back.easeOut",
+          onComplete: () => {
+            e.sprite?.clearTint?.();
+            if (!e.defeated) this.setEnemyPose?.("idle");
+          }
+        });
+      } else {
+        this.markEnemyDefeated?.(false);
+      }
+    }
+  }
+
+  showRemoteBattleHurt(data = {}) {
+    const remote = this.remoteAvatars?.get(data.playerId);
+    const e = this.stageEnemy;
+    if (!remote && !e) return;
+
+    if (e && e.sprite?.active) {
+      e.actionUntil = this.time.now + 650;
+      const homeX = e.homeX || e.sprite.x;
+      const dir = (remote && remote.x > e.sprite.x) ? "right" : "left";
+      e.sprite.setFlipX(dir === "left");
+      const useSpecial = e.cfg?.boss && Math.random() < 0.4 && this.textures.exists(`enemy-${e.enemyId}-special`);
+      this.setEnemyPose?.(useSpecial ? "special" : "attack");
+      retroAudio.playWrong?.();
+
+      // Enemy lunges towards player
+      this.tweens.add({
+        targets: e.sprite,
+        x: homeX + (dir === "right" ? 28 : -28),
+        scaleY: (e.cfg?.boss ? 0.55 : 0.72) * 1.12,
+        duration: 130,
+        yoyo: true,
+        hold: 70,
+        ease: "Quad.easeOut",
+        onComplete: () => {
+          e.sprite.x = homeX;
+          this.setEnemyPose?.("idle");
+        }
+      });
+    }
+
+    if (remote) {
+      const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+      remote.state = `hurt-${dir}`;
+      remote.actionUntil = this.time.now + 480;
+      remote.animFrame = 0;
+      remote.animTimer = 0;
+      this.spawnSlashEffect?.(remote.x, remote.y - 6);
+      this.spawnHitSparks?.(remote.x, remote.y - 6);
+      this.showFloatingFeedback?.(remote.x, remote.y - 20, `-${Number(data.damage) || 0} HP`, "#ff7777");
+
+      // Remote player recoils and flashes red
+      const recoil = dir === "left" ? 12 : -12;
+      this.tweens.add({
+        targets: remote.sprites,
+        x: `+=${recoil}`,
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeOut"
+      });
+      for (const sprite of remote.sprites) {
+        sprite.setTint?.(0xff5555);
+        this.time?.delayedCall?.(220, () => {
+          if (remote.ko) sprite.setTint?.(0x777777);
+          else sprite.clearTint?.();
+        });
+      }
+
+      this.time?.delayedCall?.(480, () => {
+        if (remote.state?.startsWith("hurt")) remote.state = "idle";
+        remote.actionUntil = 0;
+      });
+    }
   }
 
   updateRemoteAvatars(delta) {
@@ -2902,10 +3262,9 @@ export class WorldScene extends Phaser.Scene {
       const idleBob = remote.heroState?.startsWith("idle") ? Math.sin(performance.now() / 430 + remote.slot) * 0.45 : 0;
       for (const sprite of remote.sprites) sprite.setPosition(x, y + idleBob);
       for (const sprite of remote.sprites) sprite.setVisible(true);
-      remote.nameLabel.setPosition(x, y - 29 + idleBob);
-      this.drawParchmentNameplate(remote.namePlate, remote.nameLabel, x, y - 29 + idleBob);
-      this.drawRemoteHpBar(remote, x, y + idleBob);
-      if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 40);
+      const slotStackOffset = ((remote.slot || 0) % 4) * 6;
+      remote.nameContainer?.setPosition(x, y - 24 + idleBob - slotStackOffset);
+      if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 42);
     }
   }
 
@@ -2937,6 +3296,8 @@ export class WorldScene extends Phaser.Scene {
 
     if (remote.state?.startsWith("interact")) {
       anim = "interact";
+    } else if (remote.state?.startsWith("sword") || remote.state?.startsWith("attack")) {
+      anim = "sword";
     } else if (remote.state?.startsWith("punch")) {
       anim = "punch";
     } else if (remote.state?.startsWith("hurt")) {
@@ -2953,7 +3314,7 @@ export class WorldScene extends Phaser.Scene {
     else if (dx < -0.4 || vx < -8) direction = "left";
     remote.facing = direction;
 
-    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 9 : (anim === "punch" ? 12 : 6));
+    const frameRate = anim === "idle" ? 4 : (anim === "walk" ? 9 : ((anim === "punch" || anim === "sword") ? 14 : 6));
     const frameDuration = 1000 / frameRate;
 
     if (anim === "jump") {
@@ -2963,7 +3324,7 @@ export class WorldScene extends Phaser.Scene {
       if (remote.animTimer >= frameDuration) {
         const steps = Math.floor(remote.animTimer / frameDuration);
         remote.animTimer -= steps * frameDuration;
-        const bodyKey = anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : anim === "punch" ? `avatar-body-punch-${direction}` : "avatar-body";
+        const bodyKey = anim === "walk" ? `avatar-body-walk-${direction}` : anim === "interact" ? `avatar-body-interact-${direction}` : anim === "hurt" ? `avatar-body-hurt-${direction}` : anim === "sword" ? `avatar-body-sword-${direction}` : anim === "punch" ? `avatar-body-punch-${direction}` : "avatar-body";
         const frameTexture = this.textures.exists(bodyKey) ? bodyKey : "avatar-body";
         const activeColumns = this.getAvatarTextureColumns(frameTexture);
         if (remote.lastAnim !== anim || remote.lastDirection !== direction) remote.animFrame = 0;
@@ -2995,7 +3356,10 @@ export class WorldScene extends Phaser.Scene {
       else if (anim === "jump") textureKey = `avatar-${part}-jump-${direction}`;
       else if (anim === "interact") textureKey = `avatar-${part}-interact-${direction}`;
       else if (anim === "hurt") textureKey = `avatar-${part}-hurt-${direction}`;
-      else if (anim === "punch") textureKey = `avatar-${part}-punch-${direction}`;
+      else if (anim === "sword" || anim === "attack") {
+        textureKey = `avatar-${part}-sword-${direction}`;
+        if (!this.textures.exists(textureKey)) textureKey = `avatar-${part}-punch-${direction}`;
+      } else if (anim === "punch") textureKey = `avatar-${part}-punch-${direction}`;
 
       if (!this.textures.exists(textureKey)) {
         textureKey = `avatar-${part}-walk-${direction}`;
@@ -3003,7 +3367,10 @@ export class WorldScene extends Phaser.Scene {
       }
 
       if (sprite.texture.key !== textureKey) sprite.setTexture(textureKey);
-      sprite.setFrame(this.getAvatarFrameIndex(textureKey, rows[index], frame));
+      const targetFrame = this.getAvatarFrameIndex(textureKey, rows[index], frame);
+      if (sprite.frame?.name !== targetFrame) {
+        sprite.setFrame(targetFrame);
+      }
       sprite.setFlipX(false);
     });
   }
@@ -3056,11 +3423,16 @@ export class WorldScene extends Phaser.Scene {
   getAvatarTexture(part, state) {
     if (state === "idle") return part.idleTexture;
 
-    // Smooth locomotion uses same-pivot Walk sheets; special attacks use verified Punch sheets.
+    // Smooth locomotion uses same-pivot Walk sheets; special attacks use Sword or Punch sheets.
     const direction = state.endsWith("left") ? "left" : "right";
-    const pose = state.startsWith("punch") ? "punch" : state.startsWith("hurt") ? "hurt" : state.startsWith("interact") ? "interact" : state.startsWith("jump") || state.startsWith("fall") ? "jump" : state.startsWith("run") ? "run" : "walk";
+    const pose = (state.startsWith("sword") || state.startsWith("attack")) ? "sword" : state.startsWith("punch") ? "punch" : state.startsWith("hurt") ? "hurt" : state.startsWith("interact") ? "interact" : state.startsWith("jump") || state.startsWith("fall") ? "jump" : state.startsWith("run") ? "run" : "walk";
     const exact = `avatar-${part.name}-${pose}-${direction}`;
     if (this.textures.exists(exact)) return exact;
+
+    if (pose === "sword") {
+      const punchKey = `avatar-${part.name}-punch-${direction}`;
+      if (this.textures.exists(punchKey)) return punchKey;
+    }
 
     // Run sheets exist for body/eyes/hair and some clothing layers only; reuse the aligned Walk fallback.
     const walk = `avatar-${part.name}-walk-${direction}`;
@@ -3107,7 +3479,8 @@ export class WorldScene extends Phaser.Scene {
 
     // On ground: natural 9 FPS walk stride cadence vs 4 FPS breathing idle
     const isMoving = Math.abs(this.player?.body?.velocity?.x || 0) > 5;
-    const frameRate = this.avatarState.startsWith("punch") ? 14
+    const isAttacking = this.avatarState.startsWith("punch") || this.avatarState.startsWith("sword") || this.avatarState.startsWith("attack");
+    const frameRate = isAttacking ? 15
       : this.avatarState.startsWith("hurt") ? 10
       : (isMoving ? 10 : 5);
     const frameDuration = 1000 / frameRate;
@@ -3123,8 +3496,8 @@ export class WorldScene extends Phaser.Scene {
         this.avatarState === "idle" ? "idle" : this.avatarState
       );
       const columns = this.getAvatarTextureColumns(bodyTexture);
-      // Punch and death play once and hold the last frame. Hurt flinches, then holds if K.O.
-      if (this.avatarState.startsWith("punch") || this.playerKo) {
+      // Attacks and death play once and hold the last frame until timer reset.
+      if (isAttacking || this.playerKo) {
         this.avatarFrame = Math.min(columns - 1, this.avatarFrame + steps);
       } else {
         this.avatarFrame = (this.avatarFrame + steps) % columns;
@@ -3195,10 +3568,13 @@ export class WorldScene extends Phaser.Scene {
     this.mobileInput = {
       left: false,
       right: false,
-      jump: false
+      jump: false,
+      attack: false
     };
 
     this.mobileJumpWasDown = false;
+    this.mobileAttackWasDown = false;
+    this.isAttacking = false;
     this.playerFacing = "right";
     this.wasGrounded = true;
     this.networkCharacterState = { state: "idle", grounded: true, vx: 0, vy: 0 };
@@ -3222,12 +3598,54 @@ export class WorldScene extends Phaser.Scene {
     if (this.player) {
       this.player.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, this.worldWidth, this.worldHeight));
       if (!this.isHostMode) {
-        camera.startFollow(this.player, true, 0.085, 0.085);
+        camera.setDeadzone(0, 0);
+        camera.startFollow(this.player, true, 0.18, 0.18);
       }
     }
     if (this.isHostMode && this.hostSpectatorTarget) {
-      camera.startFollow(this.hostSpectatorTarget, true, 0.085, 0.085);
+      camera.setDeadzone(0, 0);
+      camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
     }
+  }
+
+  performAttackSlash() {
+    if (this.isAttacking || this.playerKo || !this.player?.body) return;
+    this.isAttacking = true;
+    this.attackStartTime = this.time.now;
+    const dir = this.playerFacing || "right";
+    const hasWeapon = Number(this.localAvatarSelection?.weapon) > 0;
+    const anim = hasWeapon ? "sword" : "punch";
+    const state = `${anim}-${dir}`;
+
+    this.setAvatarAnimation(state);
+    this.networkCharacterState = { state, grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+
+    // Visual slash / swoosh effect + audio
+    if (hasWeapon) {
+      retroAudio.playSlash?.();
+      this.spawnSwordSlashArc(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
+    } else {
+      retroAudio.playBounce?.();
+      this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
+    }
+
+    // Subtle forward lunge
+    const lunge = dir === "right" ? 8 : -8;
+    this.tweens.add({
+      targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+      x: `+=${lunge}`,
+      duration: 110,
+      yoyo: true,
+      ease: "Quad.easeOut"
+    });
+
+    this.time.delayedCall(340, () => {
+      this.isAttacking = false;
+      if (!this.playerKo) {
+        this.setAvatarAnimation("idle");
+        this.networkCharacterState = { state: "idle", grounded: this.player.body.onFloor(), vx: 0, vy: 0 };
+      }
+    });
   }
 
   updatePlayerMovement() {
@@ -3236,11 +3654,51 @@ export class WorldScene extends Phaser.Scene {
     // Trap knock-back: keep the push for a moment instead of letting held input cancel it.
     if (this.time.now < (this.trapKnockUntil || 0)) return;
 
-    // Freeze movement until host starts game, during intro, during quiz, or after finish.
+    // Safety recovery: stop knockback velocity once stun expires so the character doesn't slide/walk endlessly
+    if (this.avatarState.startsWith("hurt") && !this.playerKo) {
+      body.setVelocityX(0);
+      this.setAvatarAnimation("idle");
+      this.networkCharacterState = { state: "idle", grounded: body.onFloor(), vx: 0, vy: 0 };
+    }
+
+    // Watchdog safety checks: prevent any flag from freezing player permanently
+    if (this.isAttacking && (!this.attackStartTime || this.time.now - this.attackStartTime > 450)) {
+      this.isAttacking = false;
+    }
+    if (this.introActive && (!this.introStartTime || this.time.now - this.introStartTime > 3600)) {
+      this.introActive = false;
+      this._gameStartIntroPlaying = false;
+    }
+    if (this.quizPaused && !this.battleActive && !this.inCanvasBattleElements) {
+      this.quizPaused = false;
+    }
+
+    // Freeze movement until host starts game, during intro (host TV only), during quiz, or after finish.
     // A K.O. keeps the fallen pose instead of snapping back to idle.
-    if (!this.gameStarted || this.introActive || this._bossIntroPlaying || this.quizPaused || this.finished) {
+    if (!this.gameStarted || (this.isHostMode && this.introActive) || this._bossIntroPlaying || this.quizPaused || this.finished) {
       body.setVelocity(0, body.velocity.y);
-      if (!this.playerKo) this.setAvatarAnimation("idle");
+      if (!this.playerKo && !this.avatarState.startsWith("sword") && !this.avatarState.startsWith("punch") && !this.avatarState.startsWith("hurt")) {
+        this.setAvatarAnimation("idle");
+      }
+      return;
+    }
+
+    // Attack button or F key:
+    const attackPressed = Phaser.Input.Keyboard.JustDown(this.enemyAttackKey) ||
+      (this.mobileInput.attack && !this.mobileAttackWasDown);
+    this.mobileAttackWasDown = Boolean(this.mobileInput.attack);
+
+    if (attackPressed && !this.isAttacking && !this.playerKo) {
+      if (this.enemyInReach) {
+        this.attackStageEnemy();
+      } else {
+        this.performAttackSlash();
+      }
+      return;
+    }
+
+    if (this.avatarState.startsWith("interact") || this.avatarState.startsWith("hurt") || this.avatarState.startsWith("punch") || this.avatarState.startsWith("sword") || this.avatarState.startsWith("attack") || this.isAttacking) {
+      this.networkCharacterState = { state: this.avatarState, grounded: body.onFloor(), vx: 0, vy: 0 };
       return;
     }
 
@@ -3328,26 +3786,7 @@ export class WorldScene extends Phaser.Scene {
   // UPDATE
   // =====================================================
 
-  // Safety net: an intro cut-scene can never keep the player locked for long.
-  guardStuckStates() {
-    const now = performance.now();
-    if (this.introActive) {
-      this._introSince = this._introSince ?? now;
-      if (now - this._introSince > 5500) { this.introActive = false; this._gameStartIntroPlaying = false; this._introSince = null; }
-    } else this._introSince = null;
-    if (this._bossIntroPlaying) {
-      this._bossSince = this._bossSince ?? now;
-      if (now - this._bossSince > 5000) { this._bossIntroPlaying = false; this._bossSince = null; }
-    } else this._bossSince = null;
-    // K.O. state is released by the server respawn; if that message is lost, recover.
-    if (this.playerKo) {
-      this._koSince = this._koSince ?? now;
-      if (now - this._koSince > 8000) { this.respawnLocal({}); this._koSince = null; }
-    } else this._koSince = null;
-  }
-
   update(_time, delta) {
-    this.guardStuckStates();
     const scrollX = this.cameras.main.scrollX;
 
     for (const layer of this.parallaxLayers || []) {
@@ -3429,126 +3868,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // LEADERBOARD HUD (RETRO ARCADE)
+  // LEADERBOARD HUD (RETRO ARCADE - HANDLED BY HD HTML HUD ON HOST)
   // =====================================================
 
   createLeaderboardHUD() {
     this.leaderboardData = [];
-    this.leaderboardTexts = [];
-    this.previousRanks = new Map();
-
-    // Mobile/Desktop controller already has the HTML header & TOP drawer; hide in-canvas leaderboard to keep screen clean
-    if (!this.isHostMode) return;
-
-    this.leaderboardBg = this.add.graphics();
-    this.leaderboardBg.setScrollFactor(0);
-    this.leaderboardBg.setDepth(98);
-
-    this.leaderboardTitle = this.add.text(
-      VIEW_W - 10,
-      8,
-      "LEADERBOARD",
-      {
-        fontFamily: "'Press Start 2P', monospace, sans-serif",
-        fontSize: "7px",
-        color: "#f7c83b",
-        stroke: "#000000",
-        strokeThickness: 2,
-        align: "right"
-      }
-    );
-    this.leaderboardTitle.setOrigin(1, 0);
-    this.leaderboardTitle.setScrollFactor(0);
-    this.leaderboardTitle.setDepth(100);
+    this.leaderboardElements = [];
   }
 
   setLeaderboardData(players) {
-    if (this.isHostMode) { this.leaderboardTitle?.setVisible(false); return; } // TV uses the DOM leaderboard HUD
-    if (!Array.isArray(players)) return;
-    this.leaderboardData = [...players]
-      .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
-      .slice(0, 5);
-    this.updateLeaderboardHUD();
+    // Handled by native High-DPI HTML Leaderboard on Host TV view
   }
 
-  updateLeaderboardHUD() {
-    if (!this.leaderboardTitle) return;
-
-    for (const text of this.leaderboardTexts) {
-      text.destroy();
-    }
-    this.leaderboardTexts = [];
-
-    const data = this.leaderboardData || [];
-    if (!data.length) {
-      this.leaderboardBg.clear();
-      return;
-    }
-
-    const startY = 22;
-    const itemHeight = 12;
-    const panelWidth = 140;
-    const panelHeight = 18 + data.length * itemHeight;
-    const panelX = VIEW_W - panelWidth - 4;
-    const panelY = 4;
-
-    this.leaderboardBg.clear();
-    this.leaderboardBg.fillStyle(0x251d18, 0.9);
-    this.leaderboardBg.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 3);
-    this.leaderboardBg.lineStyle(1, 0xc7a875, 0.95);
-    this.leaderboardBg.strokeRoundedRect(panelX + 1, panelY + 1, panelWidth - 2, panelHeight - 2, 2);
-    this.leaderboardBg.lineStyle(1, 0x765333, 0.9);
-    this.leaderboardBg.strokeRect(panelX + 4, panelY + 4, panelWidth - 8, panelHeight - 8);
-
-    for (let i = 0; i < data.length; i++) {
-      const entry = data[i];
-      const id = entry.playerId;
-      const name = String(entry.name || "Player").slice(0, 8);
-      const score = Number(entry.score) || 0;
-      const isTop = i === 0 && score > 0;
-      const prefix = i === 0 && score > 0 ? "👑" : `${i + 1}.`;
-      const color = isTop ? "#f7c83b" : (i === 1 ? "#cbd5e1" : (i === 2 ? "#e29b52" : "#9299ab"));
-
-      const prevRank = this.previousRanks.get(id);
-      const rankUp = prevRank !== undefined && prevRank > i;
-      this.previousRanks.set(id, i);
-
-      const text = this.add.text(
-        VIEW_W - 8,
-        startY + i * itemHeight,
-        `${prefix} ${name} ${score}`,
-        {
-          fontFamily: "'Press Start 2P', monospace, sans-serif",
-          fontSize: "6px",
-          color,
-          stroke: "#000000",
-          strokeThickness: 2,
-          align: "right"
-        }
-      );
-      text.setOrigin(1, 0);
-      text.setScrollFactor(0);
-      text.setDepth(100);
-
-      if (rankUp) {
-        this.tweens.add({
-          targets: text,
-          scaleX: 1.25,
-          scaleY: 1.25,
-          duration: 140,
-          yoyo: true,
-          ease: "Quad.easeOut"
-        });
-      }
-
-      this.leaderboardTexts.push(text);
-    }
-  }
+  updateLeaderboardHUD() {}
   createGameTimerHUD() {
-    this.events.once("shutdown", () => {
-      if (this.gameTimerInterval) clearInterval(this.gameTimerInterval);
-      this.gameTimerInterval = null;
-    });
     this.gameTimerBox = this.add.graphics();
     this.gameTimerBox.setScrollFactor(0);
     this.gameTimerBox.setDepth(98);
@@ -3688,90 +4021,138 @@ export class WorldScene extends Phaser.Scene {
     this.podiumContainer.setDepth(300);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x111422, 0.94);
-    bg.fillRect(-170, -110, 340, 220);
-    bg.lineStyle(4, 0x000000, 1);
-    bg.strokeRect(-170, -110, 340, 220);
-    bg.lineStyle(2, 0xf7c83b, 1);
-    bg.strokeRect(-166, -106, 332, 212);
+    bg.fillStyle(0x0f172a, 0.96);
+    bg.fillRect(-195, -125, 390, 250);
+    bg.lineStyle(3, 0x000000, 1);
+    bg.strokeRect(-195, -125, 390, 250);
+    bg.lineStyle(2, 0xf6c84a, 1);
+    bg.strokeRect(-192, -122, 384, 244);
     this.podiumContainer.add(bg);
 
-    const title = this.add.text(0, -92, "★ GAME OVER ★", {
+    const title = this.add.text(0, -108, "★ GAME OVER · HASIL AKHIR ★", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "12px",
-      color: "#f7c83b",
+      fontSize: "9px",
+      color: "#f6c84a",
       stroke: "#000000",
       strokeThickness: 3
     }).setOrigin(0.5);
     this.podiumContainer.add(title);
 
     const winner = sorted[0];
-    const winnerText = this.add.text(0, -72, winner ? `👑 PEMENANG: ${winner.name}` : "SELESAI", {
+    const winnerText = this.add.text(0, -92, winner ? `👑 JUARA 1: ${winner.name} (${winner.score} PTS)` : "SELESAI", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "8px",
+      fontSize: "7px",
       color: "#82d82c",
       stroke: "#000000",
       strokeThickness: 2
     }).setOrigin(0.5);
     this.podiumContainer.add(winnerText);
 
-    // 2nd Place (Left)
+    // 2nd Place Pedestal (Left)
     const p2Bg = this.add.graphics();
-    p2Bg.fillStyle(0xcbd5e1, 1);
-    p2Bg.fillRect(-90, 5, 54, 45);
-    p2Bg.lineStyle(2, 0x000000, 1);
-    p2Bg.strokeRect(-90, 5, 54, 45);
+    p2Bg.fillStyle(0x94a3b8, 1);
+    p2Bg.fillRect(-92, -38, 54, 42);
+    p2Bg.lineStyle(1.5, 0x000000, 1);
+    p2Bg.strokeRect(-92, -38, 54, 42);
     this.podiumContainer.add(p2Bg);
-    const p2Num = this.add.text(-63, 20, "2", {
+    const p2Num = this.add.text(-65, -24, "2", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "14px",
-      color: "#171324"
+      fontSize: "13px",
+      color: "#0f172a"
     }).setOrigin(0.5);
-    const p2Name = this.add.text(-63, -8, sorted[1]?.name ? sorted[1].name.slice(0, 6) : "-", {
+    const p2Name = this.add.text(-65, -48, sorted[1]?.name ? String(sorted[1].name).slice(0, 8) : "-", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "6px",
       color: "#cbd5e1"
     }).setOrigin(0.5);
-    this.podiumContainer.add([p2Num, p2Name]);
+    const p2Pts = this.add.text(-65, -8, sorted[1] ? `${sorted[1].score}P` : "", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "5px",
+      color: "#1e293b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p2Num, p2Name, p2Pts]);
 
-    // 1st Place (Center)
+    // 1st Place Pedestal (Center)
     const p1Bg = this.add.graphics();
-    p1Bg.fillStyle(0xf7c83b, 1);
-    p1Bg.fillRect(-27, -20, 54, 70);
+    p1Bg.fillStyle(0xf6c84a, 1);
+    p1Bg.fillRect(-27, -56, 54, 60);
     p1Bg.lineStyle(2, 0x000000, 1);
-    p1Bg.strokeRect(-27, -20, 54, 70);
+    p1Bg.strokeRect(-27, -56, 54, 60);
     this.podiumContainer.add(p1Bg);
-    const p1Crown = this.add.text(0, -42, "👑", { fontSize: "14px" }).setOrigin(0.5);
-    const p1Num = this.add.text(0, 5, "1", {
+    const p1Crown = this.add.text(0, -78, "👑", { fontSize: "14px" }).setOrigin(0.5);
+    const p1Num = this.add.text(0, -38, "1", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "18px",
-      color: "#171324"
+      fontSize: "16px",
+      color: "#0f172a"
     }).setOrigin(0.5);
-    const p1Name = this.add.text(0, -30, sorted[0]?.name ? sorted[0].name.slice(0, 6) : "-", {
+    const p1Name = this.add.text(0, -66, sorted[0]?.name ? String(sorted[0].name).slice(0, 8) : "-", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "6px",
-      color: "#f7c83b"
+      color: "#fef08a"
     }).setOrigin(0.5);
-    this.podiumContainer.add([p1Crown, p1Num, p1Name]);
+    const p1Pts = this.add.text(0, -12, sorted[0] ? `${sorted[0].score} PTS` : "", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "5px",
+      color: "#1e293b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p1Crown, p1Num, p1Name, p1Pts]);
 
-    // 3rd Place (Right)
+    // 3rd Place Pedestal (Right)
     const p3Bg = this.add.graphics();
-    p3Bg.fillStyle(0xe29b52, 1);
-    p3Bg.fillRect(36, 20, 54, 30);
-    p3Bg.lineStyle(2, 0x000000, 1);
-    p3Bg.strokeRect(36, 20, 54, 30);
+    p3Bg.fillStyle(0xd97706, 1);
+    p3Bg.fillRect(38, -25, 54, 29);
+    p3Bg.lineStyle(1.5, 0x000000, 1);
+    p3Bg.strokeRect(38, -25, 54, 29);
     this.podiumContainer.add(p3Bg);
-    const p3Num = this.add.text(63, 32, "3", {
+    const p3Num = this.add.text(65, -14, "3", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "12px",
-      color: "#171324"
+      fontSize: "11px",
+      color: "#0f172a"
     }).setOrigin(0.5);
-    const p3Name = this.add.text(63, 8, sorted[2]?.name ? sorted[2].name.slice(0, 6) : "-", {
+    const p3Name = this.add.text(65, -34, sorted[2]?.name ? String(sorted[2].name).slice(0, 8) : "-", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "6px",
-      color: "#e29b52"
+      color: "#fcd34d"
     }).setOrigin(0.5);
-    this.podiumContainer.add([p3Num, p3Name]);
+    const p3Pts = this.add.text(65, -3, sorted[2] ? `${sorted[2].score}P` : "", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "5px",
+      color: "#1e293b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p3Num, p3Name, p3Pts]);
+
+    // COMPLETE LIST OF ALL PLAYERS (ranked #1 through #N)
+    const listHeader = this.add.text(0, 15, "--- PERINGKAT SEMUA PEMAIN ---", {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "5px",
+      color: "#94a3b8"
+    }).setOrigin(0.5);
+    this.podiumContainer.add(listHeader);
+
+    // Dynamic grid displaying every player's name and score
+    const playersTable = this.add.container(0, 24);
+    const totalPlayers = sorted.length;
+    const isTwoCol = totalPlayers > 4;
+
+    sorted.forEach((p, idx) => {
+      const col = isTwoCol ? (idx < Math.ceil(totalPlayers / 2) ? 0 : 1) : 0;
+      const rowInCol = isTwoCol ? (idx < Math.ceil(totalPlayers / 2) ? idx : idx - Math.ceil(totalPlayers / 2)) : idx;
+      const rx = isTwoCol ? (col === 0 ? -90 : 90) : 0;
+      const ry = rowInCol * 12;
+
+      const rankSymbol = idx === 0 ? "👑" : `${idx + 1}.`;
+      const pName = String(p.name || "Player").slice(0, 8);
+      const pScore = Number(p.score) || 0;
+      const rowColor = idx === 0 ? "#f6c84a" : (idx === 1 ? "#cbd5e1" : (idx === 2 ? "#fcd34d" : "#f8fafc"));
+
+      const rowText = this.add.text(rx, ry, `${rankSymbol} ${pName} : ${pScore} PTS`, {
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: "5px",
+        color: rowColor
+      }).setOrigin(0.5, 0);
+      playersTable.add(rowText);
+    });
+    this.podiumContainer.add(playersTable);
 
     for (let c = 0; c < 16; c++) {
       const star = this.add.text(Phaser.Math.Between(-150, 150), Phaser.Math.Between(-80, 80), "★", {
@@ -3793,16 +4174,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // SCENE: GAME START COUNTDOWN CUTSCENE
-  // =====================================================
-  // =====================================================
   // SCENE: GAME START COUNTDOWN SPEECH BUBBLE CUTSCENE
   // =====================================================
-  playGameStartIntro(onComplete, options = {}) {
+  playGameStartIntro(onComplete) {
+    if (!this.isHostMode) {
+      this.introActive = false;
+      this._gameStartIntroPlaying = false;
+      if (onComplete) onComplete();
+      return;
+    }
+
     if (this._gameStartIntroPlaying) return;
     this._gameStartIntroPlaying = true;
     this._gameStartIntroPlayed = true;
     this.introActive = true;
+    this.introStartTime = this.time.now;
 
     if (this.player?.body) {
       this.player.body.setVelocity(0, 0);
@@ -3812,25 +4198,6 @@ export class WorldScene extends Phaser.Scene {
     const elements = [];
     const centerX = VIEW_W / 2;
     const centerY = VIEW_H / 2;
-
-    // Phone: the DOM modal already shows the countdown. Only lock input for the
-    // same duration and fire the confetti, without a second dialog on top.
-    if (options.silent) {
-      const done = () => {
-        if (!this._gameStartIntroPlaying) return;
-        this.introActive = false;
-        this._gameStartIntroPlaying = false;
-        if (onComplete) onComplete();
-      };
-      this.time.delayedCall(2100, () => {
-        retroAudio.playTrainWhistle?.();
-        this.spawnCelebrationConfetti(this.player?.x || centerX, (this.player?.y || centerY) - 20);
-        this.cameras.main.flash(200, 255, 255, 255);
-      });
-      this.time.delayedCall(2700, done);
-      setTimeout(done, 3200);
-      return;
-    }
 
     let callbackExecuted = false;
     const finishIntro = () => {
@@ -3886,9 +4253,9 @@ export class WorldScene extends Phaser.Scene {
     }).setOrigin(0, 0);
 
     // Large countdown inside bubble
-    const countText = this.add.text(-bw / 2 + 62, bh / 2 - 20, "3", {
-      fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#f59e0b", stroke: "#000", strokeThickness: 3
-    }).setOrigin(0, 0.5);
+    const countText = this.add.text(centerX - 120, 24, "3", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "22px", color: "#f59e0b", stroke: "#000", strokeThickness: 4
+    }).setOrigin(0.5);
     bubbleContainer.add([badge, announce, countText]);
 
     bubbleContainer.setScale(0.85);
@@ -3905,7 +4272,7 @@ export class WorldScene extends Phaser.Scene {
       this.time.delayedCall(delay, () => {
         countText.setText(numStr);
         countText.setColor(color);
-        countText.setScale(1.25);
+        countText.setScale(1.4);
         retroAudio.playCountdownBeep?.(false);
         this.tweens.add({ targets: countText, scale: 1.0, duration: 240, ease: "Back.easeOut" });
       });
@@ -3915,10 +4282,10 @@ export class WorldScene extends Phaser.Scene {
     runNumber("1", "#10b981", 1450);
 
     this.time.delayedCall(2150, () => {
-      countText.setFontSize(12);
-      countText.setText("LOS GEHT'S!");
+      countText.setFontSize(13);
+      countText.setText("LOS GEHT'S! 🏁");
       countText.setColor("#82d82c");
-      countText.setScale(1.2);
+      countText.setScale(1.4);
       retroAudio.playCountdownBeep?.(true);
       retroAudio.playTrainWhistle?.();
       this.spawnCelebrationConfetti(this.player?.x || centerX, (this.player?.y || centerY) - 20);

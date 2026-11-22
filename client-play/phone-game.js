@@ -6,7 +6,6 @@ import { WorldScene } from "../src/scenes/WorldScene.js";
 import { TrainTravelScene } from "../src/scenes/TrainTravelScene.js";
 import { COURSE } from "../src/game/course.js";
 import { syncServerClock } from "../src/game/clock.js";
-import { installLoopGuard } from "../src/game/loopGuard.js";
 
 export function createPhoneGame({
   parent,
@@ -59,6 +58,8 @@ export function createPhoneGame({
       this.localPlayerId = socket.id;
       super.create({ ...data, stageIndex: this.stageIndex });
       this.gameStarted = Boolean(data?.gameStarted ?? window.baiGameStarted ?? false);
+      this.introActive = false;
+      this._gameStartIntroPlaying = false;
       if (this.localAvatarSelection && this.player) this.applyAvatarSelection(this.localAvatarSelection);
 
       this.lastNetworkUpdate = 0;
@@ -154,10 +155,6 @@ export function createPhoneGame({
       const handleHazardHit = (result) => {
         if (result?.playerId === socket.id) this.handleAuthoritativeHazardHit(result);
       };
-      const handleSlugState = (data) => {
-        if (!data?.playerId || data.playerId === socket.id) return;
-        this.updateRemoteAvatar(data);
-      };
       const handleFinishedPeer = (data) => {
         if (!data?.playerId || data.playerId === socket.id) return;
         this.updateRemoteAvatar({ ...data, state: "idle", finished: true });
@@ -202,6 +199,17 @@ export function createPhoneGame({
       };
       socket.on("game:ended", handleGameEnded);
 
+      const handlePlayerStrike = (data) => {
+        if (!data?.playerId || data.playerId === socket.id) return;
+        this.showRemoteBattleStrike?.(data);
+      };
+      const handleEnemyStrike = (data) => {
+        if (!data?.playerId || data.playerId === socket.id) return;
+        this.showRemoteBattleHurt?.(data);
+      };
+      socket.on("battle:player-strike", handlePlayerStrike);
+      socket.on("battle:enemy-strike", handleEnemyStrike);
+
       // =====================================================
       // BERSIHKAN LISTENERS SAAT SCENE DITUTUP
       // =====================================================
@@ -226,6 +234,8 @@ export function createPhoneGame({
           socket.off("trap:hit", handleTrapHit);
           clearInterval(this._clockTimer);
           socket.off("game:ended", handleGameEnded);
+          socket.off("battle:player-strike", handlePlayerStrike);
+          socket.off("battle:enemy-strike", handleEnemyStrike);
         }
       );
 
@@ -331,7 +341,7 @@ export function createPhoneGame({
     }
   }
 
-  const game = new Phaser.Game({
+  return new Phaser.Game({
     type: Phaser.CANVAS,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoRound: true,
@@ -378,8 +388,4 @@ export function createPhoneGame({
       TrainTravelScene
     ]
   });
-  // Debug handle (dipakai untuk profiling FPS / tes otomatis).
-  window.baiGame = game;
-  installLoopGuard(game);
-  return game;
 }

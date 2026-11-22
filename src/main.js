@@ -1,13 +1,11 @@
 
 import "./style.css";
-import { loadHostSession } from "./session.js";
 import Phaser from "phaser";
 import { THEME } from "./theme.js";
 import { BootScene } from "./scenes/BootScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
 import { TrainTravelScene } from "./scenes/TrainTravelScene.js";
 import { setupHostPanel } from "./hostPanel.js";
-import { installLoopGuard } from "./game/loopGuard.js";
 import { t, getLang, setLang, onLangChange, SUPPORTED_LANGUAGES } from "./i18n/index.js";
 
 const GAME_WIDTH = 480;
@@ -224,10 +222,6 @@ renderMenu();
 const fontReady = (document.fonts?.load ? document.fonts.load('8px "Press Start 2P"') : Promise.resolve()).catch(() => {});
 Promise.race([fontReady, new Promise(resolve => setTimeout(resolve, 1500))]).then(() => {
   game = new Phaser.Game(config);
-  installLoopGuard(game);
-
-  // Host me-refresh halaman: langsung kembali ke mode host & room yang sama (tambahkan ?new=1 untuk room baru).
-  if (loadHostSession() && !new URLSearchParams(location.search).has("new")) hostRoom();
 });
 
 window.addEventListener(

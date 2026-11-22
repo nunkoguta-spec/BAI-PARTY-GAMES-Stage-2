@@ -53,26 +53,157 @@ function roller(scene, trap) {
   return obj;
 }
 
-// TRAM LEWAT -----------------------------------------------------------------------------------
+// TRAM LEWAT — PERLINTASAN SEBIDANG (BAHNÜBERGANG) -------------------------------------------
 function tram(scene, trap) {
-  const ext = trap.half + trap.len;
-  const rails = scene.add.tileSprite(trap.x, G - 2, ext * 2 + 36, 6, "trap-rails").setOrigin(0.5, 0).setDepth(DEPTH.rail);
-  const sigL = scene.add.sprite(trap.x - ext - 14, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
-  const sigR = scene.add.sprite(trap.x + ext + 14, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
-  const body = scene.add.image(trap.x, G + 1, "trap-tram").setOrigin(0.5, 1).setDepth(DEPTH.front).setAlpha(0).setVisible(false);
+  const crossingHalfW = 28;
+  const crossingW = crossingHalfW * 2;
+
+  // 1. Level Crossing Tracks & Pavement (Perlintasan Sebidang tegak lurus melintasi jalan)
+  const crossBase = scene.add.graphics().setDepth(DEPTH.rail);
+  // Dark ballast bed across the street (from G - 28 down to G + 8)
+  crossBase.fillStyle(0x18202c, 0.95);
+  crossBase.fillRect(trap.x - crossingHalfW, G - 28, crossingW, 36);
+
+  // Horizontal wooden cross-ties (sleepers) every 5px
+  crossBase.fillStyle(0x453526, 1);
+  for (let ty = G - 26; ty <= G + 4; ty += 5) {
+    crossBase.fillRect(trap.x - crossingHalfW + 3, ty, crossingW - 6, 3);
+    crossBase.fillStyle(0x2d2116, 1);
+    crossBase.fillRect(trap.x - crossingHalfW + 3, ty + 2, crossingW - 6, 1);
+    crossBase.fillStyle(0x453526, 1);
+  }
+
+  // Two vertical steel rails crossing the street perpendicularly
+  crossBase.fillStyle(0x94a3b8, 1);
+  crossBase.fillRect(trap.x - 14, G - 28, 3, 36);
+  crossBase.fillRect(trap.x + 11, G - 28, 3, 36);
+  crossBase.fillStyle(0xe2e8f0, 1);
+  crossBase.fillRect(trap.x - 13, G - 28, 1, 36);
+  crossBase.fillRect(trap.x + 12, G - 28, 1, 36);
+
+  // White road hazard boundary line on both sides of the crossing
+  crossBase.fillStyle(0xffffff, 0.85);
+  crossBase.fillRect(trap.x - crossingHalfW - 1, G - 2, 2, 8);
+  crossBase.fillRect(trap.x + crossingHalfW - 1, G - 2, 2, 8);
+
+  // 2. German Andreaskreuz Warning Signal Posts
+  const sigL = scene.add.sprite(trap.x - crossingHalfW - 12, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+  const sigR = scene.add.sprite(trap.x + crossingHalfW + 12, G, "trap-signal", 0).setOrigin(0.5, 1).setDepth(DEPTH.top);
+
+  // 3. Red & White Automatic Crossing Gates (Schranken / Palang Pintu)
+  const gateL = scene.add.graphics().setDepth(DEPTH.front + 1);
+  const gateR = scene.add.graphics().setDepth(DEPTH.front + 1);
+  const gateLen = 34;
+
+  function drawGateArm(g, postX, angleDeg, isLeft) {
+    g.clear();
+    // Gate post pivot
+    g.fillStyle(0x2d3748, 1);
+    g.fillRect(postX - 3, G - 16, 6, 16);
+    g.fillStyle(0xe2e8f0, 1);
+    g.fillCircle(postX, G - 14, 3.5);
+
+    // Diagonal red/white striped barrier arm
+    const rad = Phaser.Math.DegToRad(angleDeg);
+    const dir = isLeft ? 1 : -1;
+    const endX = postX + Math.cos(rad) * gateLen * dir;
+    const endY = (G - 14) + Math.sin(rad) * gateLen;
+
+    g.lineStyle(4, 0xffffff, 1);
+    g.lineBetween(postX, G - 14, endX, endY);
+
+    // Red stripes
+    const segs = 5;
+    for (let i = 1; i < segs; i += 2) {
+      const t1 = i / segs;
+      const t2 = (i + 1) / segs;
+      const x1 = Phaser.Math.Linear(postX, endX, t1);
+      const y1 = Phaser.Math.Linear(G - 14, endY, t1);
+      const x2 = Phaser.Math.Linear(postX, endX, t2);
+      const y2 = Phaser.Math.Linear(G - 14, endY, t2);
+      g.lineStyle(4, 0xef4444, 1);
+      g.lineBetween(x1, y1, x2, y2);
+    }
+  }
+
+  // Initial upright open barrier pose (~75 deg up)
+  let currentGateAngle = -75;
+  drawGateArm(gateL, trap.x - crossingHalfW - 2, currentGateAngle, true);
+  drawGateArm(gateR, trap.x + crossingHalfW + 2, currentGateAngle, false);
+
+  // 4. Authentic Front-Facing German Train (Tampak Depan, matching Image 1)
+  const textureKey = scene.textures.exists("trap-train-front") ? "trap-train-front" : "trap-tram";
+  const body = scene.add.image(trap.x, G - 18, textureKey)
+    .setOrigin(0.5, 1)
+    .setDepth(DEPTH.front)
+    .setScale(0.4)
+    .setAlpha(0)
+    .setVisible(false);
+
+  // 5. Dual LED Headlight Beams
+  const beam = scene.add.graphics().setDepth(DEPTH.top);
+
   const obj = {
-    trap, parts: [body], lastBeat: -1, lastActive: false,
+    trap, parts: [body, crossBase, gateL, gateR], lastBeat: -1, lastActive: false,
     update(now) {
       const s = tramState(trap, now);
       const beat = Math.floor(now / 250);
       const frame = s.lights ? 1 + (beat % 2) : 0;
       sigL.setFrame(frame); sigR.setFrame(frame === 0 ? 0 : 3 - frame);
+
+      // Animate crossing barrier gates lowering when train warns or approaches
+      const targetAngle = (s.lights || s.active) ? 0 : -75;
+      if (Math.abs(currentGateAngle - targetAngle) > 1) {
+        currentGateAngle = Phaser.Math.Linear(currentGateAngle, targetAngle, 0.14);
+        drawGateArm(gateL, trap.x - crossingHalfW - 2, currentGateAngle, true);
+        drawGateArm(gateR, trap.x + crossingHalfW + 2, currentGateAngle, false);
+      }
+
+      // Train motion: RUSHES FORWARD ALONG THE VERTICAL TRACKS (perspective Z/Y motion)
+      // DOES NOT SLIDE SIDEWAYS! Center X is ALWAYS locked at trap.x!
+      if (s.active) {
+        const u = s.u; // 0 to 1
+        const scale = 0.42 + u * 0.72;
+        const currentY = (G - 18) + u * 20;
+        const alpha = u < 0.15 ? (u / 0.15) : (u > 0.85 ? (1 - (u - 0.85) / 0.15) : 1);
+        body.setPosition(trap.x, currentY).setScale(scale).setAlpha(alpha).setVisible(true);
+
+        // Headlight beams shining forward from the approaching train's headlights
+        beam.clear();
+        if (near(scene, trap.x, 420)) {
+          const beamAlpha = 0.22 + u * 0.15;
+          const leftLightX = trap.x - 18 * scale;
+          const rightLightX = trap.x + 18 * scale;
+          const lightY = currentY - 18 * scale;
+
+          // Left headlight beam
+          beam.fillStyle(0xfff2b0, beamAlpha);
+          beam.fillTriangle(leftLightX, lightY, leftLightX - 24 * scale, G + 12, leftLightX + 6 * scale, G + 12);
+          beam.fillStyle(0xffffff, 0.85);
+          beam.fillCircle(leftLightX, lightY, 2.5 * scale);
+
+          // Right headlight beam
+          beam.fillStyle(0xfff2b0, beamAlpha);
+          beam.fillTriangle(rightLightX, lightY, rightLightX - 6 * scale, G + 12, rightLightX + 24 * scale, G + 12);
+          beam.fillStyle(0xffffff, 0.85);
+          beam.fillCircle(rightLightX, lightY, 2.5 * scale);
+        }
+      } else {
+        body.setVisible(false).setAlpha(0);
+        beam.clear();
+        // Warning light pulse when signals are on before the train arrives
+        if (s.lights && near(scene, trap.x, 420)) {
+          beam.fillStyle(0xfff2b0, 0.12);
+          beam.fillTriangle(trap.x, G - 24, trap.x - 22, G + 8, trap.x + 22, G + 8);
+        }
+      }
+
       if (s.bell && beat !== obj.lastBeat && near(scene, trap.x, 380)) retroAudio.playBell?.();
       obj.lastBeat = beat;
-      body.setVisible(s.active).setAlpha(s.alpha).setX(s.x).setFlipX(s.dir < 0);
+
       if (s.active && !obj.lastActive && near(scene, trap.x, 380)) {
         retroAudio.playTrainWhistle?.();
-        scene.cameras?.main?.shake(220, 0.0022);
+        scene.cameras?.main?.shake(240, 0.0028);
       }
       obj.lastActive = s.active;
     },

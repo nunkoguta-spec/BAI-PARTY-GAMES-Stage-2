@@ -118,7 +118,13 @@ const ack = (s, e, d) => new Promise((r) => s.emit(e, d, r));
 const connect = (s) => new Promise((res, rej) => { s.once("connect", res); s.once("connect_error", rej); });
 
 async function integration() {
-  await wait(1200);
+  for (let i = 0; i < 40; i++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}/health`);
+      if (res.ok) break;
+    } catch {}
+    await wait(100);
+  }
   const host = io(`http://127.0.0.1:${PORT}`); let p = io(`http://127.0.0.1:${PORT}`);
   await Promise.all([connect(host), connect(p)]);
   const clock = await ack(p, "clock:sync", {});

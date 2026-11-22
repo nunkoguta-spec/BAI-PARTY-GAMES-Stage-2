@@ -1,7 +1,5 @@
 
 import { io } from "socket.io-client";
-import { loadHostSession, saveHostSession, clearHostSession } from "./session.js";
-import { SOCKET_SERVER_URL } from "./socketConfig.js";
 import QRCode from "qrcode";
 import { retroAudio } from "./audio/retroAudio.js";
 import { COURSE } from "./game/course.js";
@@ -13,6 +11,16 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   panel.hidden = true;
 
   panel.innerHTML = `
+    <div id="host-leaderboard-hud" class="pixel-box host-leaderboard-hud">
+      <div class="host-leaderboard-header">
+        <span class="pixel-badge">👑 KLASEMEN</span>
+        <span id="host-leaderboard-count" class="pixel-tag">0 PEMAIN</span>
+      </div>
+      <div id="host-leaderboard-rows" class="host-leaderboard-rows">
+        <div class="host-leaderboard-empty">Menunggu pemain...</div>
+      </div>
+    </div>
+
     <div id="host-minibar" class="pixel-box" hidden>
       <span id="host-minibar-text">⚙ HOST: ------</span>
       <button id="host-expand-panel" class="pixel-btn pixel-btn-sm" type="button">BUKA ▶</button>
@@ -139,7 +147,9 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     hostMinibar.hidden = true;
   });
 
-  const serverUrl = SOCKET_SERVER_URL;
+  const hostname = location.hostname || "localhost";
+  const serverUrl = import.meta.env.VITE_SERVER_URL
+    || (location.port === "3001" ? location.origin : "");
   let controllerUrl = `${location.origin}/client-play/`;
 
   controllerUrlElement.textContent = controllerUrl;
@@ -212,6 +222,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       startGameButton.disabled = players.length === 0;
       roomStatus.textContent = "Sesi baru siap. Pemain dapat bergerak ke garis start.";
       const scene = getWorldScene();
+      if (scene) {
+        scene._gameStartIntroPlayed = false;
+        scene._gameStartIntroPlaying = false;
+        scene.introActive = false;
+      }
       scene?.resetLocalPlayer?.();
       for (const p of players) {
         const avatar = scene?.remoteAvatars?.get(p.playerId);
@@ -309,7 +324,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   const socket = io(serverUrl, {
     autoConnect: false,
     reconnection: true,
-    reconnectionAttempts: Infinity,
+    reconnectionAttempts: 8,
     timeout: 10000
   });
 
@@ -348,7 +363,16 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
     const scene = getWorldScene();
     if (!scene) return;
+
     const remote = scene.remoteAvatars?.get(selectedPlayerId);
+    const targetStage = Number.isInteger(remote?.stageIndex)
+      ? remote.stageIndex
+      : (Number.isInteger(player.stageIndex) ? player.stageIndex : -1);
+
+    if (targetStage >= 0 && scene.stageIndex !== targetStage) {
+      scene.setStage?.(targetStage);
+    }
+
     if (remote && remote.sprites && remote.sprites[0]) {
       scene.hostFollowPlayer?.(remote);
     }
@@ -366,13 +390,23 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       return;
     }
 
-    const currentStillExists = players.some(
-      (player) => player.playerId === selectedPlayerId
-    );
+    // In AUTO mode, pick the player leading the race (highest stageIndex and x coordinate)
+    const scene = getWorldScene();
+    let bestPlayer = players[0];
+    let bestProgress = -Infinity;
 
-    if (currentStillExists) return;
+    for (const p of players) {
+      const remote = scene?.remoteAvatars?.get(p.playerId);
+      const px = Number.isFinite(remote?.x) ? remote.x : (Number(p.x) || 0);
+      const pStage = Number.isInteger(remote?.stageIndex) ? remote.stageIndex : (Number.isInteger(p.stageIndex) ? p.stageIndex : 0);
+      const progress = pStage * 10000 + px;
+      if (progress > bestProgress) {
+        bestProgress = progress;
+        bestPlayer = p;
+      }
+    }
 
-    watchPlayer(players[0]);
+    watchPlayer(bestPlayer);
   }
 
   function updateModeButtons() {
@@ -382,6 +416,9 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
   autoButton.addEventListener("click", () => {
     mode = "AUTO";
+    selectedPlayerId = "";
+    selectedPlayerName = "";
+    watchingLabel.textContent = "Kamera: Otomatis";
     updateModeButtons();
     chooseAutomaticPlayer();
   });
@@ -457,6 +494,46 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       row.append(name, status, score, watchButton, kickButton);
       playerList.appendChild(row);
     });
+    renderHostLeaderboardHUD();
+  }
+
+  function renderHostLeaderboardHUD() {
+    const rowsEl = document.getElementById("host-leaderboard-rows");
+    const countEl = document.getElementById("host-leaderboard-count");
+    if (!rowsEl) return;
+    if (countEl) countEl.textContent = `${players.length} PEMAIN`;
+
+    const ranked = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+    if (!ranked.length) {
+      rowsEl.innerHTML = `<div class="host-leaderboard-empty">Menunggu pemain...</div>`;
+      return;
+    }
+
+    const slotColors = [
+      { badge: "#2563eb", tag: "P1" },
+      { badge: "#d97706", tag: "P2" },
+      { badge: "#059669", tag: "P3" },
+      { badge: "#7c3aed", tag: "P4" }
+    ];
+
+    rowsEl.innerHTML = ranked.map((p, idx) => {
+      const rank = idx + 1;
+      const rankTag = rank === 1 ? "1 👑" : `${rank}`;
+      const pal = slotColors[idx % slotColors.length];
+      const isTop = rank === 1 && Number(p.score) > 0;
+      const name = String(p.name || "Player").slice(0, 10);
+      const score = Number(p.score) || 0;
+      return `
+        <div class="host-leaderboard-row ${isTop ? 'top-rank' : ''}">
+          <div class="host-leaderboard-left">
+            <span class="host-rank-num ${rank <= 3 ? 'rank-' + rank : ''}">${rankTag}</span>
+            <span class="host-slot-badge" style="background:${pal.badge}">${pal.tag}</span>
+            <span class="host-player-name">${name}</span>
+          </div>
+          <span class="host-player-pts">${score} PTS</span>
+        </div>
+      `;
+    }).join("");
   }
 
   searchInput.addEventListener("input", renderPlayers);
@@ -467,13 +544,6 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (!socket.connected) {
       connection.textContent = "Menghubungkan server...";
       socket.connect();
-      setTimeout(() => {
-        if (!socket.connected && roomRequested) {
-          roomRequested = false;
-          connection.textContent = "Server tidak tersedia. Game berjalan offline.";
-          onRoomCreated({ roomCode: "", offline: true });
-        }
-      }, 10000);
       return;
     }
     createRoomOnServer();
@@ -489,26 +559,6 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       onRoomCreated({ roomCode: "", offline: true });
     }, 8000);
 
-    // Refresh halaman host: lanjutkan room yang sama (kecuali ?new=1), jangan buat room baru.
-    const saved = new URLSearchParams(location.search).has("new") ? null : loadHostSession();
-    if (saved) {
-      connection.textContent = "Menyambungkan kembali ke room...";
-      socket.timeout(8000).emit("room:resume-host", { roomCode: saved.roomCode, hostToken: saved.hostToken }, (resumeError, resumeRes) => {
-        if (!resumeError && resumeRes?.ok) {
-          clearTimeout(createRoomTimeout);
-          activateRoom(resumeRes.roomCode, resumeRes.hostToken, true);
-          return;
-        }
-        // Room sudah hilang / token tidak cocok: buat room baru.
-        clearHostSession();
-        requestNewRoom();
-      });
-      return;
-    }
-    requestNewRoom();
-  }
-
-  function requestNewRoom() {
     socket.timeout(8000).emit("room:create", { name: "Host" }, (error, response) => {
       clearTimeout(createRoomTimeout);
       if (error || !response || !response.ok) {
@@ -517,44 +567,38 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         console.error("[HOST] Pembuatan room gagal:", error || response?.error);
         return;
       }
-      activateRoom(response.roomCode, response.hostToken || "", false);
-    });
-  }
 
-  function activateRoom(roomCode, hostToken, resumed) {
-    roomCreated = true;
-    panel.hidden = false;
-    currentHostToken = hostToken || "";
-    currentRoomCode = roomCode;
-    saveHostSession(currentRoomCode, currentHostToken);
-    roomCodeElement.textContent = currentRoomCode;
-    if (hostMinibarText) hostMinibarText.textContent = `⚙ HOST: ${currentRoomCode}`;
-    startGameButton.disabled = false;
-    roomStatus.textContent = resumed ? "Tersambung kembali ke room." : "Room siap. Menunggu pemain...";
-    connection.textContent = "SERVER TERHUBUNG";
-    connection.classList.add("host-online");
+      roomCreated = true;
+      panel.hidden = false;
+      currentHostToken = response.hostToken || "";
+      currentRoomCode = response.roomCode;
+      roomCodeElement.textContent = currentRoomCode;
+      if (hostMinibarText) hostMinibarText.textContent = `⚙ HOST: ${currentRoomCode}`;
+      startGameButton.disabled = false;
+      roomStatus.textContent = "Room siap. Menunggu pemain...";
 
-    socket.emit("tv:subscribe", { roomCode: currentRoomCode, hostToken: currentHostToken }, (result) => {
-      if (!result?.ok) {
-        roomStatus.textContent = result?.error || "Status room gagal dimuat.";
-        return;
-      }
-      players = result.players || [];
-      playerCount.textContent = players.length;
-      renderPlayers();
-      const scene = getWorldScene();
-      if (scene) {
-        scene.setLeaderboardData(players);
-        if (Array.isArray(result.avatars)) {
-          for (const av of result.avatars) scene.createRemoteAvatar(av);
+      socket.emit("tv:subscribe", { roomCode: currentRoomCode, hostToken: currentHostToken }, (result) => {
+        if (!result?.ok) {
+          roomStatus.textContent = result?.error || "Status room gagal dimuat.";
+          return;
         }
-      }
-      chooseAutomaticPlayer();
-    });
+        players = result.players || [];
+        playerCount.textContent = players.length;
+        renderPlayers();
+        const scene = getWorldScene();
+        if (scene) {
+          scene.setLeaderboardData(players);
+          if (Array.isArray(result.avatars)) {
+            for (const av of result.avatars) scene.createRemoteAvatar(av);
+          }
+        }
+        chooseAutomaticPlayer();
+      });
 
-    updateRoomQr();
-    console.log(resumed ? "[HOST] Room dilanjutkan:" : "[HOST] Room dibuat:", currentRoomCode);
-    onRoomCreated({ roomCode: currentRoomCode });
+      updateRoomQr();
+      console.log("[HOST] Room dibuat:", currentRoomCode);
+      onRoomCreated({ roomCode: currentRoomCode });
+    });
   }
 
   // Multiplayer avatar events on host (TV screen).
@@ -607,6 +651,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     console.error("[HOST] Koneksi server gagal:", error.message);
   });
 
+  socket.io.on("reconnect_failed", () => {
+    if (roomRequested && !roomCreated) {
+      roomRequested = false;
+      connection.textContent = "Server tidak tersedia. Game berjalan offline.";
+      onRoomCreated({ roomCode: "", offline: true });
+    }
+  });
+
   socket.on("disconnect", () => {
     connection.textContent = "SERVER TERPUTUS";
     connection.classList.remove("host-online");
@@ -628,8 +680,6 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         scene.setGameTimer(endsAt, "playing");
         if (!scene._gameStartIntroPlayed) {
           scene._gameStartIntroPlayed = true;
-          // Keep the TV view clear: fold the dashboard into the minibar once play starts (BUKA reopens it).
-          if (hostCard && !hostCard.hidden) { hostCard.hidden = true; hostMinibar.hidden = false; }
           scene.playGameStartIntro?.();
         }
       }
@@ -672,9 +722,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     const scene = getWorldScene();
     if (!scene) return;
     scene.updateRemoteAvatar(data);
+    const listed = players.find(p => p.playerId === data.playerId);
+    if (listed) {
+      listed.stageIndex = data.stageIndex;
+      listed.x = data.x;
+    }
 
-    // If followed player entered a new city stage, synchronize TV host view
-    const targetPlayerId = mode === "AUTO" ? (selectedPlayerId || data.playerId) : selectedPlayerId;
+    // In AUTO mode, follow the active race leader (selectedPlayerId)
+    const targetPlayerId = selectedPlayerId;
     if (data.playerId === targetPlayerId) {
       let targetStage = Number.isInteger(data.stageIndex) ? data.stageIndex : -1;
       if (targetStage === -1 && Number.isFinite(data.x)) {
@@ -682,28 +737,19 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       }
       if (targetStage >= 0 && scene.stageIndex !== targetStage) {
         scene.setStage?.(targetStage);
-        scene.events.once("create", () => {
-          const nextScene = getWorldScene();
-          if (nextScene) {
-            nextScene.setLeaderboardData(players);
-            for (const p of players) {
-              const px = p.playerId === data.playerId ? (data.x || 240) : p.x;
-              nextScene.createRemoteAvatar({ ...p, x: px, y: p.y || 208 });
-            }
-          }
-        });
       }
-    }
 
-    if (mode === "AUTO") {
-      if (!selectedPlayerId || selectedPlayerId === data.playerId) {
-        const remote = scene.remoteAvatars?.get(data.playerId);
-        if (remote) scene.hostFollowPlayer?.(remote);
-      }
-    } else if (mode === "MANUAL" && data.playerId === selectedPlayerId) {
       const remote = scene.remoteAvatars?.get(data.playerId);
-      if (remote) scene.hostFollowPlayer?.(remote);
+      if (remote && scene.hostSpectatorTarget !== remote.sprites[0]) {
+        scene.hostFollowPlayer?.(remote);
+      }
     }
+  });
+
+  socket.on("tv:player-move", (data) => {
+    if (!data?.playerId) return;
+    const scene = getWorldScene();
+    if (scene) scene.updateRemoteAvatar(data);
   });
 
   socket.on("tv:player-board-train", (data = {}) => {
@@ -711,22 +757,12 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (!scene) return;
     scene.animatePlayerBoardTrain?.(data);
 
-    const targetPlayerId = mode === "AUTO" ? (selectedPlayerId || data.playerId) : selectedPlayerId;
+    const targetPlayerId = selectedPlayerId;
     if (data.playerId === targetPlayerId && Number.isInteger(data.toIndex)) {
       window.setTimeout(() => {
         const activeScene = getWorldScene();
         if (activeScene && activeScene.stageIndex !== data.toIndex) {
           activeScene.setStage?.(data.toIndex);
-          activeScene.events.once("create", () => {
-            const nextScene = getWorldScene();
-            if (nextScene) {
-              nextScene.setLeaderboardData(players);
-              for (const p of players) {
-                const px = p.playerId === data.playerId ? (data.x || 240) : p.x;
-                nextScene.createRemoteAvatar({ ...p, x: px, y: p.y || 208 });
-              }
-            }
-          });
         }
       }, 1500);
     }
@@ -796,7 +832,31 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   if (socket.connected) syncClock();
   setInterval(() => { if (socket.connected) syncServerClock(socket, 2); }, 30000);
 
-  // Enemy battles on TV: show hit animation, update HP bar, and show defeat particles
+  // Enemy battles on TV: show player attack animations, hit feedback, HP bar update, and defeat
+  socket.on("battle:player-strike", (data = {}) => {
+    const scene = getWorldScene();
+    if (!scene) return;
+    const stageIdx = COURSE.stages.findIndex(s => s.id === data.stageId);
+    if (stageIdx >= 0 && scene.stageIndex !== stageIdx) {
+      if (mode === "AUTO" || selectedPlayerId === data.playerId) {
+        scene.setStage?.(stageIdx);
+      }
+    }
+    scene.showRemoteBattleStrike?.(data);
+  });
+
+  socket.on("battle:enemy-strike", (data = {}) => {
+    const scene = getWorldScene();
+    if (!scene) return;
+    const stageIdx = COURSE.stages.findIndex(s => s.id === data.stageId);
+    if (stageIdx >= 0 && scene.stageIndex !== stageIdx) {
+      if (mode === "AUTO" || selectedPlayerId === data.playerId) {
+        scene.setStage?.(stageIdx);
+      }
+    }
+    scene.showRemoteBattleHurt?.(data);
+  });
+
   socket.on("tv:enemy-hit", ({ playerId, stageId, damage, enemyHp, enemyMaxHp } = {}) => {
     const scene = getWorldScene();
     if (!scene) return;

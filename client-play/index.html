@@ -25,15 +25,36 @@
 
       <p id="joinInstruction" class="muted pixel-meta-text"></p>
 
-      <label id="playerNameLabel" for="playerName"></label>
-      <input
-        id="playerName"
-        class="pixel-input"
-        type="text"
-        maxlength="24"
-        placeholder="Nama pemain"
-        autocomplete="nickname"
-      >
+      <div class="join-inputs-row">
+        <div class="join-field">
+          <label id="playerNameLabel" for="playerName"></label>
+          <input
+            id="playerName"
+            class="pixel-input"
+            type="text"
+            maxlength="24"
+            placeholder="Nama pemain"
+            autocomplete="nickname"
+          >
+        </div>
+        <div class="join-field">
+          <label id="roomCodeLabel" for="roomCode"></label>
+          <input
+            id="roomCode"
+            class="pixel-input"
+            type="text"
+            maxlength="8"
+            placeholder="Kode room"
+            autocomplete="off"
+          >
+        </div>
+      </div>
+
+      <button id="joinButton" class="pixel-btn pixel-btn-primary" type="button">
+        MASUK ROOM
+      </button>
+
+      <p id="joinMessage" class="message"></p>
 
       <section id="avatarCustomizer" class="cc" aria-label="Kustomisasi karakter">
         <header class="cc-head">
@@ -94,25 +115,9 @@
 
         <footer class="cc-foot">
           <p class="cc-note">Gaya dan pakaian tersimpan otomatis dan tampil sama di TV Spectator.</p>
-          <button id="avatarDoneButton" type="button" class="cc-done">Selesai</button>
+          <button id="avatarDoneButton" type="button" class="cc-done">Selesai & Masuk</button>
         </footer>
       </section>
-
-      <label id="roomCodeLabel" for="roomCode"></label>
-      <input
-        id="roomCode"
-        class="pixel-input"
-        type="text"
-        maxlength="8"
-        placeholder="Kode room"
-        autocomplete="off"
-      >
-
-      <button id="joinButton" class="pixel-btn pixel-btn-primary" type="button">
-        MASUK ROOM
-      </button>
-
-      <p id="joinMessage" class="message"></p>
     </section>
 
     <!-- GAME PANEL -->
