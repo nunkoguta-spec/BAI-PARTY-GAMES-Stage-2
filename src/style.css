@@ -316,9 +316,10 @@ body {
 
 /* Crystal-clear High-DPI Host Leaderboard HUD (Top Right on TV screen) */
 #host-leaderboard-hud {
-  position: fixed;
+  position: absolute;
   top: 14px;
   right: 14px;
+  left: auto !important;
   z-index: 999;
   width: 250px;
   max-width: calc(100vw - 28px);
@@ -850,7 +851,7 @@ body {
   outline: 2px solid #fff0a6;
   outline-offset: 3px;
 }
-#bai-host-panel { filter: drop-shadow(0 12px 22px #0007); }
+.host-card, #host-minibar { filter: drop-shadow(0 12px 22px #0007); }
 .host-card {
   border-radius: 7px;
   background-color: #1b2339;

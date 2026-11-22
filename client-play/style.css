@@ -732,7 +732,7 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 /* NPC QUEST (stage 5) */
 #questPanel { z-index: 100; }
 .quest-npc { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.quest-npc canvas { width:64px; height:64px; image-rendering:pixelated; background:#111422; border:2px solid #000; }
+.quest-npc canvas { width:64px; height:64px; border-radius: 6px; background:#111422; border:2px solid #f6c84a; box-shadow: 2px 2px 0 #000; }
 .quest-npc strong { font-size:11px; color:#f7c83b; }
 #questText { white-space:pre-line; }
 #questTip:empty, #questRule:empty, #questMessage:empty { display:none; }

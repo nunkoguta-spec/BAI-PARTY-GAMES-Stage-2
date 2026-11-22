@@ -10,14 +10,20 @@ export const QUEST = Object.freeze({
   interactRange: 70,
   npcs: Object.freeze([
     Object.freeze({
-      id: "npc-dinda", name: "DINDA", gender: "f", x: 11100,
+      id: "npc-deandra",
+      altId: "npc-dinda",
+      name: "FRAU DEANDRA",
+      gender: "f",
+      x: 11100,
+      texture: "npc-deandra-idle",
+      portrait: "/assets/deandra/portrait.png",
       avatar: Object.freeze({ skin: 4, hair: 5, eyes: 2, top: 27, bottoms: 2, shoes: 1 }),
-      greeting: "Hai! Aku Dinda. Sebelum petualangan kalian berakhir, ada satu side quest tambahan!",
-      tip: "Mulai dengan menyapa, sebutkan nama, ngobrol sebentar, lalu minta Instagram dengan sopan."
+      greeting: "Hallo! Guten Tag! Saya Frau Deandra. Herzlichen Glückwunsch telah mencapai Köln! Sebelum petualangan kalian berakhir, ada satu side quest penutup!",
+      tip: "Mulai dengan menyapa ramah: 'Hallo! Wie heißt du?'. Ajak ngobrol sebentar lalu tukaran Instagram ya!"
     })
   ])
 });
 
 export function questNpcById(id) {
-  return QUEST.npcs.find((npc) => npc.id === id) || null;
+  return QUEST.npcs.find((npc) => npc.id === id || npc.altId === id) || null;
 }
