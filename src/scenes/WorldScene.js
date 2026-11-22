@@ -105,12 +105,41 @@ export class WorldScene extends Phaser.Scene {
     try { sessionStorage.setItem("baiStageIndex", String(stageIndex)); } catch {}
 
     if (this.isHostMode) {
-      // Host TV view: smoothly update stage bounds & assets without restarting the scene or dropping players!
-      this.rebuildHostStage(stageIndex);
+      // Keep one world. Rebuilding the city on every stage change froze the TV.
+      const camera = this.cameras.main;
+      camera.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+      if (this.hostSpectatorTarget) {
+        camera.setDeadzone(0, 0);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
+      }
+      this.updateStageHUD();
       return;
     }
 
-    this.scene.restart({ stageIndex, isHostMode: this.isHostMode });
+    // Keep the live player. Restarting WorldScene wiped the body and left only a blank nameplate.
+    this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
+    this.stageStartX = this.currentStage.startX;
+    this.stageEndX = this.currentStage.endX;
+    this.stageWidth = this.stageEndX - this.stageStartX;
+    const camera = this.cameras.main;
+    camera.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+    this.createParallaxBackground();
+    this.createSeasonParticles();
+    this.createReferenceStreet();
+    this.createArrivalStation();
+    this.createBahnhof();
+    this.createTrapVisuals();
+    this.createStageEnemies();
+    this.createQuestNpcs();
+    this.updateStageHUD();
+    const spawnX = this.stageStartX + 160;
+    if (this.player) {
+      this.player.setPosition(spawnX, 208);
+      this.player.body?.reset(spawnX, 208);
+      this.syncAvatarLayers();
+      camera.setDeadzone(0, 0);
+      camera.startFollow(this.player, true, 0.18, 0.18);
+    }
   }
 
   create(data = {}) {
@@ -274,8 +303,8 @@ export class WorldScene extends Phaser.Scene {
       this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
 
       camera.setRoundPixels(true);
-      camera.setDeadzone(VIEW_W * 0.45, VIEW_H * 0.35);
-      camera.startFollow(this.player, true, 0.085, 0.085);
+      camera.setDeadzone(0, 0);
+      camera.startFollow(this.player, true, 0.18, 0.18);
       this.handleViewportResize();
 
       // No hazards, spikes, slugs, or obstacle overlap handlers.
@@ -314,8 +343,9 @@ export class WorldScene extends Phaser.Scene {
       this.hostFollowPlayer = (player) => {
         if (!player?.sprites?.[0]) return;
         camera.setZoom(1);
+        camera.setDeadzone(0, 0);
         this.hostSpectatorTarget = player.sprites[0];
-        camera.startFollow(this.hostSpectatorTarget, true, 0.085, 0.085);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
       };
       this.hostClearFollow = () => {
         this.hostSpectatorTarget = null;
@@ -2660,7 +2690,7 @@ export class WorldScene extends Phaser.Scene {
     ];
     const pal = slotColors[slot % slotColors.length];
 
-    const labelW = Math.max(20, Math.ceil(remote.nameLabel.width));
+    const labelW = Math.max(28, Math.ceil(remote.nameLabel.displayWidth || remote.nameLabel.width || 28));
     const badgeW = 14;
     const pad = 3;
     const totalW = badgeW + labelW + pad * 2 + 2;
@@ -2780,7 +2810,7 @@ export class WorldScene extends Phaser.Scene {
       { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }
     ];
     const pal = slotColors[slot % slotColors.length];
-    const displayName = String(data.name || `Player ${slot + 1}`).slice(0, 10);
+    const displayName = String(data.name || `Player ${slot + 1}`).slice(0, 10) || `P${slot + 1}`;
 
     const nameLabel = this.add.text(
       0, 0,
@@ -3531,11 +3561,13 @@ export class WorldScene extends Phaser.Scene {
     if (this.player) {
       this.player.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, this.worldWidth, this.worldHeight));
       if (!this.isHostMode) {
-        camera.startFollow(this.player, true, 0.085, 0.085);
+        camera.setDeadzone(0, 0);
+        camera.startFollow(this.player, true, 0.18, 0.18);
       }
     }
     if (this.isHostMode && this.hostSpectatorTarget) {
-      camera.startFollow(this.hostSpectatorTarget, true, 0.085, 0.085);
+      camera.setDeadzone(0, 0);
+      camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
     }
   }
 
@@ -3819,7 +3851,7 @@ export class WorldScene extends Phaser.Scene {
     if (!Array.isArray(players)) return;
     this.leaderboardData = [...players]
       .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
-      .slice(0, 6);
+      .slice(0, 8);
     this.updateLeaderboardHUD();
   }
 
@@ -4141,6 +4173,15 @@ export class WorldScene extends Phaser.Scene {
       strokeThickness: 2
     }).setOrigin(0.5);
     this.podiumContainer.add(winnerText);
+
+    const list = this.add.text(0, 78, sorted.map((p, i) => `${i + 1}. ${String(p.name || "Player").slice(0, 12)}  ${Number(p.score) || 0}`).join("\n") || "-", {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "6px",
+      color: "#fff4d6",
+      align: "center",
+      lineSpacing: 4
+    }).setOrigin(0.5, 0);
+    this.podiumContainer.add(list);
 
     // 2nd Place (Left)
     const p2Bg = this.add.graphics();

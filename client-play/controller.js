@@ -1024,6 +1024,14 @@ function setupMobileControls() {
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
+    const press = (event) => {
+      event.preventDefault();
+      setMobileInput(action, true);
+    };
+    const release = () => setMobileInput(action, false);
+    button.addEventListener("touchstart", press, { passive: false });
+    button.addEventListener("touchend", release, { passive: false });
+    button.addEventListener("touchcancel", release, { passive: false });
 
     if (window.PointerEvent) {
       button.addEventListener("pointerdown", (event) => {

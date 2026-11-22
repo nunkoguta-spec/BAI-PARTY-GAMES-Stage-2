@@ -688,10 +688,10 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   pointer-events:none;
 }
 .mobile-controls .control-button {
-  flex:0 0 clamp(54px,16vw,72px);
-  width:clamp(54px,16vw,72px);
-  height:clamp(48px,12vh,62px);
-  min-height:46px;
+  flex:0 0 clamp(64px,18vw,84px);
+  width:clamp(64px,18vw,84px);
+  height:clamp(56px,14vh,74px);
+  min-height:56px;
   padding:4px;
   font-size:15px;
   touch-action:none;
