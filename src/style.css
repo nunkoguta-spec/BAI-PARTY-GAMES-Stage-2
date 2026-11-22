@@ -900,3 +900,106 @@ body {
   .host-card, .host-card .pixel-btn, #host-minibar, .menu-content, .menu-actions button { transition: transform .14s ease, box-shadow .14s ease, filter .14s ease; }
   .host-card .pixel-btn:hover:not(:disabled), .menu-actions button:hover { filter: brightness(1.08); }
 }
+
+
+/* FINAL PRESENTATION PASS — compact game identity strip and menu polish.
+   Decorative only: gameplay, input handling, and multiplayer logic stay untouched. */
+.menu-content {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.menu-content::before,
+.menu-content::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 34px;
+  height: 34px;
+  opacity: .32;
+  background: linear-gradient(90deg, #f1d69b 25%, transparent 25% 75%, #f1d69b 75%),
+              linear-gradient(#f1d69b 25%, transparent 25% 75%, #f1d69b 75%);
+  background-size: 12px 12px;
+  pointer-events: none;
+}
+.menu-content::before { top: 12px; left: 12px; }
+.menu-content::after { right: 12px; bottom: 12px; transform: rotate(180deg); }
+.menu-eyebrow {
+  display: inline-block;
+  padding: 6px 9px;
+  border: 1px solid #82d82c66;
+  background: #101626a8;
+  border-radius: 3px;
+  letter-spacing: 1.6px;
+}
+.menu-feature-strip {
+  display: flex;
+  justify-content: center;
+  gap: clamp(7px, 2vw, 16px);
+  list-style: none;
+  margin: 0 auto 18px;
+  padding: 10px 8px;
+  border-top: 1px solid #f1d69b44;
+  border-bottom: 1px solid #f1d69b44;
+  background: #10162675;
+}
+.menu-feature-strip li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: clamp(6px, 1.4vw, 8px);
+  white-space: nowrap;
+}
+.menu-feature-icon {
+  display: grid;
+  place-items: center;
+  min-width: 25px;
+  height: 23px;
+  padding: 0 4px;
+  color: #171324;
+  background: #f1d69b;
+  border: 2px solid #765333;
+  box-shadow: 1px 1px 0 #080a10;
+  font-size: 7px;
+}
+.menu-actions button {
+  position: relative;
+  overflow: hidden;
+}
+.menu-actions button::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid #ffffff55;
+  pointer-events: none;
+}
+.menu-form input:focus-visible {
+  outline: 2px solid #82d82c;
+  outline-offset: 2px;
+}
+@media (max-width: 420px) {
+  .menu-content { padding: 23px 14px; }
+  .menu-feature-strip { gap: 7px; padding-inline: 4px; }
+  .menu-feature-strip li { gap: 4px; font-size: 6px; }
+  .menu-feature-icon { min-width: 22px; height: 21px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .menu-feature-icon { transition: transform .16s ease, filter .16s ease; }
+  .menu-content:hover .menu-feature-icon { transform: translateY(-2px); filter: brightness(1.08); }
+}
+/* Keep the three identity chips evenly spaced at every viewport width. */
+.menu-feature-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+}
+.menu-feature-strip li {
+  min-width: 0;
+  justify-content: center;
+  flex-wrap: wrap;
+  text-align: center;
+}
+.menu-feature-strip li { display: block; text-align: center; }
+.menu-feature-icon { margin: 0 auto 5px; }
+.menu-feature-strip li > span:last-child { display: block; }

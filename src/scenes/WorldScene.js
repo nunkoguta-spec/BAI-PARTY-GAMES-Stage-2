@@ -1329,7 +1329,7 @@ export class WorldScene extends Phaser.Scene {
         // Custom NPC sprite: one 4-frame idle sheet, single row.
         const sprite = this.add.sprite(npc.x, baseY, npc.sprite, 0);
         sprite.setOrigin(0.5, 0.5).setDepth(18);
-        sprites.push({ sprite, texture: npc.sprite, row: 0 });
+        sprites.push({ sprite, texture: npc.sprite, row: 0, npcSheet: true });
       } else partDefs.forEach(([texture, key], i) => {
         if (!this.textures.exists(texture)) return;
         const sprite = this.add.sprite(
@@ -1350,6 +1350,7 @@ export class WorldScene extends Phaser.Scene {
           strokeThickness: 2
         }).setOrigin(0.5, 1).setDepth(33);
       }
+
       // "!" = quest available, green check once this player has completed it.
       const markerY = npc.sprite ? (baseY - 30) : (baseY - 20);
       const marker = this.add.text(npc.x, markerY, "!", {
@@ -1372,6 +1373,14 @@ export class WorldScene extends Phaser.Scene {
         for (const entry of this.questNpcs) {
           for (const part of entry.sprites) {
             if (part.isLabel) continue;
+            if (part.npcSheet) {
+              // Hadap ke pemain: kiri/kanan kalau dekat, depan kalau jauh.
+              const px = this.player?.x;
+              const dx = Number.isFinite(px) ? px - entry.npc.x : Infinity;
+              const row = Math.abs(dx) > 260 ? 0 : (dx < 0 ? 1 : 2);
+              part.sprite.setFrame(row * 4 + (frame % 4));
+              continue;
+            }
             if (part.custom) {
               part.sprite.setFrame(frame % 4);
             } else {
@@ -3101,23 +3110,154 @@ export class WorldScene extends Phaser.Scene {
     );
   }
 
-  // Other players see a clear attack pose + slash when someone lands a hit, and a hurt pose when the enemy hits back.
+  // ---------------------------------------------------------------
+  // HOST (TV): setiap pemain punya duel sendiri. Enemy "klon" muncul di depan
+  // avatar yang sedang bertarung, jadi TV menampilkan semua pertarungan
+  // sekaligus. Enemy milik pemain lain tidak pernah ikut terluka di HP pemain.
+  // ---------------------------------------------------------------
+  ensureHostDuel(data = {}) {
+    if (!this.isHostMode || !data.playerId) return null;
+    const stage = COURSE.stages[this.stageIndex];
+    if (!stage || (data.stageId && stage.id !== data.stageId)) return null;
+    const cfg = battleConfig(stage.id);
+    const remote = this.remoteAvatars?.get(data.playerId);
+    if (!cfg || !remote) return null;
+    this.hostDuels = this.hostDuels || new Map();
+    let d = this.hostDuels.get(data.playerId);
+    if (d && d.stageId === stage.id && !d.dead && d.sprite?.active) { d.lastEvent = this.time.now; return d; }
+    if (d) this.destroyHostDuel(data.playerId);
+    const texture = `enemy-${cfg.enemyId}-idle`;
+    if (!this.textures.exists(texture)) return null;
+    const isBoss = Boolean(cfg.boss);
+    const x = Phaser.Math.Clamp(remote.x + (isBoss ? 58 : 46), this.stageStartX + 60, this.stageEndX - 90);
+    const y = isBoss ? 193 : 198;
+    const sprite = this.add.image(x, y, texture).setDepth(19).setScale(isBoss ? 0.55 : 0.72).setFlipX(true);
+    const bar = this.add.graphics().setDepth(30);
+    const label = this.add.text(x, y, "", {
+      fontFamily: "monospace", fontSize: "6px", color: isBoss ? "#f7c83b" : "#f8e6bd",
+      stroke: "#20120d", strokeThickness: 2, fontStyle: "bold"
+    }).setOrigin(0.5).setDepth(31);
+    const num = (v, fallback) => (Number.isFinite(Number(v)) && v !== null && v !== undefined ? Number(v) : fallback);
+    d = {
+      playerId: data.playerId, stageId: stage.id, cfg, enemyId: cfg.enemyId, sprite, bar, label,
+      barWidth: isBoss ? 74 : 50, hp: num(data.enemyHp, cfg.maxHp), maxHp: num(data.enemyMaxHp, cfg.maxHp),
+      feetY: sprite.y + sprite.displayHeight / 2, homeX: x, lastEvent: this.time.now, dead: false, actionUntil: 0
+    };
+    this.hostDuels.set(data.playerId, d);
+    this.drawHostDuelBar(d);
+    this.refreshHostGuard();
+    if (!this._hostDuelTimer) {
+      this._hostDuelTimer = this.time.addEvent({ delay: 1000, loop: true, callback: () => this.pruneHostDuels() });
+      this.events.once("shutdown", () => {
+        this._hostDuelTimer?.remove?.();
+        this._hostDuelTimer = null;
+        this.hostDuels?.clear();
+      });
+    }
+    return d;
+  }
+
+  drawHostDuelBar(d) {
+    if (!d?.sprite?.active) return;
+    const x = Math.round(d.sprite.x);
+    const top = Math.round(d.sprite.y - d.sprite.displayHeight / 2 - 18);
+    const w = d.barWidth, h = 4;
+    const ratio = Phaser.Math.Clamp(d.hp / Math.max(1, d.maxHp), 0, 1);
+    const fill = Math.max(0, Math.round(w * ratio));
+    const g = d.bar;
+    g.clear();
+    g.fillStyle(0x0c0914, 0.96);
+    g.fillRoundedRect(x - w / 2 - 1, top - 1, w + 2, h + 2, 2);
+    g.lineStyle(1, d.cfg.boss ? 0xf7c83b : 0x000000, 1);
+    g.strokeRoundedRect(x - w / 2 - 1, top - 1, w + 2, h + 2, 2);
+    g.fillStyle(0x381215, 1);
+    g.fillRect(x - w / 2, top, w, h);
+    if (fill > 0) {
+      g.fillStyle(ratio > 0.5 ? 0xe74c3c : ratio > 0.25 ? 0xf39c12 : 0x8e1c24, 1);
+      g.fillRect(x - w / 2, top, fill, h);
+      g.fillStyle(0xffffff, 0.28);
+      g.fillRect(x - w / 2, top, fill, 1);
+    }
+    const who = String(this.remoteAvatars?.get(d.playerId)?.name || "PLAYER").slice(0, 10).toUpperCase();
+    d.label.setPosition(x, top - 7).setText(`${who}  ${d.hp}/${d.maxHp}`);
+  }
+
+  setHostDuelPose(d, pose) {
+    if (!d?.sprite?.active) return;
+    const key = `enemy-${d.enemyId}-${pose}`;
+    if (!this.textures.exists(key) || d.sprite.texture.key === key) return;
+    d.sprite.setTexture(key);
+    d.sprite.y = d.feetY - d.sprite.displayHeight / 2;
+  }
+
+  refreshHostGuard() {
+    const stageId = COURSE.stages[this.stageIndex]?.id;
+    const active = [...(this.hostDuels?.values() || [])].some((d) => !d.dead && d.stageId === stageId);
+    const e = this.stageEnemy;
+    if (!e || e.defeated) return;
+    for (const part of [e.sprite, e.bar, e.name]) if (part?.active) part.setVisible(!active);
+  }
+
+  destroyHostDuel(playerId) {
+    const d = this.hostDuels?.get(playerId);
+    if (!d) return;
+    this.hostDuels.delete(playerId);
+    for (const part of [d.sprite, d.bar, d.label]) if (part?.active) part.destroy();
+    this.refreshHostGuard();
+  }
+
+  pruneHostDuels() {
+    if (!this.hostDuels?.size) return;
+    const stageId = COURSE.stages[this.stageIndex]?.id;
+    for (const [playerId, d] of [...this.hostDuels]) {
+      if (d.dead) continue;
+      const remote = this.remoteAvatars?.get(playerId);
+      const gone = !remote || d.stageId !== stageId || !d.sprite?.active
+        || Math.abs(remote.x - d.homeX) > 170 || this.time.now - d.lastEvent > 40000;
+      if (gone) this.destroyHostDuel(playerId);
+    }
+  }
+
+  // Mulai duel begitu pemain menekan LAWAN (sebelum jawaban pertama).
+  startHostDuel(data = {}) {
+    const d = this.ensureHostDuel(data);
+    if (!d) return;
+    this.showFloatingFeedback?.(d.sprite.x, d.sprite.y - d.sprite.displayHeight / 2 - 30, "⚔ LAWAN!", "#ffd36a");
+  }
+
+  defeatHostDuel(d) {
+    if (!d || d.dead) return;
+    d.dead = true;
+    this.setHostDuelPose(d, "defeat");
+    retroAudio.playCorrect?.();
+    this.spawnDefeatParticles?.(d.sprite.x, d.sprite.y);
+    d.bar?.clear?.();
+    d.label?.setVisible?.(false);
+    this.tweens.add({
+      targets: d.sprite, alpha: 0, y: d.sprite.y + 16, scaleX: 0.4, scaleY: 0.4,
+      duration: 850, delay: 300, ease: "Quad.easeIn",
+      onComplete: () => this.destroyHostDuel(d.playerId)
+    });
+    this.refreshHostGuard();
+  }
+
+  // Layar lain melihat pose serang + efek tebasan saat pemain mengenai enemy-nya sendiri.
   showRemoteBattleStrike(data = {}) {
     const remote = this.remoteAvatars?.get(data.playerId);
-    const e = this.stageEnemy;
-    if (!remote && !e) return;
+    const duel = this.ensureHostDuel(data);
+    if (!remote && !duel) return;
 
-    if (e) {
-      e.actionUntil = this.time.now + (data.defeated ? 1300 : 700);
-      if (Number.isFinite(Number(data.enemyHp))) {
-        e.hp = Number(data.enemyHp);
-        if (Number.isFinite(Number(data.enemyMaxHp))) e.maxHp = Number(data.enemyMaxHp);
-        this.drawEnemyHealthBar?.();
-      }
+    if (duel) {
+      duel.lastEvent = this.time.now;
+      duel.actionUntil = this.time.now + (data.defeated ? 1300 : 700);
+      if (Number.isFinite(Number(data.enemyHp))) duel.hp = Number(data.enemyHp);
+      if (Number.isFinite(Number(data.enemyMaxHp))) duel.maxHp = Number(data.enemyMaxHp);
+      this.drawHostDuelBar(duel);
     }
 
     if (remote) {
-      const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+      const ref = duel?.sprite || (this.isHostMode ? null : this.stageEnemy?.sprite);
+      const dir = (ref && ref.x < remote.x) ? "left" : "right";
       remote.facing = dir;
       for (const sprite of remote.sprites) sprite.setFlipX(dir === "left");
       const hasWeapon = Number(remote.avatarRows?.weapon) > 0;
@@ -3130,13 +3270,8 @@ export class WorldScene extends Phaser.Scene {
       // Lunge forward with dynamic weapon slash!
       const lunge = dir === "right" ? 16 : -16;
       this.tweens.add({
-        targets: remote.sprites,
-        x: `+=${lunge}`,
-        scaleX: 1.15,
-        scaleY: 0.9,
-        duration: 130,
-        yoyo: true,
-        ease: "Quad.easeOut"
+        targets: remote.sprites, x: `+=${lunge}`, scaleX: 1.15, scaleY: 0.9,
+        duration: 130, yoyo: true, ease: "Quad.easeOut"
       });
 
       if (hasWeapon) {
@@ -3153,68 +3288,57 @@ export class WorldScene extends Phaser.Scene {
       });
     }
 
-    // Impact on enemy
-    if (e?.sprite?.active) {
-      const hitX = e.sprite.x;
-      const hitY = e.sprite.y - 6;
+    // Dampak pada enemy duel (hanya ada di layar host).
+    if (duel?.sprite?.active) {
+      const hitX = duel.sprite.x;
+      const hitY = duel.sprite.y - 6;
       this.spawnSlashEffect?.(hitX, hitY);
       this.spawnHitSparks?.(hitX, hitY);
-      this.cameras.main?.shake?.(data.defeated ? 220 : 120, data.defeated ? 0.01 : 0.005);
+      this.cameras.main?.shake?.(data.defeated ? 200 : 90, data.defeated ? 0.008 : 0.003);
       this.showFloatingFeedback?.(hitX, hitY - 38, data.defeated ? "DIKALAHKAN!" : `-${Number(data.damage) || 0} HP`, "#ffe28a");
 
       if (!data.defeated) {
-        this.setEnemyPose?.("hit");
-        e.sprite.setTint?.(0xff4444);
-        const recoilDir = (remote && remote.x > e.sprite.x) ? -16 : 16;
+        this.setHostDuelPose(duel, "hit");
+        duel.sprite.setTint?.(0xff4444);
         this.tweens.add({
-          targets: e.sprite,
-          x: e.sprite.x + recoilDir,
-          duration: 100,
-          yoyo: true,
-          ease: "Back.easeOut",
+          targets: duel.sprite, x: duel.homeX + 14, duration: 100, yoyo: true, ease: "Back.easeOut",
           onComplete: () => {
-            e.sprite?.clearTint?.();
-            if (!e.defeated) this.setEnemyPose?.("idle");
+            duel.sprite?.clearTint?.();
+            if (!duel.dead) this.setHostDuelPose(duel, "idle");
           }
         });
       } else {
-        this.markEnemyDefeated?.(false);
+        this.defeatHostDuel(duel);
       }
     }
   }
 
   showRemoteBattleHurt(data = {}) {
     const remote = this.remoteAvatars?.get(data.playerId);
-    const e = this.stageEnemy;
-    if (!remote && !e) return;
+    const duel = this.ensureHostDuel(data);
+    if (!remote && !duel) return;
 
-    if (e && e.sprite?.active) {
-      e.actionUntil = this.time.now + 650;
-      const homeX = e.homeX || e.sprite.x;
-      const dir = (remote && remote.x > e.sprite.x) ? "right" : "left";
-      e.sprite.setFlipX(dir === "left");
-      const useSpecial = e.cfg?.boss && Math.random() < 0.4 && this.textures.exists(`enemy-${e.enemyId}-special`);
-      this.setEnemyPose?.(useSpecial ? "special" : "attack");
+    if (duel?.sprite?.active) {
+      duel.lastEvent = this.time.now;
+      duel.actionUntil = this.time.now + 650;
+      const useSpecial = duel.cfg?.boss && Math.random() < 0.4 && this.textures.exists(`enemy-${duel.enemyId}-special`);
+      this.setHostDuelPose(duel, useSpecial ? "special" : "attack");
       retroAudio.playWrong?.();
-
-      // Enemy lunges towards player
+      // Enemy menerjang ke arah pemainnya (ke kiri).
       this.tweens.add({
-        targets: e.sprite,
-        x: homeX + (dir === "right" ? 28 : -28),
-        scaleY: (e.cfg?.boss ? 0.55 : 0.72) * 1.12,
-        duration: 130,
-        yoyo: true,
-        hold: 70,
-        ease: "Quad.easeOut",
+        targets: duel.sprite, x: duel.homeX - 28, scaleY: (duel.cfg?.boss ? 0.55 : 0.72) * 1.12,
+        duration: 130, yoyo: true, hold: 70, ease: "Quad.easeOut",
         onComplete: () => {
-          e.sprite.x = homeX;
-          this.setEnemyPose?.("idle");
+          if (!duel.sprite?.active) return;
+          duel.sprite.x = duel.homeX;
+          if (!duel.dead) this.setHostDuelPose(duel, "idle");
         }
       });
     }
 
     if (remote) {
-      const dir = (e?.sprite && e.sprite.x < remote.x) ? "left" : "right";
+      const ref = duel?.sprite || (this.isHostMode ? null : this.stageEnemy?.sprite);
+      const dir = (ref && ref.x < remote.x) ? "left" : "right";
       remote.state = `hurt-${dir}`;
       remote.actionUntil = this.time.now + 480;
       remote.animFrame = 0;
@@ -3225,13 +3349,7 @@ export class WorldScene extends Phaser.Scene {
 
       // Remote player recoils and flashes red
       const recoil = dir === "left" ? 12 : -12;
-      this.tweens.add({
-        targets: remote.sprites,
-        x: `+=${recoil}`,
-        duration: 100,
-        yoyo: true,
-        ease: "Quad.easeOut"
-      });
+      this.tweens.add({ targets: remote.sprites, x: `+=${recoil}`, duration: 100, yoyo: true, ease: "Quad.easeOut" });
       for (const sprite of remote.sprites) {
         sprite.setTint?.(0xff5555);
         this.time?.delayedCall?.(220, () => {

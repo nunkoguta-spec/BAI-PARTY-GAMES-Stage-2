@@ -1659,3 +1659,85 @@ body {
   .pixel-modal { max-height: 84dvh; overflow-y: auto; }
   .speech-bubble-modal { max-height: 70dvh; overflow-y: auto; }
 }
+
+/* =========================================================
+   FINAL TOUCH CONTROLS (override terakhir, satu sumber kebenaran)
+   Kiri/kanan di pojok kiri-bawah, LOMPAT di pojok kanan-bawah,
+   LAWAN / BICARA tepat di atas LOMPAT. Tidak ada lagi tombol
+   yang menumpuk di tengah layar.
+   ========================================================= */
+:root {
+  --ctl-size: clamp(54px, 17vh, 76px);
+  --ctl-gap: 10px;
+  --ctl-edge-x: 14px;
+  --ctl-edge-y: 12px;
+}
+#mobileControls.mobile-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  width: auto;
+  max-width: none;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  display: block;
+  pointer-events: none;
+}
+#mobileControls .control-button {
+  position: fixed;
+  bottom: calc(var(--ctl-edge-y) + env(safe-area-inset-bottom, 0px));
+  width: var(--ctl-size);
+  height: var(--ctl-size);
+  min-width: 0;
+  min-height: 0;
+  flex: none;
+  padding: 0;
+  margin: 0;
+  font-size: clamp(16px, 5vh, 24px);
+  line-height: 1;
+  opacity: 0.9;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#mobileControls #leftButton {
+  left: calc(var(--ctl-edge-x) + env(safe-area-inset-left, 0px));
+  right: auto;
+}
+#mobileControls #rightButton {
+  left: calc(var(--ctl-edge-x) + var(--ctl-size) + var(--ctl-gap) + env(safe-area-inset-left, 0px));
+  right: auto;
+}
+#mobileControls #jumpButton {
+  left: auto;
+  right: calc(var(--ctl-edge-x) + env(safe-area-inset-right, 0px));
+  width: calc(var(--ctl-size) * 1.35);
+  font-size: clamp(8px, 2.6vh, 11px);
+  margin: 0;
+}
+#mobileControls .control-button:active,
+#mobileControls .control-button.active { opacity: 1; }
+
+body #attackButton.attack-button,
+body #talkButton.talk-button {
+  position: fixed;
+  left: auto;
+  right: calc(var(--ctl-edge-x) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--ctl-edge-y) + var(--ctl-size) + var(--ctl-gap) + env(safe-area-inset-bottom, 0px));
+  transform: none;
+  width: calc(var(--ctl-size) * 1.35 + 28px);
+  max-width: 46vw;
+  padding: 8px 6px;
+  font-size: clamp(7px, 2.2vh, 9px);
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  z-index: 62;
+}
+@media (orientation: portrait) {
+  :root { --ctl-size: clamp(56px, 16vw, 72px); }
+}

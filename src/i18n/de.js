@@ -5,7 +5,10 @@ export const de = {
   brand: {
     title: "BAI PARTY GAMES",
     subtitle: "DEUTSCH ADVENTURE",
-    tagline: "Deutsch lernen. Erkunden. Wetteifern."
+    tagline: "Deutsch lernen. Erkunden. Wetteifern.",
+    durationLabel: "MINUTEN",
+    multiplayerLabel: "MULTIPLAYER",
+    adventureLabel: "ABENTEUER"
   },
 
   menu: {

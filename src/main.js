@@ -7,6 +7,7 @@ import { WorldScene } from "./scenes/WorldScene.js";
 import { TrainTravelScene } from "./scenes/TrainTravelScene.js";
 import { setupHostPanel } from "./hostPanel.js";
 import { t, getLang, setLang, onLangChange, SUPPORTED_LANGUAGES } from "./i18n/index.js";
+import { loadHostSession, clearHostSession } from "./session.js";
 
 const GAME_WIDTH = 480;
 const GAME_HEIGHT = 270;
@@ -113,6 +114,9 @@ function renderMenu() {
     document.getElementById("menu-room-code").placeholder = t("join.roomPlaceholder");
   }
   document.getElementById("menu-tagline").textContent = t("brand.tagline");
+  document.getElementById("menu-feature-time").textContent = t("brand.durationLabel");
+  document.getElementById("menu-feature-multiplayer").textContent = t("brand.multiplayerLabel");
+  document.getElementById("menu-feature-adventure").textContent = t("brand.adventureLabel");
   const playBtn = document.getElementById("menu-play");
   if (playBtn) playBtn.textContent = t("menu.play");
   document.getElementById("menu-host").textContent = t("menu.host");
@@ -164,7 +168,9 @@ function showMainMenu() {
   menuMessage.textContent = "";
 }
 
-function hostRoom() {
+// resume=true: the page was refreshed while hosting -> continue the SAME room (same code, same players).
+// resume=false (clicking HOST in the menu): always a brand-new room.
+function hostRoom({ resume = false } = {}) {
   window.deutschHostMode = true;
   menuMessage.textContent = t("menu.hostConnecting");
   document.getElementById("menu-actions").hidden = true;
@@ -177,7 +183,7 @@ function hostRoom() {
     });
   }
   startGame();
-  hostPanel.createRoom();
+  hostPanel.createRoom({ resume });
 }
 
 function showJoinForm() {
@@ -204,7 +210,7 @@ function showJoinForm() {
   });
 }
 
-document.getElementById("menu-host").addEventListener("click", hostRoom);
+document.getElementById("menu-host").addEventListener("click", () => hostRoom());
 document.getElementById("menu-join").addEventListener("click", showJoinForm);
 document.getElementById("menu-settings").addEventListener("click", () => {
   settingsPanel.hidden = false;
@@ -220,8 +226,19 @@ onLangChange(renderMenu);
 renderMenu();
 
 const fontReady = (document.fonts?.load ? document.fonts.load('8px "Press Start 2P"') : Promise.resolve()).catch(() => {});
+// ?new=1 -> forget the saved host session (start fresh from the menu), then clean the URL.
+const startupParams = new URLSearchParams(location.search);
+if (startupParams.get("new") === "1") {
+  clearHostSession();
+  startupParams.delete("new");
+  const query = startupParams.toString();
+  try { history.replaceState(null, "", location.pathname + (query ? `?${query}` : "") + location.hash); } catch {}
+}
+
 Promise.race([fontReady, new Promise(resolve => setTimeout(resolve, 1500))]).then(() => {
   game = new Phaser.Game(config);
+  // Host refreshed the page while a room was open: go straight back into that room.
+  if (loadHostSession()) requestAnimationFrame(() => hostRoom({ resume: true }));
 });
 
 window.addEventListener(
