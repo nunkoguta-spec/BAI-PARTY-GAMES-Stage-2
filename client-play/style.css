@@ -695,6 +695,9 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   padding:4px;
   font-size:15px;
   touch-action:none;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
   pointer-events:auto;
   box-shadow:inset -3px -3px 0 #b38612,inset 3px 3px 0 #fff194,3px 3px 0 #000;
   transition: transform 0.06s ease, filter 0.06s ease;

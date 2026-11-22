@@ -1008,6 +1008,8 @@ function setupMobileControls() {
     ["jumpButton", "jump"]
   ];
 
+  const activeTouches = new Map(); // touchId -> action
+
   for (const [id, action] of controls) {
     const button = $(id);
 
@@ -1024,75 +1026,64 @@ function setupMobileControls() {
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
-    const press = (event) => {
+
+    // Native multi-touch for iOS Safari & Android Chrome
+    button.addEventListener("touchstart", (event) => {
+      event.preventDefault();
+      for (let i = 0; i < event.changedTouches.length; i++) {
+        activeTouches.set(event.changedTouches[i].identifier, action);
+      }
+      setMobileInput(action, true);
+    }, { passive: false });
+
+    const onTouchEnd = (event) => {
+      event.preventDefault();
+      for (let i = 0; i < event.changedTouches.length; i++) {
+        activeTouches.delete(event.changedTouches[i].identifier);
+      }
+      // If no other touch is currently pressing this action, release it
+      const remainingActions = [...activeTouches.values()];
+      if (!remainingActions.includes(action)) {
+        setMobileInput(action, false);
+      }
+    };
+
+    button.addEventListener("touchend", onTouchEnd, { passive: false });
+    button.addEventListener("touchcancel", onTouchEnd, { passive: false });
+
+    // Mouse fallback for PC browser testing
+    button.addEventListener("mousedown", (event) => {
       event.preventDefault();
       setMobileInput(action, true);
-    };
-    const release = () => setMobileInput(action, false);
-    button.addEventListener("touchstart", press, { passive: false });
-    button.addEventListener("touchend", release, { passive: false });
-    button.addEventListener("touchcancel", release, { passive: false });
-
-    if (window.PointerEvent) {
-      button.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        setMobileInput(action, true);
-
-        try {
-          button.setPointerCapture?.(event.pointerId);
-        } catch (error) {
-          console.warn("[CONTROLS] Pointer capture:", error);
-        }
-      });
-
-      const release = (event) => {
-        event.preventDefault();
-        setMobileInput(action, false);
-      };
-
-      button.addEventListener("pointerup", release);
-      button.addEventListener("pointercancel", release);
-
-      button.addEventListener("lostpointercapture", () => {
-        setMobileInput(action, false);
-      });
-    } else {
-      button.addEventListener(
-        "touchstart",
-        (event) => {
-          event.preventDefault();
-          setMobileInput(action, true);
-        },
-        { passive: false }
-      );
-
-      const releaseTouch = (event) => {
-        event.preventDefault();
-        setMobileInput(action, false);
-      };
-
-      button.addEventListener(
-        "touchend",
-        releaseTouch,
-        { passive: false }
-      );
-
-      button.addEventListener(
-        "touchcancel",
-        releaseTouch,
-        { passive: false }
-      );
-
-      button.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        setMobileInput(action, true);
-      });
-
-      window.addEventListener("mouseup", () => {
-        setMobileInput(action, false);
-      });
-    }
+    });
+    button.addEventListener("mouseup", (event) => {
+      event.preventDefault();
+      setMobileInput(action, false);
+    });
+    button.addEventListener("mouseleave", () => {
+      setMobileInput(action, false);
+    });
   }
+
+  // Safety release on window if finger slides off screen
+  window.addEventListener("touchend", (event) => {
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      activeTouches.delete(event.changedTouches[i].identifier);
+    }
+    const remainingActions = [...activeTouches.values()];
+    for (const [_, action] of controls) {
+      if (!remainingActions.includes(action)) {
+        setMobileInput(action, false);
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener("touchcancel", () => {
+    activeTouches.clear();
+    releaseAllMobileInput();
+  }, { passive: true });
+
+  window.addEventListener("mouseup", releaseAllMobileInput);
 }
 
 if (initialRoomCode) $("roomCode").value = initialRoomCode.toUpperCase();

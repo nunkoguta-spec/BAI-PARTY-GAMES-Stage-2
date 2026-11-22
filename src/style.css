@@ -314,6 +314,93 @@ body {
   border: 3px solid #000;
 }
 
+/* Crystal-clear High-DPI Host Leaderboard HUD (Top Right on TV screen) */
+#host-leaderboard-hud {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 999;
+  width: 250px;
+  max-width: calc(100vw - 28px);
+  background: rgba(10, 16, 29, 0.94);
+  border: 2px solid #f6c84a;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  padding: 8px 10px;
+  pointer-events: none;
+  font-family: inherit;
+  color: #fff;
+  image-rendering: auto;
+}
+.host-leaderboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(196, 164, 119, 0.4);
+}
+.host-leaderboard-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.host-leaderboard-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  background: rgba(21, 31, 50, 0.65);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: bold;
+}
+.host-leaderboard-row.top-rank {
+  background: rgba(246, 200, 74, 0.18);
+  border: 1px solid rgba(246, 200, 74, 0.45);
+}
+.host-leaderboard-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.host-rank-num {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 8px;
+  color: #94a3b8;
+  min-width: 18px;
+}
+.host-rank-num.rank-1 { color: #f6c84a; }
+.host-rank-num.rank-2 { color: #cbd5e1; }
+.host-rank-num.rank-3 { color: #e29b52; }
+.host-slot-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 6px;
+  font-weight: 900;
+  color: #fff;
+}
+.host-player-name {
+  font-size: 11px;
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+  color: #f8fafc;
+}
+.host-player-pts {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 8px;
+  color: #82d82c;
+}
+.host-leaderboard-empty {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 7px;
+  color: #64748b;
+  text-align: center;
+  padding: 6px;
+}
+
 .host-header-bar {
   display: flex;
   justify-content: space-between;

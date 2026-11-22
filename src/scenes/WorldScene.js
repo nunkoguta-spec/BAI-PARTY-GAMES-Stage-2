@@ -104,25 +104,16 @@ export class WorldScene extends Phaser.Scene {
     window.baiStageIndex = stageIndex;
     try { sessionStorage.setItem("baiStageIndex", String(stageIndex)); } catch {}
 
-    if (this.isHostMode) {
-      // Keep one world. Rebuilding the city on every stage change froze the TV.
-      const camera = this.cameras.main;
-      camera.setBounds(this.stageStartX, 0, this.stageWidth, 270);
-      if (this.hostSpectatorTarget) {
-        camera.setDeadzone(0, 0);
-        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
-      }
-      this.updateStageHUD();
-      return;
-    }
-
-    // Keep the live player. Restarting WorldScene wiped the body and left only a blank nameplate.
     this.currentStage = COURSE.stages[stageIndex] || COURSE.stages[0];
     this.stageStartX = this.currentStage.startX;
     this.stageEndX = this.currentStage.endX;
     this.stageWidth = this.stageEndX - this.stageStartX;
+    this.season = seasonOf(this.currentStage);
+
     const camera = this.cameras.main;
     camera.setBounds(this.stageStartX, 0, this.stageWidth, 270);
+    camera.setBackgroundColor(this.season.sky);
+
     this.createParallaxBackground();
     this.createSeasonParticles();
     this.createReferenceStreet();
@@ -132,6 +123,37 @@ export class WorldScene extends Phaser.Scene {
     this.createStageEnemies();
     this.createQuestNpcs();
     this.updateStageHUD();
+    this.showCityTransition(this.currentStage);
+
+    if (this.isHostMode) {
+      // Restore all remote avatars so they are 100% visible in the new stage
+      for (const remote of this.remoteAvatars.values()) {
+        if (remote.sprites) {
+          this.tweens.killTweensOf(remote.sprites);
+          for (const s of remote.sprites) {
+            s.setAlpha(1);
+            s.setScale(1);
+            s.setVisible(true);
+          }
+        }
+        if (remote.nameLabel) {
+          remote.nameLabel.setVisible(true);
+          remote.nameLabel.setAlpha(1);
+        }
+        if (remote.nameContainer) {
+          remote.nameContainer.setVisible(true);
+          remote.nameContainer.setAlpha(1);
+        }
+        this.buildPlayerNameplate(remote);
+      }
+
+      if (this.hostSpectatorTarget) {
+        camera.setDeadzone(0, 0);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
+      }
+      return;
+    }
+
     const spawnX = this.stageStartX + 160;
     if (this.player) {
       this.player.setPosition(spawnX, 208);
@@ -973,24 +995,13 @@ export class WorldScene extends Phaser.Scene {
     retroAudio.playTrainWhistle?.();
 
     if (remote?.sprites) {
-      // Remote character walks towards the Bahnhof entrance doors and enters
+      // Remote character walks towards the Bahnhof entrance doors
       const doorX = this.stageEndX - 200;
       this.tweens.add({
         targets: remote.sprites,
         x: doorX,
         duration: 550,
-        ease: "Linear",
-        onComplete: () => {
-          this.tweens.add({
-            targets: remote.sprites,
-            alpha: 0,
-            scaleY: 0.8,
-            duration: 200,
-            onComplete: () => {
-              if (remote.nameLabel) remote.nameLabel.setVisible(false);
-            }
-          });
-        }
+        ease: "Linear"
       });
     }
   }
@@ -2897,6 +2908,27 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    // Ensure remote avatar and name are visible (restore from any previous fade-out or stage transition)
+    if (remote.sprites) {
+      this.tweens.killTweensOf(remote.sprites);
+      for (const s of remote.sprites) {
+        if (s.alpha < 1) s.setAlpha(1);
+        if (s.scaleY !== 1) s.setScale(1);
+        s.setVisible(true);
+      }
+    }
+    if (remote.nameLabel) {
+      remote.nameLabel.setVisible(true);
+      remote.nameLabel.setAlpha(1);
+    }
+    if (remote.nameContainer) {
+      remote.nameContainer.setVisible(true);
+      remote.nameContainer.setAlpha(1);
+    }
+    if (Number.isInteger(data.stageIndex)) {
+      remote.stageIndex = data.stageIndex;
+    }
+
     // Costume data is carried with the authoritative server snapshot. Refresh
     // sprite-sheet rows when it changes so TV and peer clients never keep stale clothes.
     if (data.avatar && typeof data.avatar === "object") {
@@ -3831,182 +3863,19 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // LEADERBOARD HUD (RETRO ARCADE - RIGHT SIDE ON HOST VIEW)
+  // LEADERBOARD HUD (RETRO ARCADE - HANDLED BY HD HTML HUD ON HOST)
   // =====================================================
 
   createLeaderboardHUD() {
     this.leaderboardData = [];
     this.leaderboardElements = [];
-    this.previousRanks = new Map();
-
-    if (!this.isHostMode) return;
-
-    this.leaderboardBg = this.add.graphics();
-    this.leaderboardBg.setScrollFactor(0);
-    this.leaderboardBg.setDepth(140);
   }
 
   setLeaderboardData(players) {
-    if (!this.isHostMode) return;
-    if (!Array.isArray(players)) return;
-    this.leaderboardData = [...players]
-      .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
-      .slice(0, 8);
-    this.updateLeaderboardHUD();
+    // Handled by native High-DPI HTML Leaderboard on Host TV view
   }
 
-  updateLeaderboardHUD() {
-    if (!this.isHostMode || !this.leaderboardBg) return;
-
-    for (const el of this.leaderboardElements || []) {
-      el?.destroy?.();
-    }
-    this.leaderboardElements = [];
-
-    const data = this.leaderboardData || [];
-    const panelWidth = 148;
-    const panelX = VIEW_W - panelWidth - 8;
-    const panelY = 8;
-    const rowH = 14;
-    const headerH = 22;
-    const contentH = Math.max(1, data.length) * rowH;
-    const panelHeight = headerH + contentH + 4;
-
-    const g = this.leaderboardBg;
-    g.clear();
-
-    // 1. Sleek semi-transparent dark glass container
-    g.fillStyle(0x0a101d, 0.94);
-    g.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4);
-
-    // 2. Gold outer border with dark inner rim
-    g.lineStyle(1.5, 0xf6c84a, 0.95);
-    g.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4);
-    g.lineStyle(1, 0x1e293b, 0.8);
-    g.strokeRoundedRect(panelX + 2, panelY + 2, panelWidth - 4, panelHeight - 4, 3);
-
-    // 3. Header bar banner
-    g.fillStyle(0x151f32, 1);
-    g.fillRoundedRect(panelX + 3, panelY + 3, panelWidth - 6, 16, 3);
-    g.lineStyle(1, 0x334155, 0.9);
-    g.lineBetween(panelX + 4, panelY + 19, panelX + panelWidth - 4, panelY + 19);
-
-    // Header Title
-    const title = this.add.text(
-      panelX + Math.round(panelWidth / 2),
-      panelY + 10.5,
-      "👑 KLASEMEN",
-      {
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: "6px",
-        color: "#f6c84a",
-        stroke: "#000000",
-        strokeThickness: 2
-      }
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(142);
-    this.leaderboardElements.push(title);
-
-    if (!data.length) {
-      const emptyText = this.add.text(
-        panelX + Math.round(panelWidth / 2),
-        panelY + headerH + 6,
-        "MENUNGGU...",
-        {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "5px",
-          color: "#64748b"
-        }
-      ).setOrigin(0.5).setScrollFactor(0).setDepth(142);
-      this.leaderboardElements.push(emptyText);
-      return;
-    }
-
-    const slotColors = [
-      { badge: 0x2563eb, border: 0x60a5fa, tag: "P1" },
-      { badge: 0xd97706, border: 0xfbbf24, tag: "P2" },
-      { badge: 0x059669, border: 0x34d399, tag: "P3" },
-      { badge: 0x7c3aed, border: 0xa78bfa, tag: "P4" }
-    ];
-
-    const startRowY = panelY + headerH;
-    for (let i = 0; i < data.length; i++) {
-      const entry = data[i];
-      const y = startRowY + i * rowH;
-      const rank = i + 1;
-      const isTop = rank === 1 && Number(entry.score) > 0;
-
-      // Row background
-      if (isTop) {
-        g.fillStyle(0x282312, 0.7);
-        g.fillRoundedRect(panelX + 3, y - 1, panelWidth - 6, rowH - 1, 2);
-      } else if (i % 2 === 1) {
-        g.fillStyle(0x131a28, 0.5);
-        g.fillRoundedRect(panelX + 3, y - 1, panelWidth - 6, rowH - 1, 2);
-      }
-
-      // Rank Tag
-      const rankColor = rank === 1 ? "#f6c84a" : (rank === 2 ? "#cbd5e1" : (rank === 3 ? "#e29b52" : "#94a3b8"));
-      const rankText = this.add.text(
-        panelX + 8,
-        y + 5.5,
-        rank === 1 ? "1" : `${rank}`,
-        {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "6px",
-          color: rankColor,
-          fontStyle: "bold"
-        }
-      ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(142);
-
-      // Slot badge pill
-      const remote = this.remoteAvatars?.get(entry.playerId);
-      const slotIdx = remote?.slot ?? i;
-      const pal = slotColors[slotIdx % slotColors.length];
-      g.fillStyle(pal.badge, 1);
-      g.fillRoundedRect(panelX + 22, y + 1.5, 12, 9, 2);
-
-      const slotText = this.add.text(
-        panelX + 28,
-        y + 6,
-        pal.tag,
-        {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "4px",
-          color: "#ffffff",
-          fontStyle: "bold"
-        }
-      ).setOrigin(0.5).setScrollFactor(0).setDepth(143);
-
-      // Player Name
-      const name = String(entry.name || "Player").slice(0, 7);
-      const nameText = this.add.text(
-        panelX + 38,
-        y + 6,
-        name,
-        {
-          fontFamily: "Arial, sans-serif",
-          fontSize: "8px",
-          fontStyle: "bold",
-          color: isTop ? "#fef08a" : "#f8fafc"
-        }
-      ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(142);
-
-      // Score
-      const score = Number(entry.score) || 0;
-      const scoreText = this.add.text(
-        panelX + panelWidth - 8,
-        y + 6,
-        `${score}`,
-        {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "5px",
-          color: "#82d82c"
-        }
-      ).setOrigin(1, 0.5).setScrollFactor(0).setDepth(142);
-
-      this.leaderboardElements.push(rankText, slotText, nameText, scoreText);
-    }
-  }
+  updateLeaderboardHUD() {}
   createGameTimerHUD() {
     this.gameTimerBox = this.add.graphics();
     this.gameTimerBox.setScrollFactor(0);
@@ -4147,99 +4016,138 @@ export class WorldScene extends Phaser.Scene {
     this.podiumContainer.setDepth(300);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x111422, 0.94);
-    bg.fillRect(-170, -110, 340, 220);
-    bg.lineStyle(4, 0x000000, 1);
-    bg.strokeRect(-170, -110, 340, 220);
-    bg.lineStyle(2, 0xf7c83b, 1);
-    bg.strokeRect(-166, -106, 332, 212);
+    bg.fillStyle(0x0f172a, 0.96);
+    bg.fillRect(-195, -125, 390, 250);
+    bg.lineStyle(3, 0x000000, 1);
+    bg.strokeRect(-195, -125, 390, 250);
+    bg.lineStyle(2, 0xf6c84a, 1);
+    bg.strokeRect(-192, -122, 384, 244);
     this.podiumContainer.add(bg);
 
-    const title = this.add.text(0, -92, "★ GAME OVER ★", {
+    const title = this.add.text(0, -108, "★ GAME OVER · HASIL AKHIR ★", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "12px",
-      color: "#f7c83b",
+      fontSize: "9px",
+      color: "#f6c84a",
       stroke: "#000000",
       strokeThickness: 3
     }).setOrigin(0.5);
     this.podiumContainer.add(title);
 
     const winner = sorted[0];
-    const winnerText = this.add.text(0, -72, winner ? `👑 PEMENANG: ${winner.name}` : "SELESAI", {
+    const winnerText = this.add.text(0, -92, winner ? `👑 JUARA 1: ${winner.name} (${winner.score} PTS)` : "SELESAI", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "8px",
+      fontSize: "7px",
       color: "#82d82c",
       stroke: "#000000",
       strokeThickness: 2
     }).setOrigin(0.5);
     this.podiumContainer.add(winnerText);
 
-    const list = this.add.text(0, 78, sorted.map((p, i) => `${i + 1}. ${String(p.name || "Player").slice(0, 12)}  ${Number(p.score) || 0}`).join("\n") || "-", {
-      fontFamily: "'Press Start 2P', monospace",
-      fontSize: "6px",
-      color: "#fff4d6",
-      align: "center",
-      lineSpacing: 4
-    }).setOrigin(0.5, 0);
-    this.podiumContainer.add(list);
-
-    // 2nd Place (Left)
+    // 2nd Place Pedestal (Left)
     const p2Bg = this.add.graphics();
-    p2Bg.fillStyle(0xcbd5e1, 1);
-    p2Bg.fillRect(-90, 5, 54, 45);
-    p2Bg.lineStyle(2, 0x000000, 1);
-    p2Bg.strokeRect(-90, 5, 54, 45);
+    p2Bg.fillStyle(0x94a3b8, 1);
+    p2Bg.fillRect(-92, -38, 54, 42);
+    p2Bg.lineStyle(1.5, 0x000000, 1);
+    p2Bg.strokeRect(-92, -38, 54, 42);
     this.podiumContainer.add(p2Bg);
-    const p2Num = this.add.text(-63, 20, "2", {
+    const p2Num = this.add.text(-65, -24, "2", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "14px",
-      color: "#171324"
+      fontSize: "13px",
+      color: "#0f172a"
     }).setOrigin(0.5);
-    const p2Name = this.add.text(-63, -8, sorted[1]?.name ? sorted[1].name.slice(0, 6) : "-", {
+    const p2Name = this.add.text(-65, -48, sorted[1]?.name ? String(sorted[1].name).slice(0, 8) : "-", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "6px",
       color: "#cbd5e1"
     }).setOrigin(0.5);
-    this.podiumContainer.add([p2Num, p2Name]);
+    const p2Pts = this.add.text(-65, -8, sorted[1] ? `${sorted[1].score}P` : "", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "5px",
+      color: "#1e293b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p2Num, p2Name, p2Pts]);
 
-    // 1st Place (Center)
+    // 1st Place Pedestal (Center)
     const p1Bg = this.add.graphics();
-    p1Bg.fillStyle(0xf7c83b, 1);
-    p1Bg.fillRect(-27, -20, 54, 70);
+    p1Bg.fillStyle(0xf6c84a, 1);
+    p1Bg.fillRect(-27, -56, 54, 60);
     p1Bg.lineStyle(2, 0x000000, 1);
-    p1Bg.strokeRect(-27, -20, 54, 70);
+    p1Bg.strokeRect(-27, -56, 54, 60);
     this.podiumContainer.add(p1Bg);
-    const p1Crown = this.add.text(0, -42, "👑", { fontSize: "14px" }).setOrigin(0.5);
-    const p1Num = this.add.text(0, 5, "1", {
+    const p1Crown = this.add.text(0, -78, "👑", { fontSize: "14px" }).setOrigin(0.5);
+    const p1Num = this.add.text(0, -38, "1", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "18px",
-      color: "#171324"
+      fontSize: "16px",
+      color: "#0f172a"
     }).setOrigin(0.5);
-    const p1Name = this.add.text(0, -30, sorted[0]?.name ? sorted[0].name.slice(0, 6) : "-", {
+    const p1Name = this.add.text(0, -66, sorted[0]?.name ? String(sorted[0].name).slice(0, 8) : "-", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "6px",
-      color: "#f7c83b"
+      color: "#fef08a"
     }).setOrigin(0.5);
-    this.podiumContainer.add([p1Crown, p1Num, p1Name]);
+    const p1Pts = this.add.text(0, -12, sorted[0] ? `${sorted[0].score} PTS` : "", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "5px",
+      color: "#1e293b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p1Crown, p1Num, p1Name, p1Pts]);
 
-    // 3rd Place (Right)
+    // 3rd Place Pedestal (Right)
     const p3Bg = this.add.graphics();
-    p3Bg.fillStyle(0xe29b52, 1);
-    p3Bg.fillRect(36, 20, 54, 30);
-    p3Bg.lineStyle(2, 0x000000, 1);
-    p3Bg.strokeRect(36, 20, 54, 30);
+    p3Bg.fillStyle(0xd97706, 1);
+    p3Bg.fillRect(38, -25, 54, 29);
+    p3Bg.lineStyle(1.5, 0x000000, 1);
+    p3Bg.strokeRect(38, -25, 54, 29);
     this.podiumContainer.add(p3Bg);
-    const p3Num = this.add.text(63, 32, "3", {
+    const p3Num = this.add.text(65, -14, "3", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
-      fontSize: "12px",
-      color: "#171324"
+      fontSize: "11px",
+      color: "#0f172a"
     }).setOrigin(0.5);
-    const p3Name = this.add.text(63, 8, sorted[2]?.name ? sorted[2].name.slice(0, 6) : "-", {
+    const p3Name = this.add.text(65, -34, sorted[2]?.name ? String(sorted[2].name).slice(0, 8) : "-", {
       fontFamily: "'Press Start 2P', monospace, sans-serif",
       fontSize: "6px",
-      color: "#e29b52"
+      color: "#fcd34d"
     }).setOrigin(0.5);
-    this.podiumContainer.add([p3Num, p3Name]);
+    const p3Pts = this.add.text(65, -3, sorted[2] ? `${sorted[2].score}P` : "", {
+      fontFamily: "'Press Start 2P', monospace, sans-serif",
+      fontSize: "5px",
+      color: "#1e293b"
+    }).setOrigin(0.5);
+    this.podiumContainer.add([p3Num, p3Name, p3Pts]);
+
+    // COMPLETE LIST OF ALL PLAYERS (ranked #1 through #N)
+    const listHeader = this.add.text(0, 15, "--- PERINGKAT SEMUA PEMAIN ---", {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "5px",
+      color: "#94a3b8"
+    }).setOrigin(0.5);
+    this.podiumContainer.add(listHeader);
+
+    // Dynamic grid displaying every player's name and score
+    const playersTable = this.add.container(0, 24);
+    const totalPlayers = sorted.length;
+    const isTwoCol = totalPlayers > 4;
+
+    sorted.forEach((p, idx) => {
+      const col = isTwoCol ? (idx < Math.ceil(totalPlayers / 2) ? 0 : 1) : 0;
+      const rowInCol = isTwoCol ? (idx < Math.ceil(totalPlayers / 2) ? idx : idx - Math.ceil(totalPlayers / 2)) : idx;
+      const rx = isTwoCol ? (col === 0 ? -90 : 90) : 0;
+      const ry = rowInCol * 12;
+
+      const rankSymbol = idx === 0 ? "👑" : `${idx + 1}.`;
+      const pName = String(p.name || "Player").slice(0, 8);
+      const pScore = Number(p.score) || 0;
+      const rowColor = idx === 0 ? "#f6c84a" : (idx === 1 ? "#cbd5e1" : (idx === 2 ? "#fcd34d" : "#f8fafc"));
+
+      const rowText = this.add.text(rx, ry, `${rankSymbol} ${pName} : ${pScore} PTS`, {
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: "5px",
+        color: rowColor
+      }).setOrigin(0.5, 0);
+      playersTable.add(rowText);
+    });
+    this.podiumContainer.add(playersTable);
 
     for (let c = 0; c < 16; c++) {
       const star = this.add.text(Phaser.Math.Between(-150, 150), Phaser.Math.Between(-80, 80), "★", {

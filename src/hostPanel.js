@@ -11,6 +11,16 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   panel.hidden = true;
 
   panel.innerHTML = `
+    <div id="host-leaderboard-hud" class="pixel-box host-leaderboard-hud">
+      <div class="host-leaderboard-header">
+        <span class="pixel-badge">👑 KLASEMEN</span>
+        <span id="host-leaderboard-count" class="pixel-tag">0 PEMAIN</span>
+      </div>
+      <div id="host-leaderboard-rows" class="host-leaderboard-rows">
+        <div class="host-leaderboard-empty">Menunggu pemain...</div>
+      </div>
+    </div>
+
     <div id="host-minibar" class="pixel-box" hidden>
       <span id="host-minibar-text">⚙ HOST: ------</span>
       <button id="host-expand-panel" class="pixel-btn pixel-btn-sm" type="button">BUKA ▶</button>
@@ -484,6 +494,46 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       row.append(name, status, score, watchButton, kickButton);
       playerList.appendChild(row);
     });
+    renderHostLeaderboardHUD();
+  }
+
+  function renderHostLeaderboardHUD() {
+    const rowsEl = document.getElementById("host-leaderboard-rows");
+    const countEl = document.getElementById("host-leaderboard-count");
+    if (!rowsEl) return;
+    if (countEl) countEl.textContent = `${players.length} PEMAIN`;
+
+    const ranked = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+    if (!ranked.length) {
+      rowsEl.innerHTML = `<div class="host-leaderboard-empty">Menunggu pemain...</div>`;
+      return;
+    }
+
+    const slotColors = [
+      { badge: "#2563eb", tag: "P1" },
+      { badge: "#d97706", tag: "P2" },
+      { badge: "#059669", tag: "P3" },
+      { badge: "#7c3aed", tag: "P4" }
+    ];
+
+    rowsEl.innerHTML = ranked.map((p, idx) => {
+      const rank = idx + 1;
+      const rankTag = rank === 1 ? "1 👑" : `${rank}`;
+      const pal = slotColors[idx % slotColors.length];
+      const isTop = rank === 1 && Number(p.score) > 0;
+      const name = String(p.name || "Player").slice(0, 10);
+      const score = Number(p.score) || 0;
+      return `
+        <div class="host-leaderboard-row ${isTop ? 'top-rank' : ''}">
+          <div class="host-leaderboard-left">
+            <span class="host-rank-num ${rank <= 3 ? 'rank-' + rank : ''}">${rankTag}</span>
+            <span class="host-slot-badge" style="background:${pal.badge}">${pal.tag}</span>
+            <span class="host-player-name">${name}</span>
+          </div>
+          <span class="host-player-pts">${score} PTS</span>
+        </div>
+      `;
+    }).join("");
   }
 
   searchInput.addEventListener("input", renderPlayers);
