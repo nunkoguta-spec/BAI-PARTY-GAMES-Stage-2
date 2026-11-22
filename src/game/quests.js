@@ -22,5 +22,5 @@ export const QUEST = Object.freeze({
 });
 
 export function questNpcById(id) {
-  return QUEST.npcs.find((npc) => npc.id === id) || null;
+  return QUEST.npcs.find((npc) => npc.id === id || npc.altId === id) || null;
 }

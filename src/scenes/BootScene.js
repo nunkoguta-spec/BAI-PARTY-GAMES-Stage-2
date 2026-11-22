@@ -41,6 +41,10 @@ export class BootScene extends Phaser.Scene {
     this.load.image("trap-ball", `${ASSET}/traps/ball.png`);
     this.load.image("trap-censer", `${ASSET}/traps/censer.png`);
 
+    // Special Stage 5 NPC: Frau Deandra
+    this.load.spritesheet("npc-deandra-idle", `${ASSET}/deandra/deandra-idle.png`, { frameWidth: 32, frameHeight: 42 });
+    this.load.image("npc-deandra-portrait", `${ASSET}/deandra/portrait.png`);
+
     // Seasonal panoramas: one per stage (season is set per stage in course.js).
     for (const stage of COURSE.stages) {
       this.load.image(backdropKey(stage), backdropUrl(ASSET, stage));

@@ -1340,9 +1340,36 @@ export class WorldScene extends Phaser.Scene {
         sprites.push({ sprite, texture, row: npc.avatar[key] });
       });
 
+      if (npc.texture && this.textures.exists(npc.texture)) {
+        const sprite = this.add.sprite(npc.x, 224, npc.texture, 0)
+          .setOrigin(0.5, 1)
+          .setDepth(18.5);
+        sprites.push({ sprite, texture: npc.texture, custom: true });
+
+        // Nameplate tag for Frau Deandra
+        const nameTag = this.add.text(npc.x, 224 - 45, npc.name || "FRAU DEANDRA", {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "6px",
+          color: "#f6c84a",
+          stroke: "#000000",
+          strokeThickness: 2
+        }).setOrigin(0.5, 1).setDepth(33);
+        sprites.push({ sprite: nameTag, isLabel: true });
+      } else {
+        partDefs.forEach(([texture, key], i) => {
+          if (!this.textures.exists(texture)) return;
+          const sprite = this.add.sprite(
+            npc.x, baseY, texture,
+            this.getAvatarFrameIndex(texture, npc.avatar[key], 0)
+          );
+          sprite.setOrigin(0.5, 0.5).setDepth(18 + i * 0.1);
+          sprites.push({ sprite, texture, row: npc.avatar[key] });
+        });
+      }
 
       // "!" = quest available, green check once this player has completed it.
-      const marker = this.add.text(npc.x, baseY - 20, "!", {
+      const markerY = npc.texture ? (224 - 54) : (baseY - 20);
+      const marker = this.add.text(npc.x, markerY, "!", {
         fontFamily: "'Press Start 2P', monospace", fontSize: "10px",
         color: "#f7c83b", stroke: "#000", strokeThickness: 3
       }).setOrigin(0.5, 1).setDepth(34);
@@ -1361,7 +1388,12 @@ export class WorldScene extends Phaser.Scene {
         frame = (frame + 1) % FRAME_COUNT;
         for (const entry of this.questNpcs) {
           for (const part of entry.sprites) {
-            part.sprite.setFrame(this.getAvatarFrameIndex(part.texture, part.row, frame));
+            if (part.isLabel) continue;
+            if (part.custom) {
+              part.sprite.setFrame(frame % 4);
+            } else {
+              part.sprite.setFrame(this.getAvatarFrameIndex(part.texture, part.row, frame));
+            }
           }
         }
       }

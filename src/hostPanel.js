@@ -105,7 +105,22 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     </div>
   `;
 
+  const leaderboardHud = document.createElement("div");
+  leaderboardHud.id = "host-leaderboard-hud";
+  leaderboardHud.className = "pixel-box host-leaderboard-hud";
+  leaderboardHud.hidden = true;
+  leaderboardHud.innerHTML = `
+    <div class="host-leaderboard-header">
+      <span class="pixel-badge">👑 KLASEMEN</span>
+      <span id="host-leaderboard-count" class="pixel-tag">0 PEMAIN</span>
+    </div>
+    <div id="host-leaderboard-rows" class="host-leaderboard-rows">
+      <div class="host-leaderboard-empty">Menunggu pemain...</div>
+    </div>
+  `;
+
   shell.appendChild(panel);
+  shell.appendChild(leaderboardHud);
 
   const $ = (selector) => panel.querySelector(selector);
 
@@ -897,7 +912,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   return {
     socket,
     createRoom,
-    show: () => { panel.hidden = false; },
+    show: () => { panel.hidden = false; leaderboardHud.hidden = false; },
     getRoomCode: () => currentRoomCode
   };
 }

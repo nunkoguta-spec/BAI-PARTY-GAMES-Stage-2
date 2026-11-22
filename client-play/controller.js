@@ -497,9 +497,25 @@ function bindQuestScene(scene) {
 }
 
 function drawQuestPortrait(npc) {
-  const ctx = $("questPortrait")?.getContext("2d");
+  const canvas = $("questPortrait");
+  const ctx = canvas?.getContext("2d");
   if (!ctx) return;
   ctx.clearRect(0, 0, 64, 64);
+
+  if (npc?.portrait) {
+    ctx.imageSmoothingEnabled = true;
+    const img = new Image();
+    img.src = npc.portrait;
+    img.onload = () => {
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.drawImage(img, 0, 0, 64, 64);
+    };
+    if (img.complete && img.naturalWidth) {
+      ctx.drawImage(img, 0, 0, 64, 64);
+    }
+    return;
+  }
+
   ctx.imageSmoothingEnabled = false;
   if (npc.portrait) {
     const img = new Image();
