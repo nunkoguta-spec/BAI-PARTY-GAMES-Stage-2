@@ -10,12 +10,12 @@ export const QUEST = Object.freeze({
   interactRange: 70,
   npcs: Object.freeze([
     Object.freeze({
-      id: "npc-deandra", name: "NAMAY FRAU DEANDRA", gender: "f", x: 11100,
+      id: "npc-deandra", name: "FRAU DEANDRA", gender: "f", x: 11100,
       // Custom single-layer sprite (public/assets/npc). Replaces the old modular avatar.
       sprite: "npc-deandra",
       portrait: "/assets/npc/deandra_portrait.png",
       avatar: Object.freeze({ skin: 4, hair: 5, eyes: 2, top: 27, bottoms: 2, shoes: 1 }),
-      greeting: "Hai! Aku Namay Frau Deandra. Sebelum petualangan kalian berakhir, ada satu side quest tambahan!",
+      greeting: "Hai! Aku Frau Deandra. Sebelum petualangan kalian berakhir, ada satu side quest tambahan!",
       tip: "Mulai dengan menyapa, sebutkan nama, ngobrol sebentar, lalu minta Instagram dengan sopan."
     })
   ])
