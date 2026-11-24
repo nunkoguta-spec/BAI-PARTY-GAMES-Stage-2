@@ -661,6 +661,23 @@ export class WorldScene extends Phaser.Scene {
     this.munichStreetArt = street;
   }
 
+  addLampGlow(group, x, y = -36) {
+    const halo = this.add.graphics().setDepth(5);
+    halo.fillStyle(0xfde68a, 0.22);
+    halo.fillCircle(x, y, 16);
+    halo.fillStyle(0xffffff, 0.55);
+    halo.fillCircle(x, y, 4);
+    group.add(halo);
+    this.tweens.add({
+      targets: halo,
+      alpha: 0.65,
+      duration: 1600,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut"
+    });
+  }
+
   createArrivalStation() {
     const stage = this.currentStage || COURSE.stages[0];
     const stationX = this.stageStartX + 120;
@@ -689,6 +706,8 @@ export class WorldScene extends Phaser.Scene {
     if (this.textures.exists("bhf-lamp-b")) {
       this.arrivalStationGroup.add(this.add.image(-120, 0, "bhf-lamp-b").setOrigin(0.5, 1).setDepth(2));
       this.arrivalStationGroup.add(this.add.image(120, 0, "bhf-lamp-b").setOrigin(0.5, 1).setDepth(2));
+      this.addLampGlow(this.arrivalStationGroup, -120, -36);
+      this.addLampGlow(this.arrivalStationGroup, 120, -36);
     }
     if (this.textures.exists("bhf-bench")) {
       this.arrivalStationGroup.add(this.add.image(75, 0, "bhf-bench").setOrigin(0.5, 1).setDepth(2));
@@ -739,6 +758,8 @@ export class WorldScene extends Phaser.Scene {
     // Entrance street furniture: lamps, ticket machine, bench, plants
     add("lamp-b", -130, 0, 2, 1);
     add("lamp-a", 130, 0, 2, 1);
+    this.addLampGlow(this.bahnhofGroup, -130, -36);
+    this.addLampGlow(this.bahnhofGroup, 130, -36);
     add("ticket-machine", -75, 0, 3, 1);
     add("bench", 75, 0, 3, 1);
     add("plant", -40, 0, 3, 1);
@@ -2581,7 +2602,11 @@ export class WorldScene extends Phaser.Scene {
 
         if (!defeated) {
           this.setEnemyPose("hit");
-          e.sprite.setTint(0xff4444);
+          // Instant hit-stop flash: pure white flash for 50ms before showing damage red
+          e.sprite.setTintFill?.(0xffffff);
+          this.time.delayedCall(50, () => {
+            if (e.sprite?.active) e.sprite.setTint(0xff4444);
+          });
           this.tweens.add({
             targets: e.sprite,
             x: e.sprite.x + (dir === "right" ? 16 : -16),
@@ -3167,7 +3192,10 @@ export class WorldScene extends Phaser.Scene {
 
       if (!data.defeated) {
         this.setEnemyPose?.("hit");
-        e.sprite.setTint?.(0xff4444);
+        e.sprite.setTintFill?.(0xffffff);
+        this.time?.delayedCall?.(50, () => {
+          if (e.sprite?.active) e.sprite.setTint?.(0xff4444);
+        });
         const recoilDir = (remote && remote.x > e.sprite.x) ? -16 : 16;
         this.tweens.add({
           targets: e.sprite,
@@ -3526,19 +3554,33 @@ export class WorldScene extends Phaser.Scene {
   }
 
   spawnFootDust(x, y) {
-    for (let i = 0; i < 4; i++) {
-      const p = this.add.rectangle(x + Phaser.Math.Between(-7, 7), y, 3, 2, 0xd0c4b0).setDepth(19);
+    for (let i = 0; i < 5; i++) {
+      const p = this.add.rectangle(x + Phaser.Math.Between(-8, 8), y, 3, 2, 0xd0c4b0).setDepth(19);
       this.tweens.add({
         targets: p,
-        x: p.x + Phaser.Math.Between(-14, 14),
-        y: p.y - Phaser.Math.Between(2, 6),
-        alpha: { from: 0.8, to: 0 },
+        x: p.x + Phaser.Math.Between(-18, 18),
+        y: p.y - Phaser.Math.Between(2, 7),
+        alpha: { from: 0.85, to: 0 },
         scale: 0.5,
-        duration: 160,
+        duration: 180,
         ease: "Sine.easeOut",
         onComplete: () => p.destroy()
       });
     }
+  }
+
+  spawnRunDust(x, y) {
+    const p = this.add.rectangle(x + Phaser.Math.Between(-3, 3), y, 2, 2, 0xd8c8b4).setDepth(19);
+    this.tweens.add({
+      targets: p,
+      x: p.x - (this.playerFacing === "right" ? 1 : -1) * Phaser.Math.Between(10, 18),
+      y: p.y - Phaser.Math.Between(2, 6),
+      alpha: { from: 0.65, to: 0 },
+      scale: 0.35,
+      duration: 190,
+      ease: "Sine.easeOut",
+      onComplete: () => p.destroy()
+    });
   }
 
   syncAvatarLayers() {
@@ -3557,9 +3599,17 @@ export class WorldScene extends Phaser.Scene {
 
     if (this.playerShadow) {
       const grounded = this.player.body?.onFloor() ?? true;
-      this.playerShadow.setPosition(x, y + 10);
-      this.playerShadow.setAlpha(this.playerKo ? 0.12 : (grounded ? 0.32 : 0.16));
-      this.playerShadow.setScale(grounded ? 1.0 : 0.72);
+      const groundFloorY = 223; // Top of street cobblestone surface
+      const shadowY = Math.min(groundFloorY, y + 10);
+      const airHeight = Math.max(0, groundFloorY - (y + 10));
+      const heightFactor = Math.max(0, Math.min(1, airHeight / 110));
+      const scaleX = this.playerKo ? 0.9 : (1.0 - heightFactor * 0.52);
+      const scaleY = scaleX * 0.42;
+      const alpha = this.playerKo ? 0.12 : (0.34 - heightFactor * 0.22);
+
+      this.playerShadow.setPosition(x, shadowY);
+      this.playerShadow.setScale(scaleX, scaleY);
+      this.playerShadow.setAlpha(alpha);
     }
   }
 
@@ -3666,7 +3716,7 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  updatePlayerMovement() {
+  updatePlayerMovement(delta = 16) {
     const body = this.player.body;
 
     // Trap knock-back: keep the push for a moment instead of letting held input cancel it.
@@ -3773,6 +3823,16 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const grounded = body.onFloor();
+    if (grounded && Math.abs(body.velocity.x) > 25) {
+      this.runDustTimer = (this.runDustTimer || 0) + delta;
+      if (this.runDustTimer >= 140) {
+        this.runDustTimer = 0;
+        this.spawnRunDust(this.player.x, this.player.y + 11);
+      }
+    } else {
+      this.runDustTimer = 110;
+    }
+
     if (grounded && !this.wasGrounded) {
       this.events.emit("player:landed");
       // Landing horizontal squash juice
@@ -3785,6 +3845,7 @@ export class WorldScene extends Phaser.Scene {
         ease: "Quad.easeOut"
       });
       this.spawnFootDust(this.player.x, this.player.y + 11);
+      this.cameras.main.shake(50, 0.0008);
     }
     this.wasGrounded = grounded;
 
@@ -3842,7 +3903,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    this.updatePlayerMovement();
+    this.updatePlayerMovement(delta);
     this.updateNpcProximity();
 
     // Never let a player walk out of the current city. Entering the Bahnhof
@@ -3997,10 +4058,12 @@ export class WorldScene extends Phaser.Scene {
       color,
       stroke: "#000000",
       strokeThickness: 3
-    }).setOrigin(0.5).setDepth(200);
+    }).setOrigin(0.5).setDepth(200).setScale(0.75);
 
     this.tweens.add({
       targets: label,
+      scaleX: 1.12,
+      scaleY: 1.12,
       y: label.y - 28,
       alpha: 0,
       duration: 1100,

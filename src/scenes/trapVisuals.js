@@ -2,7 +2,7 @@
 // Every timed trap is a pure function of the SERVER clock, so TV and phones show the same phase.
 //
 // createTrapVisual(scene, trap) -> { trap, parts, update(now), hit(data) }
-import { TRAP, popFrame, rollerX, tramState, icicleState, gullState, pendulumState } from "../game/traps.js";
+import { TRAP, popFrame, rollerX, tramState, icicleState, gullState, pendulumState, steamState } from "../game/traps.js";
 import { retroAudio } from "../audio/retroAudio.js";
 
 const G = TRAP.groundY;
@@ -319,7 +319,125 @@ function pendulum(scene, trap) {
   return obj;
 }
 
-const FACTORY = { spikes, pop, roller, tram, icicle, gull, pendulum };
+// SEMBURAN UAP GORONG-GORONG (DAMPFROHR / STEAM VENT) -------------------------------------------
+function steam(scene, trap) {
+  const d = TRAP.types.steam;
+  const ventW = d.halfW * 2 + 8; // 40px
+
+  // 1. Manhole cover base at ground level
+  const base = scene.add.graphics().setDepth(DEPTH.rail);
+  base.fillStyle(0x181e29, 1);
+  base.fillRect(trap.x - ventW / 2, G - 2, ventW, 6);
+  base.fillStyle(0x2d3748, 1);
+  base.fillRoundedRect(trap.x - 16, G - 3, 32, 6, 2);
+  base.lineStyle(1, 0x4a5568, 0.9);
+  base.strokeRoundedRect(trap.x - 16, G - 3, 32, 6, 2);
+  base.fillStyle(0x0f172a, 1);
+  for (let sx = trap.x - 12; sx <= trap.x + 12; sx += 4) {
+    base.fillRect(sx, G - 2, 2, 4);
+  }
+
+  // Warning LED on the rim of the manhole
+  const led = scene.add.graphics().setDepth(DEPTH.top);
+
+  // Steam blast visual graphics
+  const plume = scene.add.graphics().setDepth(DEPTH.front);
+  const wisps = [];
+  for (let i = 0; i < 12; i++) {
+    const w = scene.add.circle(trap.x, G, Phaser.Math.Between(4, 9), 0xf1f5f9, 0)
+      .setDepth(DEPTH.front + 0.1);
+    wisps.push(w);
+  }
+
+  const obj = {
+    trap,
+    parts: [base, led, plume, ...wisps],
+    lastPhase: "idle",
+    update(now) {
+      const s = steamState(trap, now);
+      const isNear = near(scene, trap.x, 380);
+
+      // Warning LED and manhole vibration
+      led.clear();
+      if (s.phase === "warn") {
+        const blink = Math.floor(now / 120) % 2 === 0;
+        led.fillStyle(blink ? 0xef4444 : 0xf59e0b, 1);
+        led.fillCircle(trap.x - 14, G - 1, 2);
+        led.fillCircle(trap.x + 14, G - 1, 2);
+
+        // Shake manhole base slightly
+        const rattle = Math.sin(now / 20) * 1.2;
+        base.setX(rattle);
+
+        if (obj.lastPhase !== "warn" && isNear) {
+          retroAudio.playSteamHiss?.(false);
+        }
+      } else if (s.phase === "blast") {
+        led.fillStyle(0xef4444, 1);
+        led.fillCircle(trap.x - 14, G - 1, 2);
+        led.fillCircle(trap.x + 14, G - 1, 2);
+        base.setX(0);
+
+        if (obj.lastPhase !== "blast" && isNear) {
+          retroAudio.playSteamHiss?.(true);
+          scene.cameras?.main?.shake?.(140, 0.002);
+        }
+      } else {
+        base.setX(0);
+      }
+
+      // Draw active steam plume
+      plume.clear();
+      if (s.phase === "blast") {
+        const u = s.u; // 0 to 1
+        const plumeH = Math.min(d.height, Math.round(d.height * (u < 0.2 ? u / 0.2 : 1)));
+        const alpha = u > 0.85 ? (1 - (u - 0.85) / 0.15) * 0.75 : 0.82;
+        const wave = Math.sin(now / 35) * 3;
+
+        // Outer white steam cloud
+        plume.fillStyle(0xffffff, alpha);
+        plume.fillRoundedRect(trap.x - d.halfW + wave, G - plumeH, d.halfW * 2, plumeH, 6);
+        // Inner hot cyan core
+        plume.fillStyle(0xbae6fd, alpha * 0.6);
+        plume.fillRoundedRect(trap.x - d.halfW / 2 + wave * 0.5, G - plumeH + 4, d.halfW, plumeH - 6, 4);
+        // Scalding base glow
+        plume.fillStyle(0x7dd3fc, 0.85);
+        plume.fillEllipse(trap.x + wave * 0.3, G - 2, 24, 6);
+
+        // Animate billowing particle wisps
+        wisps.forEach((w, i) => {
+          const prog = ((now * 0.003 + i * 0.14) % 1);
+          const wy = G - prog * d.height * 1.1;
+          const wx = trap.x + Math.sin(now * 0.006 + i) * (8 + prog * 10);
+          w.setPosition(wx, wy);
+          w.setScale(0.6 + prog * 1.2);
+          w.setAlpha((1 - prog) * 0.75);
+          w.setVisible(true);
+        });
+      } else if (s.phase === "warn") {
+        plume.clear();
+        wisps.forEach((w, i) => {
+          if (i > 3) { w.setVisible(false); return; }
+          const prog = ((now * 0.002 + i * 0.25) % 1);
+          const wy = G - prog * 16;
+          const wx = trap.x + Math.sin(now * 0.005 + i) * 6;
+          w.setPosition(wx, wy);
+          w.setScale(0.4 + prog * 0.5);
+          w.setAlpha((1 - prog) * 0.4);
+          w.setVisible(true);
+        });
+      } else {
+        wisps.forEach(w => w.setVisible(false));
+      }
+
+      obj.lastPhase = s.phase;
+    },
+    hit() { flash(scene, [base]); }
+  };
+  return obj;
+}
+
+const FACTORY = { spikes, pop, roller, tram, icicle, gull, pendulum, steam };
 
 export function createTrapVisual(scene, trap) {
   return (FACTORY[trap.type] || spikes)(scene, trap);

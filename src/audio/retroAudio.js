@@ -284,6 +284,34 @@ class RetroAudioSystem {
     } catch {}
   }
 
+  playSteamHiss(blast = false) {
+    if (this.muted) return;
+    this.unlock();
+    try {
+      const now = this.ctx.currentTime;
+      const dur = blast ? 0.38 : 0.18;
+      const len = Math.floor(this.ctx.sampleRate * dur);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      }
+      const src = this.ctx.createBufferSource();
+      const bp = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+      bp.type = "bandpass";
+      bp.frequency.setValueAtTime(blast ? 2800 : 1900, now);
+      bp.Q.setValueAtTime(blast ? 2.5 : 1.4, now);
+      src.buffer = buf;
+      gain.gain.setValueAtTime(blast ? 0.22 : 0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      src.connect(bp);
+      bp.connect(gain);
+      gain.connect(this.sfxGain);
+      src.start(now);
+    } catch {}
+  }
+
   playGull() {
     if (this.muted) return;
     this.unlock();

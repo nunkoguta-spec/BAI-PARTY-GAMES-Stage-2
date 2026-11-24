@@ -88,17 +88,26 @@ export const TRAP = Object.freeze({
       ampDeg: 58,
       len: 92,
       ballR: 13
+    }),
+    steam: Object.freeze({
+      label: "SEMBURAN UAP",
+      periodMs: 3200,
+      warnFromMs: 1400,        // cover rattles + gentle steam wisps
+      blastFromMs: 2000,       // scalding vertical steam eruption starts
+      blastToMs: 2700,         // steam blast ends
+      halfW: 16,               // steam plume half width
+      height: 48               // steam plume height (reaches y = 176 from ground 224)
     })
   })
 });
 
 // HP damage per hit. Escalates with the stage; Köln (peaceful side-quest stage) is lighter.
 export const TRAP_DAMAGE = Object.freeze({
-  munich:    Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 12 }),
-  frankfurt: Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 15 }),
-  berlin:    Object.freeze({ spikes: 12, pop: 18, roller: 15, tram: 18, icicle: 15, gull: 15, pendulum: 18 }),
-  hamburg:   Object.freeze({ spikes: 15, pop: 22, roller: 18, tram: 22, icicle: 18, gull: 20, pendulum: 20 }),
-  koeln:     Object.freeze({ spikes: 7,  pop: 11, roller: 9,  tram: 10, icicle: 8,  gull: 9, pendulum: 9 })
+  munich:    Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 12, steam: 15 }),
+  frankfurt: Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 15, steam: 15 }),
+  berlin:    Object.freeze({ spikes: 12, pop: 18, roller: 15, tram: 18, icicle: 15, gull: 15, pendulum: 18, steam: 18 }),
+  hamburg:   Object.freeze({ spikes: 15, pop: 22, roller: 18, tram: 22, icicle: 18, gull: 20, pendulum: 20, steam: 20 }),
+  koeln:     Object.freeze({ spikes: 7,  pop: 11, roller: 9,  tram: 10, icicle: 8,  gull: 9,  pendulum: 9,  steam: 10 })
 });
 
 // Local x = distance from the stage's start. `tiles` = how many 32px blocks (spikes / pop).
@@ -108,7 +117,7 @@ export const TRAP_DAMAGE = Object.freeze({
 const LAYOUT = Object.freeze({
   munich: [
     { type: "spikes", x: 380, tiles: 2 },
-    { type: "tram", x: 1325 },
+    { type: "steam", x: 1325 },
     { type: "roller", from: 1690, to: 1800, periodMs: 3200 },
     { type: "pop", x: 1890 },
     { type: "spikes", x: 2020, tiles: 2 }
@@ -309,6 +318,27 @@ export function pendulumState(trap, serverNow) {
   return { angle, x: trap.x + trap.len * Math.sin(angle), y: trap.pivotY + trap.len * Math.cos(angle) };
 }
 
+// STEAM VENT: phase = idle | warn | blast | settle, active = is currently dangerous scalding blast
+export function steamState(trap, serverNow) {
+  const d = TRAP.types.steam;
+  const total = serverNow + (trap.phaseMs || 0);
+  const cycle = Math.floor(total / d.periodMs);
+  const t = total - cycle * d.periodMs;
+  let phase = "idle";
+  let u = 0;
+  if (t >= d.blastToMs) {
+    phase = "settle";
+    u = (t - d.blastToMs) / (d.periodMs - d.blastToMs);
+  } else if (t >= d.blastFromMs) {
+    phase = "blast";
+    u = (t - d.blastFromMs) / (d.blastToMs - d.blastFromMs);
+  } else if (t >= d.warnFromMs) {
+    phase = "warn";
+    u = (t - d.warnFromMs) / (d.blastFromMs - d.warnFromMs);
+  }
+  return { cycle, t, phase, u, active: phase === "blast" };
+}
+
 // Where the trap "is" right now (used for knock-back direction).
 export function trapCenterX(trap, serverNow) {
   switch (trap.type) {
@@ -316,6 +346,7 @@ export function trapCenterX(trap, serverNow) {
     case "tram": { const s = tramState(trap, serverNow); return s.active ? s.x : trap.x; }
     case "gull": return gullState(trap, serverNow).x;
     case "pendulum": return pendulumState(trap, serverNow).x;
+    case "steam": return trap.x;
     default: return trap.x;
   }
 }
@@ -373,6 +404,12 @@ export function trapHits(trap, px, py, serverNow) {
       const s = pendulumState(trap, serverNow);
       return circleHits(bodyBox(px, py), s.x, s.y, TRAP.types.pendulum.ballR - 1);
     }
+    case "steam": {
+      const s = steamState(trap, serverNow);
+      if (!s.active) return false;
+      const d = TRAP.types.steam;
+      return rectHits(bodyBox(px, py), trap.x - d.halfW, trap.x + d.halfW, g - d.height, g);
+    }
     default:
       return false;
   }
@@ -402,6 +439,10 @@ export function trapExtent(trap) {
       const d = TRAP.types.pendulum;
       const r = trap.len * Math.sin(d.ampDeg * Math.PI / 180) + d.ballR + reach;
       lo = trap.x - r; hi = trap.x + r; break;
+    }
+    case "steam": {
+      const d = TRAP.types.steam;
+      lo = trap.x - d.halfW - reach; hi = trap.x + d.halfW + reach; break;
     }
     case "gull": {
       // sample two full cycles: only the part of the flight a player can actually touch counts
