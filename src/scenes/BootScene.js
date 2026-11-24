@@ -168,6 +168,9 @@ export class BootScene extends Phaser.Scene {
     // Avatar idle.
     const idle = `${ASSET}/avatar/Idle`;
 
+    // 128x128: baris 0 depan, 1 kiri, 2 kanan, 3 belakang; 4 frame idle per baris.
+    this.load.spritesheet("npc-deandra", `${ASSET}/npc/deandra_sheet.png`, { frameWidth: 32, frameHeight: 32 });
+
     const idleSheets = [
       ["avatar-body", `${idle}/Character/Character_Idle_Front-Sheet.png`],
       ["avatar-bottoms", `${idle}/Clothing/Clothing_Bottoms_Idle_Front-Sheet.png`],

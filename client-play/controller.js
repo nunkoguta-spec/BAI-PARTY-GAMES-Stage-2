@@ -3,6 +3,7 @@ import { io } from "socket.io-client";
 import { createPhoneGame } from "./phone-game.js";
 import { retroAudio } from "../src/audio/retroAudio.js";
 import { QUEST } from "../src/game/quests.js";
+import { loadPlayerSession, savePlayerSession, clearPlayerSession } from "../src/session.js";
 
 // =====================================================
 // SOCKET.IO
@@ -59,6 +60,9 @@ let quizActive = false;
 let gameStarted = false;
 let currentCourse = null;
 let joiningRoom = false;
+let rejoining = false;          // a token-based (re)join request is in flight
+let sessionReplaced = false;    // another tab / device took over this player: stop auto-rejoining
+let pendingResumeState = null;  // server-side state (stage, position...) to restore once the scene exists
 
 
 // =====================================================
@@ -395,8 +399,16 @@ function enterRoom(data) {
   gameStarted = data.status === "playing";
   window.baiGameStarted = gameStarted;
   currentCourse = data.course || null;
-  window.baiStageIndex = 0;
-  try { sessionStorage.setItem("baiStageIndex", "0"); } catch {}
+  // Refresh / rejoin: continue from the stage the server remembers instead of München.
+  const resume = data.resumed ? data.player : null;
+  const startStage = Number.isInteger(resume?.stageIndex) ? resume.stageIndex : 0;
+  pendingResumeState = resume;
+  window.baiStageIndex = startStage;
+  try { sessionStorage.setItem("baiStageIndex", String(startStage)); } catch {}
+  if (resume && Number.isFinite(Number(resume.score))) {
+    score = Number(resume.score);
+    $("score").textContent = score;
+  }
   if (currentCourse && phoneScene?.applyCourse) phoneScene.applyCourse(currentCourse);
   if (phoneScene) {
     phoneScene.gameStarted = gameStarted;
@@ -496,23 +508,18 @@ function bindQuestScene(scene) {
   });
 }
 
-function drawQuestPortrait(npc) {
+function drawQuestPortrait(npc, mood = "neutral") {
   const canvas = $("questPortrait");
   const ctx = canvas?.getContext("2d");
   if (!ctx) return;
   ctx.clearRect(0, 0, 64, 64);
 
-  if (npc?.portrait) {
-    ctx.imageSmoothingEnabled = true;
+  const src = npc?.portraits?.[mood] || npc?.portrait;
+  if (src) {
+    ctx.imageSmoothingEnabled = false;
     const img = new Image();
-    img.src = npc.portrait;
-    img.onload = () => {
-      ctx.clearRect(0, 0, 64, 64);
-      ctx.drawImage(img, 0, 0, 64, 64);
-    };
-    if (img.complete && img.naturalWidth) {
-      ctx.drawImage(img, 0, 0, 64, 64);
-    }
+    img.onload = () => { ctx.clearRect(0, 0, 64, 64); ctx.drawImage(img, 0, 0, 64, 64); };
+    img.src = src;
     return;
   }
 
@@ -578,6 +585,7 @@ function renderQuestDialog(message = "") {
   $("questProgressTag").textContent = questCompleted.has(npc.id)
     ? `${needF + needM}/${needF + needM}`
     : `${gotF + gotM}/${needF + needM}`;
+  drawQuestPortrait(npc, questCompleted.has(npc.id) ? "happy" : questAccepted.has(npc.id) ? "wink" : "neutral");
   const actions = $("questActions");
   actions.replaceChildren();
   $("questTip").textContent = "";
@@ -923,6 +931,7 @@ function startPhoneGame() {
         scene.gameStarted = gameStarted;
         bindQuestScene(scene);
         if (currentCourse && scene.applyCourse) scene.applyCourse(currentCourse);
+        applyResumeState(scene);
 
         $("playerStatus").textContent = gameStarted
           ? "Game berlangsung."
@@ -943,6 +952,96 @@ function startPhoneGame() {
     $("playerStatus").textContent =
       "Game gagal dimulai. Periksa Console.";
   }
+}
+
+// =====================================================
+// SESSION RESUME (refresh / reconnect)
+// =====================================================
+
+// Put the player back where the server says they were (position, finished flag).
+function applyResumeState(scene) {
+  const state = pendingResumeState;
+  pendingResumeState = null;
+  if (!state || !scene?.player) return;
+  const x = Number(state.x);
+  const y = Number(state.y);
+  const inStage = scene.stageStartX === undefined || (x >= scene.stageStartX && x <= scene.stageEndX);
+  if (Number.isFinite(x) && Number.isFinite(y) && inStage) {
+    scene.player.setPosition(x, y);
+    scene.player.body?.reset(x, y);
+    socket.emit("player:stage", { roomCode, stageIndex: scene.stageIndex, x, y, teleport: true });
+  }
+  if (state.finished) {
+    scene.finished = true;
+    $("playerStatus").textContent = "Kamu sudah finish. Menunggu pemain lain / host.";
+  }
+}
+
+// Same socket object, new socket.id after a reconnect: refresh everything that cached the old id.
+function handleReconnected(result) {
+  gameStarted = result.status === "playing";
+  window.baiGameStarted = gameStarted;
+  if (Number.isFinite(Number(result.player?.score))) {
+    score = Number(result.player.score);
+    $("score").textContent = score;
+  }
+  if (phoneScene) {
+    phoneScene.localPlayerId = socket.id;
+    phoneScene.gameStarted = gameStarted;
+    bindQuestScene(phoneScene); // re-pull HP / battle / quest progress from the server
+  }
+  $("playerStatus").textContent = gameStarted ? "Tersambung kembali. Game berlangsung." : "Tersambung kembali.";
+}
+
+// Rejoin with the saved playerToken. Runs on every socket "connect":
+//  - first connect after a page refresh  -> auto-join the saved room, continue from saved stage/position
+//  - reconnect while playing (HP slept / signal lost) -> take the same player back
+function tryResumeSession() {
+  if (sessionReplaced || rejoining || joiningRoom) return;
+  const saved = loadPlayerSession();
+  if (!saved) return;
+  const inRoom = Boolean(roomCode);
+  // Opened an invite link to a DIFFERENT room: don't drag the player back to the old one.
+  if (!inRoom && initialRoomCode && initialRoomCode.toUpperCase() !== saved.roomCode) return;
+
+  rejoining = true;
+  if (!inRoom) {
+    playerName = saved.name || "Player";
+    $("joinButton").disabled = true;
+    showMessage("Menyambung kembali ke room...");
+  }
+
+  socket.emit("room:join", {
+    roomCode: saved.roomCode,
+    name: saved.name,
+    avatar: saved.avatar || { ...avatarSelection },
+    playerToken: saved.playerToken
+  }, (result) => {
+    rejoining = false;
+    if (!result?.ok) {
+      // Room is gone (closed / server restarted): forget the session.
+      clearPlayerSession();
+      if (inRoom) {
+        alert(result?.error || "Room sudah ditutup.");
+        location.reload();
+      } else {
+        $("joinButton").disabled = false;
+        $("roomCode").value = saved.roomCode;
+        showMessage(result?.error || "Room tidak ditemukan.", true);
+      }
+      return;
+    }
+    savePlayerSession({ ...saved, roomCode: result.roomCode, playerToken: result.playerToken || saved.playerToken });
+    if (!inRoom) {
+      playerName = result.playerName || playerName;
+      enterRoom(result);
+    } else if (result.resumed) {
+      handleReconnected(result);
+    } else {
+      // Grace period expired and the server made a brand-new player: restart cleanly from it.
+      location.reload();
+    }
+  });
 }
 
 // =====================================================
@@ -971,12 +1070,14 @@ function joinRoom(code) {
   const joinButton = $("joinButton");
   joinButton.disabled = true;
 
+  const saved = loadPlayerSession();
   socket.emit(
     "room:join",
     {
       roomCode: code,
       name: playerName,
-      avatar: { ...avatarSelection }
+      avatar: { ...avatarSelection },
+      playerToken: saved && saved.roomCode === code ? saved.playerToken : undefined
     },
     (result) => {
       joiningRoom = false;
@@ -992,6 +1093,14 @@ function joinRoom(code) {
 
       console.log("[PHONE] Berhasil masuk room:", result);
 
+      if (result.playerToken) {
+        savePlayerSession({
+          roomCode: result.roomCode,
+          playerToken: result.playerToken,
+          name: result.playerName || playerName,
+          avatar: { ...avatarSelection }
+        });
+      }
       enterRoom(result);
     }
   );
@@ -1531,8 +1640,18 @@ socket.on("player:reset", ({ x, y, score: resetScore } = {}) => {
 });
 
 socket.on("player:kicked", ({ reason } = {}) => {
+  clearPlayerSession(); // kicked by the host: do NOT auto-rejoin after the reload
   alert(reason || "Anda telah dikeluarkan dari permainan oleh host.");
   location.reload();
+});
+
+// The same player was opened in another tab / device. This tab stops (no auto-rejoin fight).
+socket.on("player:replaced", ({ reason } = {}) => {
+  sessionReplaced = true;
+  releaseAllMobileInput();
+  socket.disconnect();
+  if ($("playerStatus")) $("playerStatus").textContent = reason || "Sesi dibuka di tab lain.";
+  alert(reason || "Sesi dibuka di tab / perangkat lain. Tab ini dihentikan.");
 });
 
 socket.on("room:status", ({ status, endsAt, startedAt, remainingMs, leaderboard, winner, reason } = {}) => {
@@ -1625,6 +1744,7 @@ socket.on("connect", () => {
   }
 
   console.log("[CLIENT] Connected:", socket.id);
+  tryResumeSession();
 });
 
 socket.on("disconnect", (reason) => {

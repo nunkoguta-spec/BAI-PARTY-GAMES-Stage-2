@@ -10,16 +10,20 @@ export const QUEST = Object.freeze({
   interactRange: 70,
   npcs: Object.freeze([
     Object.freeze({
-      id: "npc-deandra",
-      altId: "npc-dinda",
-      name: "FRAU DEANDRA",
-      gender: "f",
-      x: 11100,
-      texture: "npc-deandra-idle",
-      portrait: "/assets/deandra/portrait.png",
+      id: "npc-deandra", name: "FRAU DEANDRA", gender: "f", x: 11100,
+      // Custom single-layer sprite (public/assets/npc). Replaces the old modular avatar.
+      sprite: "npc-deandra",
+      portrait: "/assets/npc/deandra_portrait_neutral.png",
+      // Ekspresi dialog: neutral = sapaan, wink = quest berjalan, happy = quest selesai.
+      portraits: Object.freeze({
+        neutral: "/assets/npc/deandra_portrait_neutral.png",
+        wink: "/assets/npc/deandra_portrait_wink.png",
+        happy: "/assets/npc/deandra_portrait_happy.png",
+        think: "/assets/npc/deandra_portrait_think.png"
+      }),
       avatar: Object.freeze({ skin: 4, hair: 5, eyes: 2, top: 27, bottoms: 2, shoes: 1 }),
-      greeting: "Hallo! Guten Tag! Saya Frau Deandra. Herzlichen Glückwunsch telah mencapai Köln! Sebelum petualangan kalian berakhir, ada satu side quest penutup!",
-      tip: "Mulai dengan menyapa ramah: 'Hallo! Wie heißt du?'. Ajak ngobrol sebentar lalu tukaran Instagram ya!"
+      greeting: "Hai! Aku Frau Deandra. Sebelum petualangan kalian berakhir, ada satu side quest tambahan!",
+      tip: "Mulai dengan menyapa, sebutkan nama, ngobrol sebentar, lalu minta Instagram dengan sopan."
     })
   ])
 });

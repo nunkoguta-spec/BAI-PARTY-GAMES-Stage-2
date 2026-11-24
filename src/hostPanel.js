@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { retroAudio } from "./audio/retroAudio.js";
 import { COURSE } from "./game/course.js";
 import { syncServerClock } from "./game/clock.js";
+import { loadHostSession, saveHostSession, clearHostSession } from "./session.js";
 
 export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   const panel = document.createElement("section");
@@ -11,6 +12,16 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   panel.hidden = true;
 
   panel.innerHTML = `
+    <div id="host-leaderboard-hud" class="pixel-box host-leaderboard-hud">
+      <div class="host-leaderboard-header">
+        <span class="pixel-badge">👑 KLASEMEN</span>
+        <span id="host-leaderboard-count" class="pixel-tag">0 PEMAIN</span>
+      </div>
+      <div id="host-leaderboard-rows" class="host-leaderboard-rows">
+        <div class="host-leaderboard-empty">Menunggu pemain...</div>
+      </div>
+    </div>
+
     <div id="host-minibar" class="pixel-box" hidden>
       <span id="host-minibar-text">⚙ HOST: ------</span>
       <button id="host-expand-panel" class="pixel-btn pixel-btn-sm" type="button">BUKA ▶</button>
@@ -342,6 +353,8 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   let mode = "AUTO";
   let pendingWatch = false;
   let createRoomTimeout = null;
+  let resumeSession = null;        // {roomCode, hostToken} when this page load should resume a room
+  let suppressStartIntro = false;  // don't replay the "game start" intro after a refresh mid-game
 
   function getWorldScene() {
     if (!game || !game.scene) return null;
@@ -543,19 +556,26 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
   searchInput.addEventListener("input", renderPlayers);
 
-  function createRoom() {
+  // createRoom({ resume: true }) continues the room saved in localStorage (host refreshed);
+  // createRoom() always makes a brand-new room.
+  function createRoom({ resume = false } = {}) {
     if (roomCreated || roomRequested) return;
     roomRequested = true;
+    resumeSession = resume ? loadHostSession() : null;
     if (!socket.connected) {
       connection.textContent = "Menghubungkan server...";
       socket.connect();
       return;
     }
-    createRoomOnServer();
+    startRoomRequest();
   }
 
-  function createRoomOnServer() {
-    connection.textContent = "Membuat room...";
+  function startRoomRequest() {
+    if (resumeSession) resumeRoomOnServer();
+    else createRoomOnServer();
+  }
+
+  function armRoomTimeout() {
     clearTimeout(createRoomTimeout);
     createRoomTimeout = setTimeout(() => {
       if (roomCreated) return;
@@ -563,6 +583,96 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       connection.textContent = "Server tidak merespons. Game berjalan offline.";
       onRoomCreated({ roomCode: "", offline: true });
     }, 8000);
+  }
+
+  function whenSceneReady(callback, tries = 80) {
+    if (getWorldScene()) { callback(); return; }
+    if (tries <= 0) return;
+    setTimeout(() => whenSceneReady(callback, tries - 1), 250);
+  }
+
+  // Pull players / avatars / status from the server into the panel and the Phaser scene.
+  function subscribeAsHost() {
+    socket.emit("tv:subscribe", { roomCode: currentRoomCode, hostToken: currentHostToken }, (result) => {
+      if (!result?.ok) {
+        roomStatus.textContent = result?.error || "Status room gagal dimuat.";
+        if (/tidak ditemukan/i.test(result?.error || "")) clearHostSession();
+        return;
+      }
+      players = result.players || [];
+      playerCount.textContent = players.length;
+      renderPlayers();
+      const scene = getWorldScene();
+      if (scene) {
+        scene.setLeaderboardData(players);
+        if (Array.isArray(result.avatars)) {
+          for (const av of result.avatars) scene.createRemoteAvatar(av);
+        }
+      }
+      chooseAutomaticPlayer();
+    });
+  }
+
+  function applyRoomSettings(settings) {
+    if (!settings) return;
+    const setIfExists = (select, value) => {
+      if ([...select.options].some((option) => option.value === String(value))) select.value = String(value);
+    };
+    setIfExists(durationSelect, settings.gameMinutes);
+    setIfExists(pointsSelect, settings.correctPoints);
+  }
+
+  function onRoomReady(response, { resumed = false } = {}) {
+    roomCreated = true;
+    panel.hidden = false;
+    currentHostToken = response.hostToken || "";
+    currentRoomCode = response.roomCode;
+    saveHostSession(currentRoomCode, currentHostToken);
+    roomCodeElement.textContent = currentRoomCode;
+    if (hostMinibarText) hostMinibarText.textContent = `⚙ HOST: ${currentRoomCode}`;
+    startGameButton.disabled = false;
+    roomStatus.textContent = resumed ? "Tersambung kembali ke room." : "Room siap. Menunggu pemain...";
+
+    if (resumed) {
+      applyRoomSettings(response.settings);
+      suppressStartIntro = response.status === "playing" || response.status === "paused";
+    }
+
+    subscribeAsHost();
+    // After a page refresh Phaser may still be booting: sync again once the world scene is live,
+    // so timer, podium and avatars appear in it.
+    if (resumed) whenSceneReady(subscribeAsHost);
+
+    updateRoomQr();
+    console.log(resumed ? "[HOST] Room dilanjutkan:" : "[HOST] Room dibuat:", currentRoomCode);
+    onRoomCreated({ roomCode: currentRoomCode, resumed });
+  }
+
+  function resumeRoomOnServer() {
+    connection.textContent = "Menyambung kembali ke room...";
+    armRoomTimeout();
+    socket.timeout(8000).emit("room:resume-host", { roomCode: resumeSession.roomCode, hostToken: resumeSession.hostToken }, (error, response) => {
+      clearTimeout(createRoomTimeout);
+      if (error || !response) {
+        roomRequested = false;
+        connection.textContent = "Gagal menyambung ke room. Coba muat ulang.";
+        return;
+      }
+      if (!response.ok) {
+        // Room is gone (server restarted / expired): fall back to a fresh room.
+        console.warn("[HOST] Room lama tidak bisa dilanjutkan:", response.error);
+        clearHostSession();
+        resumeSession = null;
+        createRoomOnServer();
+        return;
+      }
+      onRoomReady(response, { resumed: true });
+    });
+  }
+
+  function createRoomOnServer() {
+    connection.textContent = "Membuat room...";
+    armRoomTimeout();
 
     socket.timeout(8000).emit("room:create", { name: "Host" }, (error, response) => {
       clearTimeout(createRoomTimeout);
@@ -572,38 +682,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         console.error("[HOST] Pembuatan room gagal:", error || response?.error);
         return;
       }
-
-      roomCreated = true;
-      panel.hidden = false;
-      leaderboardHud.hidden = false;
-      currentHostToken = response.hostToken || "";
-      currentRoomCode = response.roomCode;
-      roomCodeElement.textContent = currentRoomCode;
-      if (hostMinibarText) hostMinibarText.textContent = `⚙ HOST: ${currentRoomCode}`;
-      startGameButton.disabled = false;
-      roomStatus.textContent = "Room siap. Menunggu pemain...";
-
-      socket.emit("tv:subscribe", { roomCode: currentRoomCode, hostToken: currentHostToken }, (result) => {
-        if (!result?.ok) {
-          roomStatus.textContent = result?.error || "Status room gagal dimuat.";
-          return;
-        }
-        players = result.players || [];
-        playerCount.textContent = players.length;
-        renderPlayers();
-        const scene = getWorldScene();
-        if (scene) {
-          scene.setLeaderboardData(players);
-          if (Array.isArray(result.avatars)) {
-            for (const av of result.avatars) scene.createRemoteAvatar(av);
-          }
-        }
-        chooseAutomaticPlayer();
-      });
-
-      updateRoomQr();
-      console.log("[HOST] Room dibuat:", currentRoomCode);
-      onRoomCreated({ roomCode: currentRoomCode });
+      onRoomReady(response);
     });
   }
 
@@ -633,20 +712,16 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     connection.textContent = "SERVER TERHUBUNG";
     connection.classList.add("host-online");
     if (roomRequested && !roomCreated) {
-      createRoomOnServer();
+      startRoomRequest();
     } else if (roomCreated && currentRoomCode) {
-      socket.emit("tv:subscribe", { roomCode: currentRoomCode, hostToken: currentHostToken }, (result) => {
-        if (!result?.ok) return;
-        players = result.players || [];
-        playerCount.textContent = players.length;
-        renderPlayers();
-        const scene = getWorldScene();
-        if (scene) {
-          scene.setLeaderboardData(players);
-          if (Array.isArray(result.avatars)) {
-            for (const av of result.avatars) scene.createRemoteAvatar(av);
-          }
+      // Socket reconnected (new socket id): take the host role back with the hostToken.
+      socket.emit("room:resume-host", { roomCode: currentRoomCode, hostToken: currentHostToken }, (res) => {
+        if (!res?.ok) {
+          roomStatus.textContent = res?.error || "Room hilang. Muat ulang halaman.";
+          clearHostSession();
+          return;
         }
+        subscribeAsHost();
       });
     }
   });
@@ -686,7 +761,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         scene.setGameTimer(endsAt, "playing");
         if (!scene._gameStartIntroPlayed) {
           scene._gameStartIntroPlayed = true;
-          scene.playGameStartIntro?.();
+          if (!suppressStartIntro) scene.playGameStartIntro?.();
         }
       }
     } else if (status === "paused") {
@@ -713,6 +788,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       }
       if (leaderboard?.length) renderPlayers();
     } else {
+      suppressStartIntro = false;
       roomStatus.textContent = "Room siap. Menunggu dimulai...";
       startGameButton.disabled = false;
       pauseGameButton.disabled = true;
@@ -863,27 +939,20 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     scene.showRemoteBattleHurt?.(data);
   });
 
-  socket.on("tv:enemy-hit", ({ playerId, stageId, damage, enemyHp, enemyMaxHp } = {}) => {
+  // Duel tiap pemain: HP musuh digambar dari event battle:player-strike (per pemain), bukan satu enemy bersama.
+  socket.on("tv:battle-start", (data = {}) => {
     const scene = getWorldScene();
     if (!scene) return;
-    const e = scene.stageEnemy;
-    if (e) {
-      e.hp = Number.isFinite(Number(enemyHp)) ? Number(enemyHp) : e.hp;
-      e.maxHp = Number.isFinite(Number(enemyMaxHp)) ? Number(enemyMaxHp) : e.maxHp;
-      scene.drawEnemyHealthBar?.();
-      scene.setEnemyPose?.("hit");
-      scene.cameras?.main?.shake?.(100, 0.004);
-      scene.showFloatingFeedback?.(e.sprite.x, e.sprite.y - 36, `-${damage} HP`, "#ffe28a");
-      scene.time?.delayedCall?.(220, () => {
-        if (!e.defeated) scene.setEnemyPose?.("idle");
-      });
+    const stageIdx = COURSE.stages.findIndex(st => st.id === data.stageId);
+    if (stageIdx >= 0 && scene.stageIndex !== stageIdx && (mode === "AUTO" || selectedPlayerId === data.playerId)) {
+      scene.setStage?.(stageIdx);
     }
+    scene.startHostDuel?.(data);
   });
 
   socket.on("tv:enemy-defeated", ({ playerId, name, boss } = {}) => {
     const scene = getWorldScene();
     if (!scene) return;
-    if (scene.stageEnemy) scene.markEnemyDefeated?.(false);
     const remote = scene?.remoteAvatars?.get(playerId);
     const pos = remote ? { x: remote.x, y: remote.y - 20 } : { x: scene.stageEnemy?.sprite?.x || 850, y: 150 };
     scene.showFloatingFeedback?.(pos.x, pos.y, boss ? `🏆 BOSS DIKALAHKAN OLEH ${name || "PEMAIN"}!` : `⚔ MUSUH DIKALAHKAN OLEH ${name || "PEMAIN"}!`, "#ffd36a");

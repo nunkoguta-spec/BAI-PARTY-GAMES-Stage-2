@@ -2,7 +2,7 @@
 import express from "express";
 import http from "node:http";
 import { Server } from "socket.io";
-import { randomInt } from "node:crypto";
+import { randomInt, randomBytes } from "node:crypto";
 import { COURSE } from "../src/game/course.js";
 import { QUEST, questNpcById } from "../src/game/quests.js";
 import { BATTLE, TIER_LABELS, battleConfig, battleEnemyX, battlePlan } from "../src/game/battle.js";
@@ -32,6 +32,13 @@ const io = new Server(httpServer, {
 app.use(express.json());
 
 const rooms = new Map();
+
+// Refresh / reconnect support:
+// - a disconnected player keeps their slot (stage, position, score, HP, quests) for this long
+// - a room with nobody connected (host included) is kept this long so the host can come back
+const PLAYER_GRACE_MS = Number(process.env.PLAYER_GRACE_MS) || 3 * 60_000;
+const ROOM_IDLE_MS = Number(process.env.ROOM_IDLE_MS) || 20 * 60_000;
+const makeToken = () => randomBytes(16).toString("hex");
 
 const DEFAULT_SETTINGS = Object.freeze({ gameMinutes: 10, correctPoints: 10, questionLimit: 0, hazardPenalty: COURSE.hazardPenalty, finishBonusSeconds: COURSE.finishBonusSeconds, courseWidth: COURSE.width, finishX: COURSE.finishX });
 const WORLD_WIDTH = COURSE.width;
@@ -95,6 +102,54 @@ function resolveHostRoom(socket, payload = {}) {
   return null;
 }
 
+// Status payload for ONE socket that (re)joins: includes the final result when the game already ended,
+// and remainingMs while paused, so a refreshed host / phone lands in the right screen immediately.
+function statusPayload(room) {
+  const payload = { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() };
+  if (room.status === "paused") payload.remainingMs = room.pausedRemaining;
+  if (room.status === "ended" && room.result) Object.assign(payload, room.result);
+  return payload;
+}
+
+function cancelRoomCleanup(room) {
+  clearTimeout(room.idleTimer);
+  room.idleTimer = null;
+}
+
+function destroyRoom(room) {
+  cancelRoomCleanup(room);
+  for (const player of room.players.values()) {
+    clearTimeout(player.koTimer);
+    clearTimeout(player.disconnectTimer);
+  }
+  clearTimeout(room.gameTimer);
+  clearTimeout(room.finishGraceTimer);
+  rooms.delete(room.code);
+  console.log(`[ROOM] Deleted ${room.code}`);
+}
+
+function scheduleRoomCleanup(room) {
+  if (!rooms.has(room.code) || room.members.size > 0 || room.idleTimer) return;
+  room.idleTimer = setTimeout(() => {
+    room.idleTimer = null;
+    if (room.members.size === 0) destroyRoom(room);
+  }, ROOM_IDLE_MS);
+}
+
+// Player ids are socket ids, and a reconnect gets a NEW socket id. Re-key the existing player
+// so the same player object (stage, score, HP, quests, battles) continues under the new id.
+function rekeyPlayer(room, player, newId) {
+  const oldId = player.id;
+  if (oldId === newId) return oldId;
+  room.players.delete(oldId);
+  room.members.delete(oldId);
+  if (room.finishedPlayers.delete(oldId)) room.finishedPlayers.add(newId);
+  player.id = newId;
+  room.players.set(newId, player);
+  room.members.add(newId);
+  return oldId;
+}
+
 function publicLeaderboard(room) {
   return [...room.players.values()]
     .map((player) => ({
@@ -130,10 +185,11 @@ function broadcastPlayerList(room) {
       hp: player.hp,
       maxHp: BATTLE.playerMaxHp,
       ko: Boolean(player.ko),
-      connected: true
+      connected: player.connected !== false
     }))
   );
-  io.to(room.code).emit("room:status", { status: room.status });
+  // Ended rooms keep carrying the final result so a refreshed host/phone never loses the podium.
+  io.to(room.code).emit("room:status", room.status === "ended" ? statusPayload(room) : { status: room.status });
 }
 
 // Data publik avatar untuk multiplayer.
@@ -253,6 +309,7 @@ function endGame(room, reason = "host") {
   room.status = "ended";
   const leaderboard = publicLeaderboard(room);
   const winner = leaderboard[0] || null;
+  room.result = { reason, leaderboard, winner };
   io.to(room.code).emit("room:status", { status: "ended", reason, leaderboard, winner });
   io.to(room.code).emit("game:ended", { reason, leaderboard, winner });
 }
@@ -266,8 +323,17 @@ function pauseGame(room) {
   return true;
 }
 
+// Pemain hanya boleh meninggalkan stage kalau enemy stage itu sudah DIA kalahkan sendiri
+// (hasil pemain lain tidak dihitung). Stage tanpa enemy (Köln) selalu boleh.
+function hasClearedStage(player, stageIndex = player?.stageIndex) {
+  const stage = COURSE.stages[stageIndex];
+  if (!stage || !battleConfig(stage.id)) return true;
+  return Boolean(player?.battlesWon?.has(stage.id));
+}
+
 function finishPlayer(room, player) {
   if (!room || !player || player.finished || room.status !== "playing" || player.x < FINISH_X - 110) return null;
+  if (!hasClearedStage(player)) return null;
   const finishedAt = Date.now();
   player.finished = true;
   player.finishedAt = finishedAt;
@@ -311,6 +377,7 @@ function removePlayer(room, playerId) {
   if (!player) return;
 
   clearTimeout(player.koTimer);
+  clearTimeout(player.disconnectTimer);
 
   room.players.delete(playerId);
   room.members.delete(playerId);
@@ -352,7 +419,7 @@ io.on("connection", (socket) => {
 
   socket.on("room:create", (payload = {}, callback = () => {}) => {
     const code = createRoomCode();
-    const hostToken = randomInt(100000, 999999).toString(36) + "-" + Date.now().toString(36);
+    const hostToken = makeToken();
 
     const room = {
       code,
@@ -367,7 +434,9 @@ io.on("connection", (socket) => {
       startedAt: null,
       pausedRemaining: 0,
       finishGraceTimer: null,
-      finishedPlayers: new Set()
+      finishedPlayers: new Set(),
+      result: null,
+      idleTimer: null
     };
 
     rooms.set(code, room);
@@ -382,6 +451,33 @@ io.on("connection", (socket) => {
     });
 
     console.log(`[ROOM] Created ${code} (host: ${socket.id})`);
+  });
+
+  // =====================================================
+  // HOST REFRESHED -> RESUME THE SAME ROOM (validated by hostToken)
+  // =====================================================
+
+  socket.on("room:resume-host", (payload = {}, callback = () => {}) => {
+    const code = String(payload.roomCode || "").trim().toUpperCase();
+    const room = rooms.get(code);
+    if (!room || !payload.hostToken || payload.hostToken !== room.hostToken) {
+      callback({ ok: false, error: "Room tidak ditemukan atau sudah ditutup." });
+      return;
+    }
+    cancelRoomCleanup(room);
+    room.hostId = socket.id;
+    room.members.add(socket.id);
+    socket.join(room.code);
+    callback({
+      ok: true,
+      resumed: true,
+      roomCode: room.code,
+      hostToken: room.hostToken,
+      hostId: socket.id,
+      settings: room.settings,
+      ...statusPayload(room)
+    });
+    console.log(`[ROOM] Host resumed ${room.code} (host: ${socket.id})`);
   });
 
   // =====================================================
@@ -408,6 +504,7 @@ io.on("connection", (socket) => {
     }
     room.status = "playing";
     room.startedAt = Date.now();
+    room.battleCounts = {}; // berapa kali tiap soal sudah dibagikan ke pemain di game ini
     room.finishGraceTimer = null;
     room.finishedPlayers.clear();
     for (const player of room.players.values()) {
@@ -439,6 +536,7 @@ io.on("connection", (socket) => {
     }
     clearTimeout(room.finishGraceTimer);
     room.finishGraceTimer = null;
+    room.battleCounts = {};
     room.finishedPlayers.clear();
     for (const player of room.players.values()) {
       player.score = 0;
@@ -462,6 +560,7 @@ io.on("connection", (socket) => {
       resetPlayerHp(player);
     }
     room.status = "waiting";
+    room.result = null;
     room.startedAt = null;
     room.endsAt = null;
     room.pausedRemaining = 0;
@@ -570,15 +669,71 @@ io.on("connection", (socket) => {
         ok: true,
         roomCode: code,
         playerId: socket.id,
+        playerToken: room.players.get(socket.id).token,
         status: room.status,
         });
       socket.emit("room:settings", room.settings);
-      socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
+      socket.emit("room:status", statusPayload(room));
+      return;
+    }
+
+    // REJOIN: same playerToken = same player, even though the socket id is new
+    // (page refresh, phone slept, network dropped). Everything is kept.
+    const playerToken = String(payload.playerToken || "");
+    const existing = playerToken ? [...room.players.values()].find((p) => p.token === playerToken) : null;
+    if (existing) {
+      cancelRoomCleanup(room);
+      clearTimeout(existing.disconnectTimer);
+      existing.disconnectTimer = null;
+      existing.connected = true;
+
+      const oldId = existing.id;
+      const oldSocket = io.sockets.sockets.get(oldId);
+      if (oldSocket && oldSocket.id !== socket.id) {
+        // Same player opened in a second tab: the old tab must stop (and not auto-rejoin).
+        oldSocket.emit("player:replaced", { reason: "Sesi dibuka di tab / perangkat lain." });
+        oldSocket.leave(room.code);
+      }
+      rekeyPlayer(room, existing, socket.id);
+      socket.join(code);
+      io.to(code).emit("player:left", { playerId: oldId, rejoin: true });
+
+      callback({
+        ok: true,
+        resumed: true,
+        roomCode: code,
+        playerId: socket.id,
+        playerName: existing.name,
+        playerToken: existing.token,
+        status: room.status,
+        course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
+        player: {
+          stageIndex: Number.isInteger(existing.stageIndex) ? existing.stageIndex : 0,
+          x: existing.x,
+          y: existing.y,
+          facing: existing.facing,
+          score: existing.score,
+          hp: existing.hp,
+          maxHp: BATTLE.playerMaxHp,
+          ko: Boolean(existing.ko),
+          finished: Boolean(existing.finished)
+        }
+      });
+      socket.emit("room:settings", room.settings);
+      socket.emit("room:status", statusPayload(room));
+      socket.emit("players:state", [...room.players.values()].filter((other) => other.id !== socket.id).map(publicPlayerPosition));
+      socket.to(code).emit("player:joined", publicPlayerPosition(existing));
+      broadcastPlayerList(room);
+      broadcastLeaderboard(room);
+      console.log(`[REJOIN] ${existing.name} resumed ${code}`);
       return;
     }
 
     const player = {
       id: socket.id,
+      token: makeToken(),
+      connected: true,
+      disconnectTimer: null,
       name,
       avatar: sanitizeAvatar(payload.avatar),
       score: 0,
@@ -608,6 +763,7 @@ io.on("connection", (socket) => {
       lastTrapAt: 0
     };
 
+    cancelRoomCleanup(room);
     room.members.add(socket.id);
     room.players.set(socket.id, player);
 
@@ -617,11 +773,12 @@ io.on("connection", (socket) => {
       ok: true,
       roomCode: code,
       playerId: socket.id,
+      playerToken: player.token,
       playerName: name,
       status: room.status,
       course: { width: WORLD_WIDTH, height: WORLD_HEIGHT, finishX: FINISH_X, startedAt: room.startedAt, hazards: COURSE_HAZARDS, slugs: COURSE_SLUGS },
       });
-    socket.emit("room:status", { status: room.status, startedAt: room.startedAt, endsAt: room.endsAt, serverNow: Date.now() });
+    socket.emit("room:status", statusPayload(room));
 
     // Kirim posisi pemain lama ke HP pemain baru.
     socket.emit(
@@ -733,6 +890,11 @@ io.on("connection", (socket) => {
     if (!player) return;
     const nextStageIndex = Number(payload.nextStageIndex);
     if (Number.isInteger(nextStageIndex) && nextStageIndex >= 0 && nextStageIndex < COURSE.stages.length) {
+      // Naik kereta ke stage berikutnya hanya setelah enemy stage ini dikalahkan pemain itu sendiri.
+      if (nextStageIndex > player.stageIndex && !hasClearedStage(player)) {
+        socket.emit("player:correction", publicPlayerPosition(player));
+        return;
+      }
       player.stageIndex = nextStageIndex;
       const stage = COURSE.stages[nextStageIndex];
       const targetX = stage.startX + 160;
@@ -843,11 +1005,18 @@ io.on("connection", (socket) => {
   const pickBattleQuestion = (battle) => {
     const wanted = battle.plan[Math.min(battle.solved, battle.plan.length - 1)];
     const pool = BATTLE_QUESTIONS[battle.stageId].map((_, i) => i);
-    let candidates = [];
-    for (const tier of [wanted, wanted - 1, wanted + 1, wanted - 2, wanted + 2].filter((t) => t >= 1 && t <= 3)) {
-      candidates = BATTLE_TIERS[battle.stageId][tier].filter((i) => !battle.used.has(i));
-      if (candidates.length) break;
-    }
+    const seen = battle.seen || new Set();   // soal yang pernah keluar untuk pemain ini (lintas game)
+    const counts = battle.counts || null;    // soal yang sudah dibagikan ke pemain lain di game ini
+    const order = [wanted, wanted - 1, wanted + 1, wanted - 2, wanted + 2].filter((t) => t >= 1 && t <= 3);
+    const fromTiers = (skipSeen) => {
+      for (const tier of order) {
+        const found = BATTLE_TIERS[battle.stageId][tier].filter((i) => !battle.used.has(i) && !(skipSeen && seen.has(i)));
+        if (found.length) return found;
+      }
+      return [];
+    };
+    let candidates = fromTiers(true);
+    if (!candidates.length) { seen.clear(); candidates = fromTiers(false); } // seluruh bank sudah pernah keluar: putaran baru
     if (!candidates.length) {
       const last = battle.current;
       battle.used = new Set(last === null ? [] : [last]);
@@ -855,6 +1024,11 @@ io.on("connection", (socket) => {
       if (!candidates.length) candidates = pool.filter((i) => !battle.used.has(i));
     }
     if (!candidates.length) candidates = pool; // jaga-jaga: jangan pernah mengembalikan undefined
+    // Utamakan soal yang paling jarang dibagikan ke pemain lain, supaya tiap orang dapat soal berbeda.
+    if (counts) {
+      const min = Math.min(...candidates.map((i) => counts.get(i) || 0));
+      candidates = candidates.filter((i) => (counts.get(i) || 0) === min);
+    }
     return candidates[randomInt(candidates.length)];
   };
 
@@ -864,6 +1038,8 @@ io.on("connection", (socket) => {
     if (battle.current === null || battle.current === undefined) {
       battle.current = pickBattleQuestion(battle);
       battle.used.add(battle.current);
+      battle.seen?.add(battle.current);
+      battle.counts?.set(battle.current, (battle.counts.get(battle.current) || 0) + 1);
     }
     const item = BATTLE_QUESTIONS[battle.stageId][battle.current];
     const letters = ["A", "B", "C", "D"];
@@ -920,9 +1096,14 @@ io.on("connection", (socket) => {
     let battle = player.battles[stage.id];
     if (!battle) {
       battle = { stageId: stage.id, plan: battlePlan(cfg.total), used: new Set(), current: null, solved: 0, total: cfg.total, shown: null, basePoints: room.settings.correctPoints };
+      player.seenBattle = player.seenBattle || {};
+      room.battleCounts = room.battleCounts || {};
+      battle.seen = player.seenBattle[stage.id] = player.seenBattle[stage.id] || new Set();
+      battle.counts = room.battleCounts[stage.id] = room.battleCounts[stage.id] || new Map();
       player.battles[stage.id] = battle;
     }
     const firstQuestion = battleQuestionPayload(battle);
+    io.to(room.code).emit("tv:battle-start", { playerId: player.id, name: player.name, stageId: stage.id, boss: Boolean(cfg.boss), ...enemyHpPayload(battle, cfg) });
     if (cfg.boss) {
       io.to(room.code).emit("tv:final-boss-intro", {
         playerId: player.id,
@@ -1171,6 +1352,7 @@ io.on("connection", (socket) => {
         room.hostId = socket.id;
       }
 
+      cancelRoomCleanup(room);
       room.members.add(socket.id);
       socket.join(code);
 
@@ -1187,7 +1369,7 @@ io.on("connection", (socket) => {
 
       socket.emit("players:state", [...room.players.values()].map(publicPlayerPosition));
       socket.emit("room:settings", room.settings);
-      socket.emit("room:status", { status: room.status, endsAt: room.endsAt, serverNow: Date.now() });
+      socket.emit("room:status", statusPayload(room));
       broadcastPlayerList(room);
       broadcastLeaderboard(room);
     }
@@ -1236,9 +1418,25 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`[DISCONNECT] ${socket.id}`);
 
-    for (const room of rooms.values()) {
-      if (room.players.has(socket.id)) {
-        removePlayer(room, socket.id);
+    for (const room of [...rooms.values()]) {
+      const player = room.players.get(socket.id);
+
+      if (player) {
+        // Do NOT delete the player: keep the slot for PLAYER_GRACE_MS so a refresh /
+        // reconnect with the same playerToken continues exactly where they were.
+        const playerId = player.id;
+        player.connected = false;
+        player.vx = 0;
+        player.state = "idle";
+        room.members.delete(socket.id);
+        clearTimeout(player.disconnectTimer);
+        player.disconnectTimer = setTimeout(() => {
+          const current = room.players.get(playerId);
+          if (!current || current.connected) return;
+          removePlayer(room, playerId);
+          scheduleRoomCleanup(room);
+        }, PLAYER_GRACE_MS);
+        broadcastPlayerList(room);
       } else if (room.hostId === socket.id) {
         room.hostId = null;
         room.members.delete(socket.id);
@@ -1246,17 +1444,8 @@ io.on("connection", (socket) => {
         room.members.delete(socket.id);
       }
 
-      if (room.members.size === 0) {
-        for (const player of room.players.values()) {
-          clearTimeout(player.koTimer);
-        }
-
-        clearTimeout(room.gameTimer);
-        clearTimeout(room.finishGraceTimer);
-        rooms.delete(room.code);
-
-        console.log(`[ROOM] Deleted ${room.code}`);
-      }
+      // Nobody connected (host included): keep the room for ROOM_IDLE_MS so the host can resume.
+      scheduleRoomCleanup(room);
     }
   });
 });
