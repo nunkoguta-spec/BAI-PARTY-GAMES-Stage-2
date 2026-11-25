@@ -890,13 +890,19 @@ function answerBattle(letter, button) {
           return;
         }
       } else {
+        if (Number(res.scorePenalty) > 0) {
+          phoneScene.showFloatingFeedback?.(phoneScene.player.x, phoneScene.player.y - 14, `-${res.scorePenalty} POIN`, "#f24b4b");
+        }
         await phoneScene.playEnemyAttack(res.wrongDamage || battleWrongDamage);
         phoneScene.releaseHp?.();
         if (!battleOpen) return;
       }
       battleBusy = false;
       $("battlePanel").classList.remove("anim");
-      renderBattleQuestion(res.next, res.correct ? `BENAR! +${res.points} POIN · Serangan kena!` : `SALAH! Musuh menyerang balik. HP ${res.hp}/${res.maxHp}`);
+      const statusMsg = res.correct
+        ? `BENAR! +${res.points} POIN · Serangan kena!`
+        : `SALAH! -${res.scorePenalty || 5} POIN · Musuh menyerang balik. HP ${res.hp}/${res.maxHp}`;
+      renderBattleQuestion(res.next, statusMsg);
     } catch (err) {
       console.error("[BATTLE ERROR]", err);
       battleBusy = false;

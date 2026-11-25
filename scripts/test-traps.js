@@ -51,7 +51,7 @@ check("every spikes/pop/roller is clearable with one jump", TRAPS.filter((t) => 
 
 // ---------- 2b. the "not ordinary" traps: logic ----------
 const kinds = new Set(TRAPS.map((t) => t.type));
-check("all 8 trap types are used somewhere", ["spikes", "pop", "roller", "tram", "icicle", "gull", "pendulum", "steam"].every((k) => kinds.has(k)), [...kinds].join());
+check("all 7 trap types are used somewhere", ["spikes", "pop", "roller", "icicle", "gull", "pendulum", "steam"].every((k) => kinds.has(k)), [...kinds].join());
 check("damage table has every type for every stage", COURSE.stages.every((s) => [...kinds].every((k) => Number.isFinite(TRAP_DAMAGE[s.id][k]))));
 
 const st = TRAPS.find((x) => x.type === "steam");
@@ -60,15 +60,6 @@ check("steam: idle at cycle start", steamState(st, st0 + 100).phase === "idle" &
 check("steam: warns before blast", steamState(st, st0 + 1600).phase === "warn" && !trapHits(st, st.x, stand, st0 + 1600));
 check("steam: dangerous during blast", trapHits(st, st.x, stand, st0 + 2200));
 check("steam: jump clears it", !trapHits(st, st.x, stand - 60, st0 + 2200));
-
-const tr = TRAPS.find((x) => x.type === "tram" && !x.double);
-const tc = 1_700_000_000_000 - (1_700_000_000_000 % 5000) - tr.phaseMs;      // start of a tram cycle
-check("tram: lights come on BEFORE the tram, bell too", tramState(tr, tc + 3000).lights && !tramState(tr, tc + 3000).active && tramState(tr, tc + 3000).bell);
-check("tram: dangerous only while the tram is on the street", trapHits(tr, tramState(tr, tc + 4150).x, stand, tc + 4150) && !trapHits(tr, tr.x, stand, tc + 1000) && !trapHits(tr, tr.x, stand, tc + 3000));
-check("tram: you can jump over the roof", !trapHits(tr, tramState(tr, tc + 4150).x, stand - 60, tc + 4150));
-check("tram: direction alternates each cycle", tramState(tr, tc + 4150).dir === -tramState(tr, tc + 5000 + 4150).dir);
-const dbl = TRAPS.find((x) => x.type === "tram" && x.double);
-check("double tram: lights stay on until BOTH trams are gone", dbl && (() => { const c0 = 1_700_000_000_000 - (1_700_000_000_000 % 6200) - dbl.phaseMs; const a = tramState(dbl, c0 + 3300), b = tramState(dbl, c0 + 5250); return a.lights && !a.active && b.active && b.dir === -tramState(dbl, c0 + 4150).dir && tramState(dbl, c0 + 5850).lights; })());
 
 const ic = TRAPS.find((x) => x.type === "icicle");
 const ic0 = 1_700_000_000_000 - (1_700_000_000_000 % 3000) - ic.phaseMs;
@@ -101,11 +92,11 @@ function passes(trap, ext, t0, jx) {
   }
   return true;
 }
-for (const type of ["tram", "icicle", "gull", "pendulum", "steam"]) {
+for (const type of ["icicle", "gull", "pendulum", "steam"]) {
   let worst = 0, stuck = 0, n = 0;
   for (const trap of TRAPS.filter((x) => x.type === type)) {
     const ext = trapExtent(trap);
-    const period = type === "tram" ? (trap.double ? TRAP.types.tram.doublePeriodMs : TRAP.types.tram.periodMs) : TRAP.types[type].periodMs || 3000;
+    const period = TRAP.types[type].periodMs || 3000;
     const jumps = [null]; for (let j = ext[0] - 24; j <= ext[1] + 24; j += 12) jumps.push(j);
     for (let t0 = 0; t0 < period * (type === "gull" ? 6 : 1); t0 += 150) {
       n++;
@@ -180,7 +171,6 @@ async function integration() {
     check(`server: ${label} hurts (-${TRAP_DAMAGE[stageId][type]}) and sends trap:hit`, hits.length === n + 1 && hits.at(-1).type === type && before - hps.at(-1).hp === TRAP_DAMAGE[stageId][type], JSON.stringify(hits.at(-1)));
   }
   await serverHit("steam", 0, "munich", (t) => ({ at: (now) => ({ x: t.x, y: stand }) }), "steam");
-  await serverHit("tram", 3, "hamburg", (t) => ({ at: (now) => { const s = tramState(t, now + 80); return { x: s.active ? s.x : t.x, y: stand }; } }), "tram");
   await serverHit("pendulum", 1, "frankfurt", (t) => ({ at: (now) => { const s = pendulumState(t, now + 80); return { x: s.x, y: stand }; } }), "pendulum");
   await serverHit("icicle", 2, "berlin", (t) => ({ at: (now) => ({ x: t.x, y: stand }) }), "icicle");
   // Damage is higher now: use a fresh player (full HP) for the last checks so the HP budget never hides a result.

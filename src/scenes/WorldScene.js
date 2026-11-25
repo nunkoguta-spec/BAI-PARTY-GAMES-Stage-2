@@ -1347,10 +1347,12 @@ export class WorldScene extends Phaser.Scene {
       if (npc.x < this.stageStartX || npc.x > this.stageEndX) continue;
       const sprites = [];
       if (npc.sprite && this.textures.exists(npc.sprite)) {
+        // Contact shadow on the cobblestones under Frau Deandra
+        const npcShadow = this.add.ellipse(npc.x, 224, 18, 5, 0x000000, 0.32).setDepth(17);
         // Custom NPC sprite: one 4-frame idle sheet, single row.
         const sprite = this.add.sprite(npc.x, baseY, npc.sprite, 0);
         sprite.setOrigin(0.5, 0.5).setDepth(18);
-        sprites.push({ sprite, texture: npc.sprite, row: 0, npcSheet: true });
+        sprites.push({ sprite, texture: npc.sprite, row: 0, npcSheet: true, shadow: npcShadow });
       } else partDefs.forEach(([texture, key], i) => {
         if (!this.textures.exists(texture)) return;
         const sprite = this.add.sprite(

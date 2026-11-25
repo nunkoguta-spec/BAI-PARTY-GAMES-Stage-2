@@ -1159,12 +1159,16 @@ io.on("connection", (socket) => {
     // Reaching 0 HP is a K.O. with a one-time -25 penalty.
     battle.current = null; // the missed question stays in `used`; the next one is NEW and of the same tier
     battle.shown = null;
+    const wrongPenalty = cfg.boss ? 10 : (cfg.level >= 3 ? 8 : 5);
+    player.score = Math.max(0, player.score - wrongPenalty);
+    broadcastLeaderboard(room);
+    broadcastPlayerList(room);
     const hit = damagePlayerHp(room, player, cfg.wrongDamage, "battle-wrong");
     const enemy = enemyHpPayload(battle, cfg);
     io.to(room.code).emit("battle:enemy-strike", { playerId: player.id, stageId: stage.id, damage: hit.applied, playerHp: player.hp, ko: hit.ko });
     callback({
       ok: true, correct: false, defeated: false, solved: battle.solved, total: battle.total,
-      points: 0, wrongDamage: hit.applied, ko: hit.ko, koPenalty: hit.penalty, respawnMs: BATTLE.koRespawnMs,
+      points: 0, scorePenalty: wrongPenalty, wrongDamage: hit.applied, ko: hit.ko, koPenalty: hit.penalty, respawnMs: BATTLE.koRespawnMs,
       totalScore: player.score, hp: player.hp, maxHp: BATTLE.playerMaxHp, ...enemy,
       next: battleQuestionPayload(battle)
     });

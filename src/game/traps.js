@@ -143,7 +143,7 @@ const LAYOUT = Object.freeze({
   hamburg: [
     { type: "spikes", x: 370, tiles: 2 },
     { type: "gull", x: 700 },
-    { type: "tram", x: 910, half: 60, double: true },
+    { type: "steam", x: 910, phaseMs: 600 },
     { type: "spikes", x: 1240 },
     { type: "gull", x: 2000, phaseMs: 1800 }
   ],
@@ -152,7 +152,7 @@ const LAYOUT = Object.freeze({
     { type: "pendulum", x: 860, skin: "censer" },
     { type: "roller", from: 1100, to: 1260, periodMs: 4000 },
     { type: "spikes", x: 1700 },
-    { type: "tram", x: 1900 }
+    { type: "steam", x: 1900, phaseMs: 1200 }
   ]
 });
 

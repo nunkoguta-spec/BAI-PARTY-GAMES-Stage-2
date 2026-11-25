@@ -12,7 +12,8 @@ export const SEASONS = Object.freeze({
     particles: [
       { key: "cologne-petals", count: 22, kind: "fall", vy: [14, 30], vx: [-12, -3], parallax: 0.45, alpha: 0.95 },
       { key: "cologne-bloom", count: 4, kind: "fall", vy: [8, 16], vx: [-8, -2], parallax: 0.6, alpha: 0.9 },
-      { key: "cologne-butterflies", count: 3, kind: "float", vx: [10, 22], bob: 9, parallax: 0.7, alpha: 0.95 }
+      { key: "cologne-butterflies", count: 3, kind: "float", vx: [10, 22], bob: 9, parallax: 0.7, alpha: 0.95 },
+      { key: "cologne-river", count: 4, kind: "twinkle", parallax: 0.5, alpha: 0.85 }
     ]
   },
   summer: {
@@ -20,7 +21,8 @@ export const SEASONS = Object.freeze({
     street: 0xfff5e0, streetDeep: 0x9a98b4, prop: 0xfffaf0, ground: "none",
     particles: [
       { key: "frankfurt-birds", count: 4, kind: "float", vx: [14, 30], bob: 7, parallax: 0.5, alpha: 0.9 },
-      { key: "hamburg-sparkle", count: 8, kind: "twinkle", parallax: 0.55, alpha: 0.9 }
+      { key: "hamburg-sparkle", count: 8, kind: "twinkle", parallax: 0.55, alpha: 0.9 },
+      { key: "hamburg-smoke", count: 4, kind: "float", vx: [-8, -2], bob: 6, parallax: 0.45, alpha: 0.8 }
     ]
   },
   autumn: {
@@ -29,7 +31,8 @@ export const SEASONS = Object.freeze({
     particles: [
       { key: "munich-leaves", count: 12, kind: "fall", vy: [16, 32], vx: [-14, -4], parallax: 0.45, alpha: 0.95 },
       { key: "munich-swirl-leaves", count: 8, kind: "fall", vy: [12, 26], vx: [-18, -6], parallax: 0.6, alpha: 0.9 },
-      { key: "munich-sparkle", count: 5, kind: "twinkle", parallax: 0.55, alpha: 0.85 }
+      { key: "munich-sparkle", count: 5, kind: "twinkle", parallax: 0.55, alpha: 0.85 },
+      { key: "munich-steam", count: 4, kind: "float", vx: [6, 14], bob: 5, parallax: 0.5, alpha: 0.85 }
     ]
   },
   winter: {
@@ -37,7 +40,8 @@ export const SEASONS = Object.freeze({
     street: 0xdbe6fb, streetDeep: 0x8fa2c4, prop: 0xdce8ff, ground: "snow",
     particles: [
       { key: null, count: 56, kind: "fall", shape: "rect", size: [1, 2], vy: [16, 36], vx: [-8, -2], parallax: 0.4, alpha: [0.35, 0.7], color: 0xffffff },
-      { key: "berlin-sparkle", count: 5, kind: "twinkle", parallax: 0.55, alpha: 0.85 }
+      { key: "berlin-sparkle", count: 5, kind: "twinkle", parallax: 0.55, alpha: 0.85 },
+      { key: "berlin-smoke", count: 4, kind: "float", vx: [-10, -4], bob: 6, parallax: 0.45, alpha: 0.8 }
     ]
   }
 });
