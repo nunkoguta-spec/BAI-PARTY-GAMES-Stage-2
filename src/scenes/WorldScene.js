@@ -86,6 +86,7 @@ export class WorldScene extends Phaser.Scene {
     this.createReferenceStreet();
     this.createArrivalStation();
     this.createBahnhof();
+    this.createStageTrees();
     this.createTrapVisuals();
     this.createStageEnemies();
     this.createQuestNpcs();
@@ -119,6 +120,7 @@ export class WorldScene extends Phaser.Scene {
     this.createReferenceStreet();
     this.createArrivalStation();
     this.createBahnhof();
+    this.createStageTrees();
     this.createTrapVisuals();
     this.createStageEnemies();
     this.createQuestNpcs();
@@ -288,6 +290,7 @@ export class WorldScene extends Phaser.Scene {
 
       this.createArrivalStation();
       this.createBahnhof();
+      this.createStageTrees();
       this.createStageTravelTrigger();
 
       // When arriving from a train journey, player steps out from the Bahnhof doors onto the city street!
@@ -345,6 +348,7 @@ export class WorldScene extends Phaser.Scene {
       this.createTrapVisuals();
       this.createArrivalStation();
       this.createBahnhof();
+      this.createStageTrees();
       this.createStageEnemies();
       if (this.stageIndex === COURSE.stages.length - 1) {
         this.createFinishGate(false);
@@ -661,21 +665,108 @@ export class WorldScene extends Phaser.Scene {
     this.munichStreetArt = street;
   }
 
-  addLampGlow(group, x, y = -36) {
-    const halo = this.add.graphics().setDepth(5);
-    halo.fillStyle(0xfde68a, 0.22);
-    halo.fillCircle(x, y, 16);
-    halo.fillStyle(0xffffff, 0.55);
-    halo.fillCircle(x, y, 4);
-    group.add(halo);
-    this.tweens.add({
-      targets: halo,
-      alpha: 0.65,
-      duration: 1600,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut"
-    });
+  createStageTrees() {
+    for (const item of this.stageTrees || []) {
+      if (item?.active) {
+        this.tweens?.killTweensOf(item);
+        item.destroy();
+      }
+    }
+    this.stageTrees = [];
+
+    const stage = this.currentStage || COURSE.stages[0];
+
+    // Seasonal tree tint to blend naturally with each German city's ambiance
+    // Autumn (Munich): warm golden / copper amber
+    // Summer (Frankfurt): lush vibrant emerald green
+    // Winter (Berlin): cool frosty silver-blue
+    // Spring (Hamburg & Cologne): fresh blossom / pastel green
+    let treeTint = 0xffffff;
+    if (stage.season === "autumn") treeTint = 0xffdca8;
+    else if (stage.season === "winter") treeTint = 0xd8e8f8;
+    else if (stage.season === "spring") treeTint = 0xfef9c3;
+
+    // Helper to spawn a tree with subtle organic wind breeze animation
+    const addTree = (x, key, scale = 1, depth = 4.2, flip = false) => {
+      if (!this.textures.exists(key)) return null;
+      const tree = this.add.image(x, 224, key)
+        .setOrigin(0.5, 1)
+        .setScale(scale)
+        .setDepth(depth)
+        .setFlipX(flip)
+        .setTint(treeTint);
+
+      this.tweens.add({
+        targets: tree,
+        angle: { from: -0.7, to: 0.7 },
+        duration: Phaser.Math.Between(2600, 3800),
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut"
+      });
+
+      this.stageTrees.push(tree);
+      return tree;
+    };
+
+    const addBush = (x, scale = 1, depth = 4.8, flip = false) => {
+      if (!this.textures.exists("pack-bush")) return null;
+      const bush = this.add.image(x, 224, "pack-bush")
+        .setOrigin(0.5, 1)
+        .setScale(scale)
+        .setDepth(depth)
+        .setFlipX(flip);
+      if (stage.season === "autumn") bush.setTint(0xe29b52);
+      else if (stage.season === "winter") bush.setTint(0xc8daf0);
+      this.stageTrees.push(bush);
+      return bush;
+    };
+
+    // 1. Lush Greenery & Towering Trees BEHIND Arrival Station (Ausgang)
+    // The arrival station sits at stageStartX + 120. Station width is ~334px (-167 to +167).
+    // Placed at depth 4.2 (behind arrivalStationGroup at depth 6, in front of city backdrop at depth -100).
+    const arrX = this.stageStartX + 120;
+    addTree(arrX - 180, "deco-tree-1", 1.05, 4.3, false);
+    addTree(arrX - 125, "pack-tree", 1.2, 4.1, true);
+    addTree(arrX - 65, "deco-tree-2", 0.96, 3.8, false);
+    addTree(arrX + 55, "deco-tree-3", 1.0, 3.8, true);
+    addTree(arrX + 115, "deco-tree-1", 0.98, 4.1, false);
+    addTree(arrX + 180, "pack-tree", 1.22, 4.3, false);
+    addTree(arrX + 235, "deco-tree-2", 1.05, 4.4, true);
+    addBush(arrX - 145, 0.9, 4.8);
+    addBush(arrX + 145, 1.0, 4.8, true);
+    addBush(arrX + 210, 0.85, 4.8);
+
+    // 2. Towering Trees BEHIND Destination Bahnhof (Eingang)
+    // Station sits at stageEndX - 200.
+    const bhfX = this.stageEndX - 200;
+    addTree(bhfX - 230, "deco-tree-1", 1.06, 4.4, true);
+    addTree(bhfX - 170, "pack-tree", 1.18, 4.2, false);
+    addTree(bhfX - 95, "deco-tree-2", 0.95, 3.8, false);
+    addTree(bhfX + 75, "deco-tree-3", 0.98, 3.8, true);
+    addTree(bhfX + 140, "pack-tree", 1.15, 4.2, true);
+    addTree(bhfX + 205, "deco-tree-1", 1.08, 4.4, false);
+    addTree(bhfX + 255, "deco-tree-2", 1.02, 4.5, true);
+    addBush(bhfX - 190, 0.95, 4.8);
+    addBush(bhfX + 165, 1.0, 4.8, true);
+
+    // 3. Regular Rhythmic Street Trees Along the City Promenade
+    // Spaced every ~130-170px along the sidewalk between the stations
+    const treeTypes = ["deco-tree-1", "pack-tree", "deco-tree-2", "deco-tree-3", "pack-tree"];
+    const streetStart = this.stageStartX + 360;
+    const streetEnd = this.stageEndX - 420;
+    let idx = 0;
+    for (let tx = streetStart; tx <= streetEnd; tx += 150) {
+      const key = treeTypes[idx % treeTypes.length];
+      const scale = 0.88 + ((idx * 7) % 5) * 0.05;
+      const flip = idx % 2 === 1;
+      const treeDepth = (idx % 3 === 0) ? 4.1 : 4.4;
+      addTree(tx, key, scale, treeDepth, flip);
+      if (idx % 2 === 0) {
+        addBush(tx + (flip ? -18 : 18), 0.85 + (idx % 3) * 0.1, 4.8, !flip);
+      }
+      idx++;
+    }
   }
 
   createArrivalStation() {
@@ -706,8 +797,6 @@ export class WorldScene extends Phaser.Scene {
     if (this.textures.exists("bhf-lamp-b")) {
       this.arrivalStationGroup.add(this.add.image(-120, 0, "bhf-lamp-b").setOrigin(0.5, 1).setDepth(2));
       this.arrivalStationGroup.add(this.add.image(120, 0, "bhf-lamp-b").setOrigin(0.5, 1).setDepth(2));
-      this.addLampGlow(this.arrivalStationGroup, -120, -36);
-      this.addLampGlow(this.arrivalStationGroup, 120, -36);
     }
     if (this.textures.exists("bhf-bench")) {
       this.arrivalStationGroup.add(this.add.image(75, 0, "bhf-bench").setOrigin(0.5, 1).setDepth(2));
@@ -758,8 +847,6 @@ export class WorldScene extends Phaser.Scene {
     // Entrance street furniture: lamps, ticket machine, bench, plants
     add("lamp-b", -130, 0, 2, 1);
     add("lamp-a", 130, 0, 2, 1);
-    this.addLampGlow(this.bahnhofGroup, -130, -36);
-    this.addLampGlow(this.bahnhofGroup, 130, -36);
     add("ticket-machine", -75, 0, 3, 1);
     add("bench", 75, 0, 3, 1);
     add("plant", -40, 0, 3, 1);
