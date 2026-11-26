@@ -102,9 +102,78 @@ window.addEventListener("error", event => {
   menuMessage.textContent = `JavaScript error: ${event.message}`;
 });
 
+const ROUTE_STAGES = [
+  {
+    id: "munich",
+    num: "1",
+    name: "MÜNCHEN",
+    badge: "LV.1 · A1",
+    detailId: "München · Rathaus / Marienplatz · Musim Gugur · Lawan Penjaga Lv.1 (3 Soal A1)",
+    detailDe: "München · Rathaus / Marienplatz · Herbst · Stadtwächter Lv.1 (3 Fragen A1)"
+  },
+  {
+    id: "frankfurt",
+    num: "2",
+    name: "FRANKFURT",
+    badge: "LV.2 · A1+",
+    detailId: "Frankfurt · Skyline am Main · Musim Panas · Lawan Penjaga Lv.2 (5 Soal A1+)",
+    detailDe: "Frankfurt · Skyline am Main · Sommer · Stadtwächter Lv.2 (5 Fragen A1+)"
+  },
+  {
+    id: "berlin",
+    num: "3",
+    name: "BERLIN",
+    badge: "LV.3 · A2",
+    detailId: "Berlin · Brandenburger Tor · Musim Dingin · Lawan Penjaga Lv.3 (8 Soal A2)",
+    detailDe: "Berlin · Brandenburger Tor · Winter · Stadtwächter Lv.3 (8 Fragen A2)"
+  },
+  {
+    id: "hamburg",
+    num: "4",
+    name: "HAMBURG",
+    badge: "BOSS B1",
+    detailId: "Hamburg · Hafen / Elbphilharmonie · Final Boss Herr Tycoon (10 Soal A2/B1 · 300 HP)",
+    detailDe: "Hamburg · Hafen / Elbphilharmonie · Final Boss Herr Tycoon (10 Fragen A2/B1 · 300 HP)"
+  },
+  {
+    id: "koeln",
+    num: "5",
+    name: "KÖLN",
+    badge: "MISI NPC",
+    detailId: "Köln · Kölner Dom / Rhein · Misi Spesial Frau Deandra & Garis Finish!",
+    detailDe: "Köln · Kölner Dom / Rhein · Spezialmission mit Frau Deandra & Ziel!"
+  }
+];
+let activeRouteStop = 0;
+
+function renderRouteMap() {
+  const mapEl = document.getElementById("menu-route-map");
+  const detailEl = document.getElementById("menu-route-detail");
+  if (!mapEl || !detailEl) return;
+
+  const isDe = getLang() === "de";
+  mapEl.replaceChildren(...ROUTE_STAGES.map((stop, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `menu-route-stop${idx === activeRouteStop ? " active" : ""}${stop.id === "hamburg" ? " is-boss" : ""}${stop.id === "koeln" ? " is-finish" : ""}`;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", String(idx === activeRouteStop));
+    btn.innerHTML = `<span class="route-num">${stop.num}</span><span class="route-city">${stop.name}</span><span class="route-badge">${stop.badge}</span>`;
+    btn.addEventListener("click", () => {
+      activeRouteStop = idx;
+      renderRouteMap();
+    });
+    return btn;
+  }));
+
+  const current = ROUTE_STAGES[activeRouteStop] || ROUTE_STAGES[0];
+  detailEl.textContent = isDe ? current.detailDe : current.detailId;
+}
+
 function renderMenu() {
   document.documentElement.lang = getLang();
-  if (document.getElementById("menu-form").dataset.mode === "join") {
+  const isJoinMode = document.getElementById("menu-form").dataset.mode === "join";
+  if (isJoinMode) {
     document.getElementById("menu-title").textContent = t("menu.join");
     document.getElementById("menu-player-label").textContent = t("join.playerLabel");
     document.getElementById("menu-room-label").textContent = t("join.roomLabel");
@@ -112,11 +181,16 @@ function renderMenu() {
     document.getElementById("menu-join-back").textContent = t("settings.back");
     document.getElementById("menu-player-name").placeholder = t("join.playerPlaceholder");
     document.getElementById("menu-room-code").placeholder = t("join.roomPlaceholder");
+  } else {
+    document.getElementById("menu-title").textContent = "Deutsch Adventure";
   }
+
+  const eyebrow = document.getElementById("menu-eyebrow");
+  if (eyebrow) eyebrow.textContent = t("brand.eyebrow");
+  const routeHeading = document.getElementById("menu-route-heading");
+  if (routeHeading) routeHeading.textContent = t("brand.routeTitle");
+
   document.getElementById("menu-tagline").textContent = t("brand.tagline");
-  document.getElementById("menu-feature-time").textContent = t("brand.durationLabel");
-  document.getElementById("menu-feature-multiplayer").textContent = t("brand.multiplayerLabel");
-  document.getElementById("menu-feature-adventure").textContent = t("brand.adventureLabel");
   const playBtn = document.getElementById("menu-play");
   if (playBtn) playBtn.textContent = t("menu.play");
   document.getElementById("menu-host").textContent = t("menu.host");
@@ -125,6 +199,35 @@ function renderMenu() {
   document.getElementById("settings-title").textContent = t("settings.title");
   document.getElementById("settings-language-label").textContent = t("settings.languageLabel");
   document.getElementById("settings-back").textContent = t("settings.back");
+
+  const howToTitle = document.getElementById("menu-howto-title");
+  if (howToTitle) howToTitle.textContent = t("menu.howToTitle");
+  const howToList = document.getElementById("menu-howto-list");
+  if (howToList) {
+    const steps = t("menu.howToSteps");
+    howToList.replaceChildren(...(Array.isArray(steps) ? steps : []).map(step => {
+      const li = document.createElement("li");
+      li.textContent = step;
+      return li;
+    }));
+  }
+  const controlsHint = document.getElementById("menu-controls-hint");
+  if (controlsHint) controlsHint.textContent = t("menu.controlsHint");
+
+  const quickLang = document.getElementById("menu-quick-lang");
+  if (quickLang) {
+    quickLang.replaceChildren(...SUPPORTED_LANGUAGES.map(language => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `menu-lang-chip${language.code === getLang() ? " active" : ""}`;
+      btn.dataset.lang = language.code;
+      btn.setAttribute("aria-pressed", String(language.code === getLang()));
+      btn.textContent = language.code.toUpperCase();
+      btn.addEventListener("click", () => setLang(language.code));
+      return btn;
+    }));
+  }
+
   const options = document.getElementById("menu-language-options");
   options.replaceChildren(...SUPPORTED_LANGUAGES.map(language => {
     const button = document.createElement("button");
@@ -135,6 +238,8 @@ function renderMenu() {
     button.textContent = language.label;
     return button;
   }));
+
+  renderRouteMap();
 }
 
 function startGame() {
@@ -158,12 +263,15 @@ function startGame() {
 }
 
 function showMainMenu() {
+  menuForm.dataset.mode = "";
   document.getElementById("menu-title").textContent = "Deutsch Adventure";
   menu.hidden = false;
   gameContainer.hidden = true;
   shell.classList.remove("game-active");
   menuForm.hidden = true;
   settingsPanel.hidden = true;
+  const routeBox = document.querySelector(".menu-route-box");
+  if (routeBox) routeBox.hidden = false;
   document.getElementById("menu-actions").hidden = false;
   menuMessage.textContent = "";
 }
@@ -189,25 +297,41 @@ function hostRoom({ resume = false } = {}) {
 function showJoinForm() {
   menuForm.dataset.mode = "join";
   menuForm.innerHTML = `
-    <label id="menu-player-label" for="menu-player-name"></label>
-    <input id="menu-player-name" maxlength="24" autocomplete="nickname">
-    <label id="menu-room-label" for="menu-room-code"></label>
-    <input id="menu-room-code" maxlength="8" autocomplete="off">
+    <div class="menu-form-grid">
+      <div class="menu-form-field">
+        <label id="menu-player-label" for="menu-player-name"></label>
+        <input id="menu-player-name" maxlength="24" autocomplete="nickname">
+      </div>
+      <div class="menu-form-field">
+        <label id="menu-room-label" for="menu-room-code"></label>
+        <input id="menu-room-code" maxlength="8" autocomplete="off" autocapitalize="characters">
+      </div>
+    </div>
     <button id="menu-join-submit" type="button"></button>
     <button id="menu-join-back" class="menu-secondary" type="button"></button>`;
   renderMenu();
   menuForm.hidden = false;
+  const routeBox = document.querySelector(".menu-route-box");
+  if (routeBox) routeBox.hidden = true;
   document.getElementById("menu-actions").hidden = true;
   menuForm.querySelector("#menu-join-back").addEventListener("click", showMainMenu);
-  menuForm.querySelector("#menu-join-submit").addEventListener("click", () => {
-    const code = menuForm.querySelector("#menu-room-code").value.trim().toUpperCase();
-    const name = menuForm.querySelector("#menu-player-name").value.trim() || "Player";
-    if (!code) { menuMessage.textContent = t("join.enterCode"); return; }
+
+  const codeInput = menuForm.querySelector("#menu-room-code");
+  const nameInput = menuForm.querySelector("#menu-player-name");
+  const submitJoin = () => {
+    const code = codeInput.value.trim().toUpperCase();
+    const name = nameInput.value.trim() || "Player";
+    if (!code) { menuMessage.textContent = t("join.enterCode"); codeInput.focus(); return; }
     const controllerUrl = new URL("/client-play/", location.origin);
     controllerUrl.searchParams.set("room", code);
     controllerUrl.searchParams.set("name", name);
     location.assign(controllerUrl);
-  });
+  };
+  codeInput.addEventListener("input", () => { codeInput.value = codeInput.value.toUpperCase(); });
+  codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitJoin(); });
+  nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") codeInput.focus(); });
+  menuForm.querySelector("#menu-join-submit").addEventListener("click", submitJoin);
+  nameInput.focus();
 }
 
 document.getElementById("menu-host").addEventListener("click", () => hostRoom());
@@ -215,6 +339,8 @@ document.getElementById("menu-join").addEventListener("click", showJoinForm);
 document.getElementById("menu-settings").addEventListener("click", () => {
   settingsPanel.hidden = false;
   menuForm.hidden = true;
+  const routeBox = document.querySelector(".menu-route-box");
+  if (routeBox) routeBox.hidden = true;
   document.getElementById("menu-actions").hidden = true;
 });
 document.getElementById("settings-back").addEventListener("click", showMainMenu);

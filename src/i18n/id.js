@@ -5,26 +5,32 @@ export const id = {
   brand: {
     title: "BAI PARTY GAMES",
     subtitle: "DEUTSCH ADVENTURE",
-    tagline: "Belajar Bahasa Jerman. Jelajahi. Bersaing.",
-    durationLabel: "MENIT",
-    multiplayerLabel: "MULTIPLAYER",
-    adventureLabel: "PETUALANGAN"
+    eyebrow: "DEUTSCH ADVENTURE · SPRACHREISE",
+    tagline: "Jelajahi 5 Kota Jerman. Jawab Kuis di Pertarungan. Naik Kereta Menuju Kemenangan!",
+    routeTitle: "RUTE PETUALANGAN (5 KOTA)"
   },
 
   menu: {
     play: "Mulai Bermain",
-    host: "Buat Room",
-    join: "Gabung Room",
-    settings: "Pengaturan",
+    host: "Buat Room (TV Host)",
+    join: "Gabung Room (Pemain)",
+    settings: "Panduan & Pengaturan",
     joinSubmit: "Gabung",
     hostConnecting: "Menghubungkan ke server untuk membuat room...",
     roomReady: "Room berhasil dibuat.",
-    joined: "Berhasil bergabung ke room."
+    joined: "Berhasil bergabung ke room.",
+    howToTitle: "Cara Bermain",
+    howToSteps: [
+      "1. Host membuka Buat Room di TV / Laptop untuk menampilkan Kode Room & QR.",
+      "2. Pemain scan QR atau Gabung Room lewat HP, buat avatar, lalu kalahkan penjaga tiap kota dengan menjawab kuis bahasa Jerman.",
+      "3. Naiki kereta ICE/IC antar kota hingga tiba di Köln & raih skor tertinggi!"
+    ],
+    controlsHint: "Kontrol PC: A/D atau Panah (Jalan) · W/Spasi (Lompat) · F (Serang) · E (Bicara NPC)"
   },
 
   // Settings
   settings: {
-    title: "Pengaturan",
+    title: "Panduan & Pengaturan",
     language: "Bahasa",
     languageLabel: "Bahasa / Sprache",
     back: "Kembali"

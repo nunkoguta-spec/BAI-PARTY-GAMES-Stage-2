@@ -252,6 +252,22 @@ function setupAvatarCustomizer() {
     });
   });
 
+  // Randomize avatar outfit & gear in 1 tap
+  $("avatarRandomButton")?.addEventListener("click", () => {
+    for (const [key, limit] of Object.entries(AVATAR_LIMITS)) {
+      if (GEAR_CATEGORIES.has(key)) {
+        avatarSelection[key] = Math.random() < 0.4 ? 0 : Math.floor(Math.random() * limit);
+      } else {
+        avatarSelection[key] = Math.floor(Math.random() * limit);
+      }
+    }
+    try { localStorage.setItem("bai-avatar", JSON.stringify(avatarSelection)); } catch {}
+    retroAudio.playCoin?.();
+    renderAvatarPreview();
+    renderCategoryTiles();
+    phoneScene?.applyAvatarSelection?.({ ...avatarSelection });
+  });
+
   // "Selesai": choices already autosave, so trigger join!
   $("avatarDoneButton")?.addEventListener("click", () => {
     $("joinButton")?.click();
@@ -287,6 +303,20 @@ function showMessage(message, isError = false) {
 
   element.textContent = message;
   element.style.color = isError ? "#fb7185" : "#fbbf24";
+}
+
+let statusFadeTimer = null;
+function setPlayerStatus(text, { sticky = false, duration = 2400 } = {}) {
+  const el = $("playerStatus");
+  if (!el) return;
+  if (statusFadeTimer) { clearTimeout(statusFadeTimer); statusFadeTimer = null; }
+  el.textContent = text;
+  el.classList.remove("is-faded");
+  if (!sticky && text) {
+    statusFadeTimer = setTimeout(() => {
+      el.classList.add("is-faded");
+    }, duration);
+  }
 }
 
 // =====================================================
@@ -634,6 +664,7 @@ function submitQuest(npc) {
   socket.emit("quest:complete", { roomCode, npcId: npc.id, targets: { ...questTargets } }, (res) => {
     if (res?.ok || res?.alreadyDone) {
       questCompleted = new Set(res.completed || [...questCompleted, npc.id]);
+      if (res.ok) retroAudio.playQuestDone?.();
       syncQuestScene();
       renderQuestDialog(res.ok ? "★ SIDE QUEST SELESAI! TERIMA KASIH SUDAH BERKENALAN! ★" : "");
       return;
@@ -676,6 +707,7 @@ socket.on("player:reset", () => {
 let battleOpen = false;
 let battleBusy = false;
 let battleWrongDamage = 10;
+let battleStreak = 0;
 
 function battleCurrentStageId() {
   return phoneScene?.currentStage?.id || "munich";
@@ -693,6 +725,25 @@ function renderBattleQuestion(q, message = "") {
   $("battleCounter").dataset.tier = q.tier || "";
   $("battleTitle").textContent = q.levelLabel || (phoneScene?.stageEnemy?.cfg?.boss ? "BOSS BATTLE" : "BATTLE");
   $("battleEnemyName").textContent = phoneScene?.stageEnemy?.cfg?.name || "ENEMY";
+  const portrait = $("battleEnemyPortrait");
+  const enemyId = phoneScene?.stageEnemy?.enemyId;
+  if (portrait) {
+    if (enemyId) {
+      portrait.src = `/assets/enemy-asset-pack/pack/${enemyId}/portrait.png`;
+      portrait.classList.remove("hidden");
+    } else {
+      portrait.classList.add("hidden");
+    }
+  }
+  const streakEl = $("battleStreakBadge");
+  if (streakEl) {
+    if (battleStreak >= 2) {
+      streakEl.textContent = `🔥 x${battleStreak}`;
+      streakEl.classList.remove("hidden");
+    } else {
+      streakEl.classList.add("hidden");
+    }
+  }
   $("battleQuestion").textContent = q.question;
   $("battleMessage").textContent = message || "Pilih jawaban yang benar untuk menyerang!";
   setBattleHp(q.solved, q.total);
@@ -747,6 +798,7 @@ function closeBattle({ ko = false } = {}) {
   if (!battleOpen) return;
   battleOpen = false;
   battleBusy = false;
+  battleStreak = 0;
   $("battlePanel")?.classList.add("hidden");
   $("mobileControls")?.classList.remove("hidden");
   releaseAllMobileInput();
@@ -880,7 +932,9 @@ function answerBattle(letter, button) {
       $("battlePanel").classList.add("anim");
       if (Number.isFinite(Number(res.totalScore))) { score = Number(res.totalScore); $("score").textContent = score; }
       if (res.correct) {
-        phoneScene.showFloatingFeedback?.(phoneScene.player.x, phoneScene.player.y - 14, `+${res.points} POIN`, "#82d82c");
+        battleStreak += 1;
+        const streakLabel = battleStreak >= 2 ? ` · 🔥 x${battleStreak}` : "";
+        phoneScene.showFloatingFeedback?.(phoneScene.player.x, phoneScene.player.y - 14, `+${res.points} POIN${streakLabel}`, "#82d82c");
         await phoneScene.playPlayerAttack(res.solved, res.total, res.defeated);
         phoneScene.releaseHp?.();
         if (!battleOpen) return;
@@ -890,6 +944,7 @@ function answerBattle(letter, button) {
           return;
         }
       } else {
+        battleStreak = 0;
         if (Number(res.scorePenalty) > 0) {
           phoneScene.showFloatingFeedback?.(phoneScene.player.x, phoneScene.player.y - 14, `-${res.scorePenalty} POIN`, "#f24b4b");
         }
@@ -900,7 +955,7 @@ function answerBattle(letter, button) {
       battleBusy = false;
       $("battlePanel").classList.remove("anim");
       const statusMsg = res.correct
-        ? `BENAR! +${res.points} POIN · Serangan kena!`
+        ? `BENAR! +${res.points} POIN${battleStreak >= 2 ? ` · 🔥 STREAK x${battleStreak}` : ""} · Serangan kena!`
         : `SALAH! -${res.scorePenalty || 5} POIN · Musuh menyerang balik. HP ${res.hp}/${res.maxHp}`;
       renderBattleQuestion(res.next, statusMsg);
     } catch (err) {
@@ -939,9 +994,10 @@ function startPhoneGame() {
         if (currentCourse && scene.applyCourse) scene.applyCourse(currentCourse);
         applyResumeState(scene);
 
-        $("playerStatus").textContent = gameStarted
-          ? "Game berlangsung."
-          : "Menunggu host memulai game.";
+        setPlayerStatus(
+          gameStarted ? "Game berlangsung." : "Menunggu host memulai game.",
+          { sticky: !gameStarted }
+        );
 
         refreshGameSize();
 
@@ -1388,7 +1444,7 @@ function closeQuizUI() {
     phoneScene.quizPaused = false;
   }
   if ($("playerStatus")) {
-    $("playerStatus").textContent = "Siap bermain lagi.";
+    setPlayerStatus("Siap bermain lagi.");
   }
 }
 
@@ -1534,6 +1590,8 @@ if (toggleBtn && drawer) {
 }
 
 function renderPlayerDrawer(players = []) {
+  const heading = drawer?.querySelector(".pixel-subheading");
+  if (heading) heading.textContent = roomCode ? `KLASEMEN · ROOM ${roomCode}` : "KLASEMEN REAL-TIME";
   const container = $("playerLeaderboardList");
   const sorted = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
   const myIndex = sorted.findIndex(p => p.playerId === socket.id);
@@ -1697,11 +1755,14 @@ socket.on("room:status", ({ status, endsAt, startedAt, remainingMs, leaderboard,
     $("displayGameTimer").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}P`;
   }
   if ($("playerStatus") && !quizActive) {
-    $("playerStatus").textContent = gameStarted
-      ? "Game berlangsung."
-      : status === "paused"
-        ? "Game dijeda oleh host."
-        : "Menunggu host memulai game.";
+    setPlayerStatus(
+      gameStarted
+        ? "Game berlangsung."
+        : status === "paused"
+          ? "Game dijeda oleh host."
+          : "Menunggu host memulai game.",
+      { sticky: !gameStarted || status === "paused" }
+    );
   }
 });
 
@@ -1730,9 +1791,10 @@ socket.on("room:players", (players) => {
   }
 
   if (!quizActive) {
-    $("playerStatus").textContent = gameStarted
-      ? `${players.length} pemain di room.`
-      : "Menunggu host memulai game.";
+    setPlayerStatus(
+      gameStarted ? `${players.length} pemain di room.` : "Menunggu host memulai game.",
+      { sticky: !gameStarted }
+    );
   }
 });
 

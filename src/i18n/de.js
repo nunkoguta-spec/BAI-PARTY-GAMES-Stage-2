@@ -5,26 +5,32 @@ export const de = {
   brand: {
     title: "BAI PARTY GAMES",
     subtitle: "DEUTSCH ADVENTURE",
-    tagline: "Deutsch lernen. Erkunden. Wetteifern.",
-    durationLabel: "MINUTEN",
-    multiplayerLabel: "MULTIPLAYER",
-    adventureLabel: "ABENTEUER"
+    eyebrow: "DEUTSCH ADVENTURE · SPRACHREISE",
+    tagline: "Entdecke 5 deutsche Städte. Gewinne Quiz-Kämpfe. Fahr mit dem Zug zum Ziel!",
+    routeTitle: "REISEROUTE (5 STÄDTE)"
   },
 
   menu: {
     play: "Spielen",
-    host: "Raum Erstellen",
-    join: "Raum Beitreten",
-    settings: "Einstellungen",
+    host: "Raum Erstellen (TV-Host)",
+    join: "Raum Beitreten (Spieler)",
+    settings: "Anleitung & Einstellungen",
     joinSubmit: "Beitreten",
     hostConnecting: "Verbindung zum Server zum Erstellen eines Raums...",
     roomReady: "Raum erfolgreich erstellt.",
-    joined: "Raum erfolgreich beigetreten."
+    joined: "Raum erfolgreich beigetreten.",
+    howToTitle: "Spielanleitung",
+    howToSteps: [
+      "1. Der Host öffnet Raum Erstellen am TV / Laptop für den Raumcode & QR-Code.",
+      "2. Spieler scannen den QR-Code am Handy, erstellen ihren Avatar und besiegen Stadtwächter im Deutsch-Quiz.",
+      "3. Fahre mit dem Zug von Stadt zu Stadt bis nach Köln und hol dir die höchste Punktzahl!"
+    ],
+    controlsHint: "PC-Steuerung: A/D oder Pfeile (Laufen) · W/Leertaste (Springen) · F (Angriff) · E (NPC)"
   },
 
   // Settings
   settings: {
-    title: "Einstellungen",
+    title: "Anleitung & Einstellungen",
     language: "Sprache",
     languageLabel: "Bahasa / Sprache",
     back: "Zurück"

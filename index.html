@@ -4,34 +4,61 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#171324" />
-  <title>Deutsch Adventure</title>
+  <title>BAI Party Games — Deutsch Adventure</title>
   <link rel="stylesheet" href="/src/style.css" />
   <link rel="preload" href="/assets/fonts/press-start-2p-latin.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
   <main id="stage-shell" aria-label="Deutsch Adventure">
     <section id="main-menu" class="menu-screen" aria-labelledby="menu-title">
+      <div class="menu-backdrop" aria-hidden="true"></div>
       <div class="menu-content">
-        <p class="menu-eyebrow">Deutsch Adventure</p>
-        <h1 id="menu-title">Deutsch Adventure</h1>
+        <header class="menu-topbar">
+          <span id="menu-eyebrow" class="menu-eyebrow">DEUTSCH ADVENTURE · SPRACHREISE</span>
+          <div class="menu-quick-controls">
+            <div id="menu-quick-lang" class="menu-quick-lang" role="group" aria-label="Bahasa / Sprache"></div>
+          </div>
+        </header>
+
+        <figure class="menu-hero-frame">
+          <img
+            src="/assets/ui/menu-hero.png"
+            alt="BAI Party Games - Deutsch Adventure"
+            class="menu-hero-img"
+            width="866"
+            height="304"
+          />
+        </figure>
+
+        <h1 id="menu-title" class="menu-sr-title">Deutsch Adventure</h1>
         <p id="menu-tagline" class="menu-tagline"></p>
-        <ul class="menu-feature-strip" aria-label="Ringkasan permainan">
-          <li><span class="menu-feature-icon" aria-hidden="true">10</span><span id="menu-feature-time">MENIT</span></li>
-          <li><span class="menu-feature-icon" aria-hidden="true">2+</span><span id="menu-feature-multiplayer">MULTIPLAYER</span></li>
-          <li><span class="menu-feature-icon" aria-hidden="true">DE</span><span id="menu-feature-adventure">PETUALANGAN</span></li>
-        </ul>
+
+        <section class="menu-route-box" aria-labelledby="menu-route-heading">
+          <div id="menu-route-heading" class="menu-route-heading">RUTE PETUALANGAN (5 KOTA)</div>
+          <div id="menu-route-map" class="menu-route-map" role="tablist" aria-label="Rute Kota"></div>
+          <div id="menu-route-detail" class="menu-route-detail" aria-live="polite"></div>
+        </section>
+
         <nav id="menu-actions" class="menu-actions" aria-label="Menu utama">
-          <button id="menu-host" type="button"></button>
-          <button id="menu-join" type="button"></button>
-          <button id="menu-settings" type="button"></button>
+          <button id="menu-host" class="menu-btn-host" type="button"></button>
+          <button id="menu-join" class="menu-btn-join" type="button"></button>
+          <button id="menu-settings" class="menu-btn-secondary" type="button"></button>
         </nav>
+
         <section id="menu-form" class="menu-form" hidden></section>
-        <section id="menu-settings-panel" class="menu-form" hidden>
+
+        <section id="menu-settings-panel" class="menu-form menu-settings-panel" hidden>
           <h2 id="settings-title"></h2>
-          <p id="settings-language-label"></p>
+          <p id="settings-language-label" class="menu-field-label"></p>
           <div id="menu-language-options" class="menu-languages"></div>
+          <div class="menu-guide-box">
+            <h3 id="menu-howto-title" class="menu-guide-title"></h3>
+            <ul id="menu-howto-list" class="menu-guide-list"></ul>
+            <p id="menu-controls-hint" class="menu-controls-hint"></p>
+          </div>
           <button id="settings-back" class="menu-secondary" type="button"></button>
         </section>
+
         <p id="menu-message" class="menu-message" role="status" aria-live="polite"></p>
       </div>
     </section>

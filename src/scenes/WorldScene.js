@@ -427,6 +427,11 @@ export class WorldScene extends Phaser.Scene {
     this.createStageHUD();
   }
 
+  getPlayerHudTopY() {
+    if (typeof window === "undefined") return 10;
+    return window.innerWidth > window.innerHeight ? 38 : 8;
+  }
+
   createStageHUD() {
     const stage = this.currentStage || COURSE.stages[0];
     if (this.isHostMode) {
@@ -444,32 +449,41 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    // Player mode: Unified Clean Status Card at top-left below DOM header (y: 48)
-    const topY = 48;
-    this.stageLabel = this.add.text(12, topY + 4, stage.name, {
+    // Player mode: Unified Clean Status Card
+    const topY = this.getPlayerHudTopY();
+    this.stageLabel = this.add.text(12, topY + 5, stage.name, {
       fontFamily: "'Press Start 2P', monospace",
       fontSize: "7px",
       color: "#ffffff"
     }).setScrollFactor(0).setDepth(1002);
 
-    this.stageSubLabel = this.add.text(12, topY + 28, String(stage.landmark || "").toUpperCase(), {
+    this.stageSubLabel = this.add.text(12, topY + 34, String(stage.landmark || "").toUpperCase(), {
       fontFamily: "Arial, sans-serif",
       fontSize: "7px",
       fontStyle: "bold",
       color: "#ffd36a"
     }).setScrollFactor(0).setDepth(1002);
 
-    this.questHud = null;
-    if (stage.id === QUEST.stageId) {
-      this.questHud = this.add.text(12, topY + 40, "", {
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: "5px",
-        color: "#a8f08c",
-        stroke: "#172033",
-        strokeThickness: 2
-      }).setScrollFactor(0).setDepth(1002);
-      this.refreshQuestHud();
-    }
+    // Objective guidance pill at top-right
+    this.objectiveHud = this.add.container(VIEW_W - 8, topY + 2).setScrollFactor(0).setDepth(1001);
+    this.objectiveBg = this.add.graphics();
+    this.objectiveText = this.add.text(-6, 4, "", {
+      fontFamily: "Arial, sans-serif",
+      fontSize: "8px",
+      fontStyle: "bold",
+      color: "#fef08a"
+    }).setOrigin(1, 0);
+    this.objectiveHud.add([this.objectiveBg, this.objectiveText]);
+
+    this.questHud = this.add.text(12, topY + 51, "", {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "5px",
+      color: "#a8f08c",
+      stroke: "#172033",
+      strokeThickness: 3
+    }).setScrollFactor(0).setDepth(1002);
+    this.questHud.setVisible(stage.id === QUEST.stageId);
+    if (stage.id === QUEST.stageId) this.refreshQuestHud();
   }
 
   updateStageHUD() {
@@ -481,6 +495,64 @@ export class WorldScene extends Phaser.Scene {
     }
     this.stageLabel.setText(this.currentStage.name);
     if (this.stageSubLabel) this.stageSubLabel.setText(String(this.currentStage.landmark || "").toUpperCase());
+    if (this.questHud) {
+      const isQuestStage = this.currentStage.id === QUEST.stageId;
+      this.questHud.setVisible(isQuestStage);
+      if (isQuestStage) this.refreshQuestHud();
+    }
+  }
+
+  updateObjectiveHud() {
+    if (this.isHostMode || !this.objectiveHud || !this.objectiveText || !this.player || !this.currentStage) return;
+    if (this.finished) {
+      this.objectiveHud.setVisible(false);
+      return;
+    }
+    this.objectiveHud.setVisible(true);
+    const stage = this.currentStage;
+    const enemy = this.stageEnemy;
+    let label = "";
+    let border = 0xf7c83b;
+    let textColor = "#fef08a";
+    if (enemy && !enemy.defeated) {
+      const dist = Math.max(0, Math.round((enemy.sprite.x - this.player.x) / 16));
+      label = dist > 4
+        ? `⚔ ${enemy.cfg.name} · ${dist}m ➔`
+        : `⚔ DEKAT! TEKAN LAWAN`;
+      border = enemy.cfg.boss ? 0xef4444 : 0xf7c83b;
+      textColor = enemy.cfg.boss ? "#fca5a5" : "#fef08a";
+    } else if (stage.id === QUEST.stageId) {
+      const npc = QUEST.npcs?.[0];
+      const questDone = npc && this.questCompleted?.has(npc.id);
+      if (npc && !questDone && this.player.x < npc.x + 80) {
+        const dist = Math.max(0, Math.round((npc.x - this.player.x) / 16));
+        label = dist > 4 ? `💬 FRAU DEANDRA · ${dist}m ➔` : `💬 BICARA FRAU DEANDRA`;
+        border = 0x38bdf8;
+        textColor = "#bae6fd";
+      } else {
+        label = `🏁 MENUJU FINISH ➔`;
+        border = 0x82d82c;
+        textColor = "#bbf7d0";
+      }
+    } else {
+      const bhfX = this.stageEndX - 180;
+      const dist = Math.max(0, Math.round((bhfX - this.player.x) / 16));
+      label = dist > 4 ? `🚆 KE ${stage.name} HBF · ${dist}m ➔` : `🚆 MASUK STASIUN ➔`;
+      border = 0x82d82c;
+      textColor = "#bbf7d0";
+    }
+
+    if (this._lastObjectiveLabel !== label) {
+      this._lastObjectiveLabel = label;
+      this.objectiveText.setText(label);
+      this.objectiveText.setColor(textColor);
+      const w = Math.max(76, Math.ceil(this.objectiveText.width) + 14);
+      this.objectiveBg.clear();
+      this.objectiveBg.fillStyle(0x0e1322, 0.9);
+      this.objectiveBg.fillRoundedRect(-w, 0, w, 18, 4);
+      this.objectiveBg.lineStyle(1.5, border, 1);
+      this.objectiveBg.strokeRoundedRect(-w, 0, w, 18, 4);
+    }
   }
 
   showCityTransition(stage) {
@@ -1981,16 +2053,15 @@ export class WorldScene extends Phaser.Scene {
   createPlayerHealthHud() {
     if (this.isHostMode) return; // Host TV screen is clean overview; no player health bar
 
-    // Unified Top-Left Status Card placed cleanly below the DOM header (x: 6, y: 46)
-    const topY = 46;
+    const topY = this.getPlayerHudTopY();
     this.playerHpHud = this.add.container(6, topY).setScrollFactor(0).setDepth(1000);
 
     const plate = this.add.graphics();
-    plate.fillStyle(0x0e1322, 0.94).fillRoundedRect(0, 0, 126, 42, 4);
-    plate.lineStyle(1.5, 0xf7c83b, 1).strokeRoundedRect(0, 0, 126, 42, 4);
-    plate.lineStyle(1, 0x000000, 1).strokeRoundedRect(-1, -1, 128, 44, 4);
+    plate.fillStyle(0x0e1322, 0.94).fillRoundedRect(0, 0, 154, 48, 4);
+    plate.lineStyle(1.5, 0xf7c83b, 1).strokeRoundedRect(0, 0, 154, 48, 4);
+    plate.lineStyle(1, 0x000000, 1).strokeRoundedRect(-1, -1, 156, 50, 4);
 
-    const heart = this.add.text(7, 18, "♥", { fontFamily: "monospace", fontSize: "10px", color: "#ff4444" });
+    const heart = this.add.text(7, 17, "♥", { fontFamily: "monospace", fontSize: "10px", color: "#ff4444" });
     this.tweens.add({
       targets: heart,
       scale: 1.15,
@@ -2000,14 +2071,14 @@ export class WorldScene extends Phaser.Scene {
       ease: "Sine.easeInOut"
     });
 
-    this.playerHpText = this.add.text(80, 5, "100/100", {
+    this.playerHpText = this.add.text(147, 6, "100/100", {
       fontFamily: "'Press Start 2P', monospace",
       fontSize: "5px",
       color: "#f7d36c"
-    });
+    }).setOrigin(1, 0);
 
-    this.playerHpBarBg = this.add.rectangle(66, 23, 94, 5, 0x3d1118).setOrigin(0.5);
-    this.playerHpBar = this.add.rectangle(19, 23, 94, 5, 0x2ecc71).setOrigin(0, 0.5);
+    this.playerHpBarBg = this.add.rectangle(82, 23, 124, 6, 0x3d1118).setOrigin(0.5);
+    this.playerHpBar = this.add.rectangle(20, 23, 124, 6, 0x2ecc71).setOrigin(0, 0.5);
 
     this.playerHpHud.add([plate, heart, this.playerHpText, this.playerHpBarBg, this.playerHpBar]);
     this.updatePlayerHealthHud();
@@ -2021,7 +2092,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.playerHpText.setText(this.playerKo ? "K.O." : `${this.playerHp}/${this.playerMaxHp}`);
     this.playerHpText.setColor(colorHex);
-    this.playerHpBar.width = Math.max(0, Math.round(94 * ratio));
+    this.playerHpBar.width = Math.max(0, Math.round(124 * ratio));
     this.playerHpBar.fillColor = color;
   }
 
@@ -2598,6 +2669,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   spawnHitSparks(x, y) {
+    const ring = this.add.circle(x, y, 4, 0xffffff, 0.7).setStrokeStyle(1.5, 0xfff2b0, 1).setDepth(44);
+    this.tweens.add({
+      targets: ring,
+      scale: 4.2,
+      alpha: 0,
+      duration: 180,
+      ease: "Quad.easeOut",
+      onComplete: () => ring.destroy()
+    });
     const colors = [0xfff2b0, 0xff4444, 0xffa500, 0xffffff];
     for (let i = 0; i < 10; i++) {
       const p = this.add.rectangle(
@@ -3878,6 +3958,14 @@ export class WorldScene extends Phaser.Scene {
       camera.setDeadzone(0, 0);
       camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
     }
+    if (!this.isHostMode) {
+      const topY = this.getPlayerHudTopY();
+      this.playerHpHud?.setY?.(topY);
+      this.stageLabel?.setY?.(topY + 5);
+      this.stageSubLabel?.setY?.(topY + 34);
+      this.objectiveHud?.setY?.(topY + 2);
+      this.questHud?.setY?.(topY + 51);
+    }
   }
 
   performAttackSlash() {
@@ -3997,6 +4085,12 @@ export class WorldScene extends Phaser.Scene {
       this.setAvatarAnimation("idle");
     }
 
+    const groundedNow = body.onFloor();
+    if (groundedNow) {
+      this.lastGroundedAt = this.time.now;
+      this.jumpCutDone = false;
+    }
+
     const mobileJumpPressed =
       this.mobileInput.jump && !this.mobileJumpWasDown;
 
@@ -4007,16 +4101,25 @@ export class WorldScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
       Phaser.Input.Keyboard.JustDown(this.keys.w);
 
-    if (
-      (keyboardJumpPressed || mobileJumpPressed) &&
-      body.onFloor()
-    ) {
+    if (keyboardJumpPressed || mobileJumpPressed) {
+      this.jumpBufferUntil = this.time.now + 110; // 110ms jump buffer
+    }
+
+    const canCoyoteJump = groundedNow || (this.time.now - (this.lastGroundedAt || 0) <= 90);
+    const hasBufferedJump = this.time.now <= (this.jumpBufferUntil || 0);
+
+    if (hasBufferedJump && canCoyoteJump) {
+      this.jumpBufferUntil = 0;
+      this.lastGroundedAt = 0;
+      this.jumpCutDone = false;
       body.setVelocityY(-JUMP_SPEED);
       retroAudio.playJump?.();
       this.setAvatarAnimation(`jump-${this.playerFacing}`);
-      // Jump vertical stretch juice
+      // Jump vertical stretch juice (reset scale cleanly first to avoid tween stacking)
+      const jumpTargets = [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])];
+      jumpTargets.forEach((s) => { this.tweens.killTweensOf(s); s.setScale(1, 1); });
       this.tweens.add({
-        targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+        targets: jumpTargets,
         scaleX: 0.90,
         scaleY: 1.15,
         duration: 85,
@@ -4024,6 +4127,13 @@ export class WorldScene extends Phaser.Scene {
         ease: "Quad.easeOut"
       });
       this.spawnFootDust(this.player.x, this.player.y + 11);
+    }
+
+    // Variable jump height: releasing jump early trims ascent slightly for tighter platforming
+    const jumpHeld = this.mobileInput.jump || this.jumpKey.isDown || this.cursors.up.isDown || this.keys.w.isDown;
+    if (!jumpHeld && !groundedNow && body.velocity.y < -150 && !this.jumpCutDone) {
+      this.jumpCutDone = true;
+      body.setVelocityY(Math.round(body.velocity.y * 0.62));
     }
 
     const grounded = body.onFloor();
@@ -4039,9 +4149,12 @@ export class WorldScene extends Phaser.Scene {
 
     if (grounded && !this.wasGrounded) {
       this.events.emit("player:landed");
-      // Landing horizontal squash juice
+      retroAudio.playLand?.();
+      // Landing horizontal squash juice (clean scale reset before squash)
+      const landTargets = [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])];
+      landTargets.forEach((s) => { this.tweens.killTweensOf(s); s.setScale(1, 1); });
       this.tweens.add({
-        targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
+        targets: landTargets,
         scaleX: 1.18,
         scaleY: 0.84,
         duration: 90,
@@ -4109,6 +4222,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.updatePlayerMovement(delta);
     this.updateNpcProximity();
+    this.updateObjectiveHud();
 
     // Never let a player walk out of the current city. Entering the Bahnhof
     // triggers the train scene before the boundary is crossed.
@@ -4422,11 +4536,11 @@ export class WorldScene extends Phaser.Scene {
     sorted.forEach((p, idx) => {
       const col = isTwoCol ? (idx < Math.ceil(totalPlayers / 2) ? 0 : 1) : 0;
       const rowInCol = isTwoCol ? (idx < Math.ceil(totalPlayers / 2) ? idx : idx - Math.ceil(totalPlayers / 2)) : idx;
-      const rx = isTwoCol ? (col === 0 ? -90 : 90) : 0;
-      const ry = rowInCol * 12;
+      const rx = isTwoCol ? (col === 0 ? -92 : 92) : 0;
+      const ry = rowInCol * 11;
 
       const rankSymbol = idx === 0 ? "👑" : `${idx + 1}.`;
-      const pName = String(p.name || "Player").slice(0, 8);
+      const pName = String(p.name || "Player").slice(0, 12);
       const pScore = Number(p.score) || 0;
       const rowColor = idx === 0 ? "#f6c84a" : (idx === 1 ? "#cbd5e1" : (idx === 2 ? "#fcd34d" : "#f8fafc"));
 

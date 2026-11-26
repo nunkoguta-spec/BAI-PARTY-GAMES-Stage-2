@@ -12,16 +12,6 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   panel.hidden = true;
 
   panel.innerHTML = `
-    <div id="host-leaderboard-hud" class="pixel-box host-leaderboard-hud">
-      <div class="host-leaderboard-header">
-        <span class="pixel-badge">👑 KLASEMEN</span>
-        <span id="host-leaderboard-count" class="pixel-tag">0 PEMAIN</span>
-      </div>
-      <div id="host-leaderboard-rows" class="host-leaderboard-rows">
-        <div class="host-leaderboard-empty">Menunggu pemain...</div>
-      </div>
-    </div>
-
     <div id="host-minibar" class="pixel-box" hidden>
       <span id="host-minibar-text">⚙ HOST: ------</span>
       <button id="host-expand-panel" class="pixel-btn pixel-btn-sm" type="button">BUKA ▶</button>
@@ -120,8 +110,25 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     </div>
   `;
 
+  const raceHud = document.createElement("div");
+  raceHud.id = "host-race-hud";
+  raceHud.className = "host-race-hud";
+  raceHud.hidden = true;
+  raceHud.innerHTML = `
+    <div class="host-race-meta">
+      <span id="host-race-stage" class="host-race-stage">MÜNCHEN</span>
+      <span id="host-race-camera" class="host-race-camera">KAMERA: OTOMATIS</span>
+    </div>
+    <div class="host-race-track">
+      <div class="host-race-line"></div>
+      ${COURSE.stages.map((st, idx) => `<div class="host-race-stop" style="left:${(idx / (COURSE.stages.length - 1)) * 100}%"><span class="host-race-dot"></span><span class="host-race-city">${st.name.slice(0, 3)}</span></div>`).join("")}
+      <div id="host-race-pins" class="host-race-pins"></div>
+    </div>
+  `;
+
   shell.appendChild(panel);
   shell.appendChild(leaderboardHud);
+  shell.appendChild(raceHud);
 
   const $ = (selector) => panel.querySelector(selector);
 
@@ -156,11 +163,13 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   togglePanelBtn?.addEventListener("click", () => {
     hostCard.hidden = true;
     hostMinibar.hidden = false;
+    shell.classList.add("host-panel-collapsed");
   });
 
   expandPanelBtn?.addEventListener("click", () => {
     hostCard.hidden = false;
     hostMinibar.hidden = true;
+    shell.classList.remove("host-panel-collapsed");
   });
 
   const hostname = location.hostname || "localhost";
@@ -235,10 +244,15 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         return;
       }
       restartGameButton.hidden = true;
-      startGameButton.disabled = players.length === 0;
+      startGameButton.disabled = false;
+      durationSelect.disabled = false;
+      pointsSelect.disabled = false;
+      applySettingsButton.disabled = false;
       roomStatus.textContent = "Sesi baru siap. Pemain dapat bergerak ke garis start.";
       const scene = getWorldScene();
       if (scene) {
+        scene.podiumContainer?.destroy?.();
+        scene.podiumContainer = null;
         scene._gameStartIntroPlayed = false;
         scene._gameStartIntroPlaying = false;
         scene.introActive = false;
@@ -515,15 +529,51 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     renderHostLeaderboardHUD();
   }
 
+  function renderHostRaceHUD() {
+    const stageEl = raceHud.querySelector("#host-race-stage");
+    const camEl = raceHud.querySelector("#host-race-camera");
+    const pinsEl = raceHud.querySelector("#host-race-pins");
+    const scene = getWorldScene();
+    const activeStage = scene?.currentStage || COURSE.stages[0];
+    if (stageEl) {
+      stageEl.textContent = `${activeStage.name} · ${activeStage.landmark || ""}`;
+    }
+    if (camEl) {
+      camEl.textContent = selectedPlayerName
+        ? `👁 ${selectedPlayerName.slice(0, 12)}`
+        : (mode === "AUTO" ? "KAMERA: OTOMATIS" : "KAMERA: MANUAL");
+    }
+    if (!pinsEl) return;
+
+    const slotColors = ["#2563eb", "#d97706", "#059669", "#7c3aed"];
+    const totalStages = Math.max(1, COURSE.stages.length - 1);
+    pinsEl.innerHTML = players.map((p, idx) => {
+      const remote = scene?.remoteAvatars?.get(p.playerId);
+      const px = Number.isFinite(remote?.x) ? remote.x : (Number(p.x) || 0);
+      const st = Number.isInteger(remote?.stageIndex)
+        ? remote.stageIndex
+        : (Number.isInteger(p.stageIndex) ? p.stageIndex : Math.max(0, COURSE.stages.findIndex((s) => px >= s.startX && px < s.endX)));
+      const stageCfg = COURSE.stages[st] || COURSE.stages[0];
+      const localRatio = Math.max(0, Math.min(1, (px - stageCfg.startX) / Math.max(1, stageCfg.endX - stageCfg.startX)));
+      const pct = Math.max(0, Math.min(100, ((st + localRatio * 0.9) / COURSE.stages.length) * 100 * (COURSE.stages.length / totalStages)));
+      const clampedPct = p.finished ? 100 : Math.max(0, Math.min(100, pct));
+      const color = slotColors[idx % slotColors.length];
+      const tag = `P${idx + 1}`;
+      const isWatched = p.playerId === selectedPlayerId;
+      return `<span class="host-race-pin${isWatched ? " is-watched" : ""}" style="left:${clampedPct.toFixed(1)}%;background:${color}" title="${String(p.name || "Player")}">${tag}</span>`;
+    }).join("");
+  }
+
   function renderHostLeaderboardHUD() {
-    const rowsEl = document.getElementById("host-leaderboard-rows");
-    const countEl = document.getElementById("host-leaderboard-count");
+    const rowsEl = leaderboardHud.querySelector("#host-leaderboard-rows");
+    const countEl = leaderboardHud.querySelector("#host-leaderboard-count");
     if (!rowsEl) return;
     if (countEl) countEl.textContent = `${players.length} PEMAIN`;
 
     const ranked = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
     if (!ranked.length) {
       rowsEl.innerHTML = `<div class="host-leaderboard-empty">Menunggu pemain...</div>`;
+      renderHostRaceHUD();
       return;
     }
 
@@ -534,6 +584,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       { badge: "#7c3aed", tag: "P4" }
     ];
 
+    const scene = getWorldScene();
     rowsEl.innerHTML = ranked.map((p, idx) => {
       const rank = idx + 1;
       const rankTag = rank === 1 ? "1 👑" : `${rank}`;
@@ -541,6 +592,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       const isTop = rank === 1 && Number(p.score) > 0;
       const name = String(p.name || "Player").slice(0, 10);
       const score = Number(p.score) || 0;
+      const remote = scene?.remoteAvatars?.get(p.playerId);
+      const stIdx = Number.isInteger(remote?.stageIndex)
+        ? remote.stageIndex
+        : (Number.isInteger(p.stageIndex) ? p.stageIndex : 0);
+      const cityShort = p.finished ? "🏁" : (COURSE.stages[stIdx]?.name?.slice(0, 3) || "MÜN");
       return `
         <div class="host-leaderboard-row ${isTop ? 'top-rank' : ''}">
           <div class="host-leaderboard-left">
@@ -548,10 +604,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
             <span class="host-slot-badge" style="background:${pal.badge}">${pal.tag}</span>
             <span class="host-player-name">${name}</span>
           </div>
-          <span class="host-player-pts">${score} PTS</span>
+          <div class="host-leaderboard-right">
+            <span class="host-city-pill">${cityShort}</span>
+            <span class="host-player-pts">${score} PTS</span>
+          </div>
         </div>
       `;
     }).join("");
+    renderHostRaceHUD();
   }
 
   searchInput.addEventListener("input", renderPlayers);
@@ -625,6 +685,10 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   function onRoomReady(response, { resumed = false } = {}) {
     roomCreated = true;
     panel.hidden = false;
+    leaderboardHud.hidden = false;
+    raceHud.hidden = false;
+    connection.textContent = "SERVER TERHUBUNG";
+    connection.classList.add("host-online");
     currentHostToken = response.hostToken || "";
     currentRoomCode = response.roomCode;
     saveHostSession(currentRoomCode, currentHostToken);
@@ -780,6 +844,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       pauseGameButton.disabled = true;
       resumeGameButton.disabled = true;
       endGameButton.disabled = true;
+      restartGameButton.hidden = false;
       updateHostTimer(null);
       gameTimerElement.textContent = "GAME OVER";
       if (scene) {
@@ -791,14 +856,23 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
       suppressStartIntro = false;
       roomStatus.textContent = "Room siap. Menunggu dimulai...";
       startGameButton.disabled = false;
+      restartGameButton.hidden = true;
+      durationSelect.disabled = false;
+      pointsSelect.disabled = false;
+      applySettingsButton.disabled = false;
       pauseGameButton.disabled = true;
       resumeGameButton.disabled = true;
       endGameButton.disabled = true;
       updateHostTimer(null);
-      if (scene) scene.setGameTimer(null, "waiting");
+      if (scene) {
+        scene.podiumContainer?.destroy?.();
+        scene.podiumContainer = null;
+        scene.setGameTimer(null, "waiting");
+      }
     }
   });
 
+  let lastAutoPickAt = 0;
   socket.on("player:moved", (data) => {
     if (!data?.playerId) return;
     const scene = getWorldScene();
@@ -808,6 +882,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (listed) {
       listed.stageIndex = data.stageIndex;
       listed.x = data.x;
+    }
+
+    const nowMs = Date.now();
+    if (mode === "AUTO" && nowMs - lastAutoPickAt > 1200) {
+      lastAutoPickAt = nowMs;
+      chooseAutomaticPlayer();
+    } else {
+      renderHostRaceHUD();
     }
 
     // In AUTO mode, follow the active race leader (selectedPlayerId)
@@ -967,12 +1049,14 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     }
   });
 
+  window.addEventListener("bai-stage", () => renderHostRaceHUD());
+
   updateModeButtons();
 
   return {
     socket,
     createRoom,
-    show: () => { panel.hidden = false; leaderboardHud.hidden = false; },
+    show: () => { panel.hidden = false; leaderboardHud.hidden = false; raceHud.hidden = false; },
     getRoomCode: () => currentRoomCode
   };
 }

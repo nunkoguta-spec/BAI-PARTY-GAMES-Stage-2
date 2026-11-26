@@ -115,7 +115,10 @@
 
         <footer class="cc-foot">
           <p class="cc-note">Gaya dan pakaian tersimpan otomatis dan tampil sama di TV Spectator.</p>
-          <button id="avatarDoneButton" type="button" class="cc-done">Selesai & Masuk</button>
+          <div class="cc-foot-actions">
+            <button id="avatarRandomButton" type="button" class="cc-random">🎲 Acak</button>
+            <button id="avatarDoneButton" type="button" class="cc-done">Selesai & Masuk</button>
+          </div>
         </footer>
       </section>
     </section>
@@ -134,7 +137,7 @@
           <strong id="playerRank">#-</strong>
         </div>
 
-        <div>
+        <div class="room-col">
           <div id="roomLabel" class="muted pixel-tag">ROOM</div>
           <strong id="displayRoomCode">------</strong>
         </div>
@@ -149,7 +152,7 @@
           <strong id="displayGameTimer">--:--</strong>
         </div>
 
-        <div style="display:flex;gap:4px">
+        <div class="header-actions">
           <button id="fullscreenToggleBtn" class="pixel-btn pixel-btn-sm" type="button" title="Layar Penuh">⛶</button>
           <button id="audioToggleBtn" class="pixel-btn pixel-btn-sm" type="button">🔊</button>
           <button id="toggleLeaderboardBtn" class="pixel-btn pixel-btn-sm" type="button">TOP</button>
@@ -236,9 +239,16 @@
       <section id="battlePanel" class="pixel-box pixel-modal battle-modal hidden" aria-live="polite">
         <div class="pixel-modal-header">
           <span id="battleTitle" class="pixel-badge">BATTLE</span>
+          <span id="battleStreakBadge" class="battle-streak-badge hidden">🔥 x2</span>
           <span id="battleCounter" class="pixel-tag">SOAL 1/3</span>
         </div>
-        <div class="battle-hp"><span id="battleEnemyName">CITY ENEMY</span><div class="battle-hp-track"><div id="battleHpFill"></div></div></div>
+        <div class="battle-hp">
+          <img id="battleEnemyPortrait" class="battle-enemy-portrait hidden" alt="">
+          <div class="battle-hp-meta">
+            <span id="battleEnemyName">CITY ENEMY</span>
+            <div class="battle-hp-track"><div id="battleHpFill"></div></div>
+          </div>
+        </div>
         <div id="battleBody">
           <p id="battleQuestion" class="pixel-question-text"></p>
           <div id="battleChoices" class="pixel-choices"></div>
