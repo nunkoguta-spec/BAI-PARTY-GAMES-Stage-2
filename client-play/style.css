@@ -1445,6 +1445,43 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 #playerStatus.is-faded {
   opacity: 0;
 }
+.drawer-pts {
+  color: #82d82c;
+  font-weight: 800;
+}
+.start-flag-bar {
+  height: 5px;
+  margin: -14px -16px 10px;
+  border-radius: 9px 9px 0 0;
+  background: linear-gradient(90deg, #000 0 33.3%, #dc2626 33.3% 66.6%, #facc15 66.6% 100%);
+}
+.start-route-pills {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(247, 200, 59, 0.45);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #fde68a;
+  text-align: center;
+}
+.boss-hazard-bar {
+  margin: -14px -16px 10px;
+  padding: 5px 10px;
+  border-radius: 9px 9px 0 0;
+  background: repeating-linear-gradient(-45deg, #991b1b, #991b1b 10px, #450a0a 10px, #450a0a 20px);
+  border-bottom: 2px solid #ef4444;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #fef08a;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
 
 /* =====================================================
    CLIENT PLAY / PLAYER LOBBY POLISH

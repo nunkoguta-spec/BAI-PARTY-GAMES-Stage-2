@@ -594,31 +594,48 @@ body {
   border: 3px solid #000;
 }
 
-/* Crystal-clear High-DPI Host Leaderboard HUD (Top Right on TV screen) */
+/* Pixel RPG Host Leaderboard HUD (Top Right on TV screen, matches game pixel frame) */
 #host-leaderboard-hud {
   position: fixed;
-  top: 14px;
-  right: 14px;
+  top: 10px;
+  right: 10px;
   z-index: 999;
-  width: 250px;
-  max-width: calc(100vw - 28px);
-  background: rgba(10, 16, 29, 0.94);
-  border: 2px solid #f6c84a;
-  border-radius: 6px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  padding: 8px 10px;
-  pointer-events: none;
+  width: clamp(232px, 21vw, 290px);
+  max-width: calc(100vw - 20px);
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+  background: #171c34;
+  border: 3px solid #765333;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px #f1d69b, inset 0 0 0 4px #9c805b, 4px 4px 0 #0b0a12;
+  padding: 10px 10px 9px;
+  pointer-events: auto;
   font-family: inherit;
   color: #fff;
-  image-rendering: auto;
+  image-rendering: pixelated;
 }
 .host-leaderboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(196, 164, 119, 0.4);
+  gap: 6px;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #765333;
+}
+.host-lb-title {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 8px;
+  color: #f7c83b;
+  text-shadow: 2px 2px 0 #0b0a12;
+}
+.host-lb-count {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 6px;
+  color: #171324;
+  background: #ead9ad;
+  border: 2px solid #765333;
+  padding: 2px 5px;
 }
 .host-leaderboard-rows {
   display: flex;
@@ -626,59 +643,94 @@ body {
   gap: 4px;
 }
 .host-leaderboard-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px 24px minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px;
-  background: rgba(21, 31, 50, 0.65);
-  border-radius: 3px;
-  font-size: 10px;
-  font-weight: bold;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  padding: 5px 6px;
+  background: #11162a;
+  border: 2px solid #263052;
+  border-radius: 0;
+  color: #f8fafc;
+  cursor: pointer;
 }
-.host-leaderboard-row.top-rank {
-  background: rgba(246, 200, 74, 0.18);
-  border: 1px solid rgba(246, 200, 74, 0.45);
+.host-leaderboard-row:hover {
+  border-color: #f7c83b;
+  background: #1b2442;
 }
-.host-leaderboard-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.host-leaderboard-row.rank-tier-1 {
+  background: #232131;
+  border-color: #d9a72b;
+}
+.host-leaderboard-row.rank-tier-2 {
+  border-color: #94a3b8;
+}
+.host-leaderboard-row.rank-tier-3 {
+  border-color: #b45309;
+}
+.host-leaderboard-row.is-watched {
+  box-shadow: inset 3px 0 0 #38bdf8;
 }
 .host-rank-num {
   font-family: 'Press Start 2P', monospace, sans-serif;
   font-size: 8px;
   color: #94a3b8;
-  min-width: 18px;
+  text-align: center;
 }
-.host-rank-num.rank-1 { color: #f6c84a; }
-.host-rank-num.rank-2 { color: #cbd5e1; }
-.host-rank-num.rank-3 { color: #e29b52; }
+.host-rank-num.rank-1 { color: #f7c83b; text-shadow: 1px 1px 0 #000; }
+.host-rank-num.rank-2 { color: #e2e8f0; }
+.host-rank-num.rank-3 { color: #f59e0b; }
 .host-slot-badge {
   display: inline-block;
-  padding: 1px 4px;
-  border-radius: 2px;
+  padding: 2px 3px;
+  border: 1px solid #000;
   font-family: 'Press Start 2P', monospace, sans-serif;
   font-size: 6px;
-  font-weight: 900;
   color: #fff;
+  text-align: center;
 }
 .host-player-name {
   font-size: 11px;
-  font-family: Arial, sans-serif;
-  font-weight: bold;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-weight: 700;
   color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  image-rendering: auto;
 }
 .host-player-pts {
   font-family: 'Press Start 2P', monospace, sans-serif;
   font-size: 8px;
   color: #82d82c;
+  white-space: nowrap;
+}
+.host-city-pill {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+  font-size: 6px;
+  padding: 2px 4px;
+  background: #1b2848;
+  border: 1px solid #4d6499;
+  color: #cbd5e1;
+}
+.host-city-pill.is-finish {
+  background: #1e4620;
+  border-color: #82d82c;
+  color: #bbf7d0;
+}
+.host-city-pill.is-ko {
+  background: #4c1414;
+  border-color: #ef4444;
+  color: #fecaca;
 }
 .host-leaderboard-empty {
   font-family: 'Press Start 2P', monospace, sans-serif;
   font-size: 7px;
-  color: #64748b;
+  color: #94a3b8;
   text-align: center;
-  padding: 6px;
+  padding: 10px 4px;
 }
 
 .host-header-bar {
@@ -1162,96 +1214,128 @@ body {
 }
 
 
-/* FINAL PRESENTATION PASS — host race tracker, leaderboard city pill & responsive menu */
-.host-leaderboard-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.host-city-pill {
-  font-family: 'Press Start 2P', monospace, sans-serif;
-  font-size: 6px;
-  padding: 2px 4px;
-  border-radius: 3px;
-  background: rgba(37, 99, 235, 0.35);
-  border: 1px solid rgba(147, 197, 253, 0.45);
-  color: #e0f2fe;
-}
+/* FINAL PRESENTATION PASS — Pixel Railway Route Strip (German Bahn style) */
 .host-race-hud {
   position: fixed;
-  bottom: 12px;
-  left: clamp(360px, 31vw, 410px);
-  right: 14px;
-  max-width: 560px;
+  bottom: 10px;
+  left: clamp(360px, 31vw, 396px);
+  right: 12px;
+  max-width: 540px;
   margin-inline: auto;
   z-index: 998;
-  padding: 8px 14px 18px;
-  background: rgba(10, 16, 29, 0.9);
-  border: 2px solid #c4a477;
-  border-radius: 8px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.78);
+  padding: 9px 14px 16px;
+  background: #171c34;
+  border: 3px solid #765333;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px #f1d69b, inset 0 0 0 4px #9c805b, 4px 4px 0 #0b0a12;
   pointer-events: none;
-  image-rendering: auto;
+  image-rendering: pixelated;
 }
 #stage-shell.host-panel-collapsed .host-race-hud {
   left: 50%;
   right: auto;
   transform: translateX(-50%);
-  width: min(520px, calc(100vw - 380px));
-  min-width: 260px;
+  width: min(540px, calc(100vw - 380px));
+  min-width: 300px;
 }
 .host-race-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #2b3556;
 }
 .host-race-stage {
   font-family: 'Press Start 2P', monospace;
   font-size: 7px;
   color: #f7c83b;
+  text-shadow: 1px 1px 0 #000;
 }
 .host-race-camera {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  color: #cbd5e1;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: #ead9ad;
+  background: #0d1323;
+  border: 1px solid #765333;
+  padding: 2px 5px;
 }
-.host-race-track {
+.host-race-rail-wrap {
   position: relative;
-  height: 16px;
-  margin: 0 12px;
+  height: 18px;
+  margin: 0 18px;
 }
-.host-race-line {
+.host-race-ties {
   position: absolute;
-  top: 7px;
+  top: 6px;
   left: 0;
   right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #f59e0b, #38bdf8, #a78bfa, #ef4444, #82d82c);
-  border-radius: 2px;
+  height: 6px;
+  background: repeating-linear-gradient(90deg, #5a4632 0 6px, #11162a 6px 13px);
+  border-top: 1px solid #090c16;
+  border-bottom: 1px solid #090c16;
 }
-.host-race-stop {
+.host-race-steel {
   position: absolute;
-  top: 3px;
+  top: 8px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #cbd5e1;
+  box-shadow: 0 1px 0 #475569;
+}
+.host-race-stops {
+  position: absolute;
+  inset: 0;
+}
+.host-rail-station {
+  position: absolute;
+  top: 1px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.host-race-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #0f172a;
-  border: 2px solid #f1d69b;
+.host-rail-node {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  background: #11162a;
+  border: 2px solid #9c805b;
+  color: #cbd5e1;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
 }
-.host-race-city {
+.host-rail-station.is-passed .host-rail-node {
+  background: #1e4620;
+  border-color: #82d82c;
+  color: #d9f99d;
+}
+.host-rail-station.is-active .host-rail-node {
+  background: #f7c83b;
+  border-color: #0b0a12;
+  color: #171324;
+  box-shadow: 0 0 0 2px #f7c83b;
+}
+.host-rail-code {
   margin-top: 3px;
   font-family: 'Press Start 2P', monospace;
   font-size: 5px;
-  color: #cbd5e1;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+.host-rail-station.is-active .host-rail-code {
+  color: #f7c83b;
+}
+.host-rail-station.is-boss .host-rail-node {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+.host-rail-station.is-finish .host-rail-node {
+  border-color: #82d82c;
+  color: #bbf7d0;
 }
 .host-race-pins {
   position: absolute;
@@ -1259,21 +1343,18 @@ body {
 }
 .host-race-pin {
   position: absolute;
-  top: -5px;
-  transform: translateX(-50%);
-  padding: 2px 4px;
-  border-radius: 3px;
+  top: -13px;
+  padding: 2px 3px;
   font-family: 'Press Start 2P', monospace;
   font-size: 5px;
   color: #fff;
   border: 1px solid #000;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-  transition: left 0.25s ease-out;
+  box-shadow: 1px 1px 0 #000;
+  transition: left 0.22s linear;
 }
 .host-race-pin.is-watched {
   outline: 2px solid #f7c83b;
   z-index: 2;
-  transform: translateX(-50%) scale(1.12);
 }
 
 @media (max-width: 760px) {

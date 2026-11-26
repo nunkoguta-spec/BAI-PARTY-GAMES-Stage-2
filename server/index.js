@@ -1,6 +1,9 @@
 
 import express from "express";
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Server } from "socket.io";
 import { randomInt, randomBytes } from "node:crypto";
 import { COURSE } from "../src/game/course.js";
@@ -58,6 +61,16 @@ app.get("/health", (_req, res) => {
     rooms: rooms.size
   });
 });
+
+// Serve built frontend from dist/ when available (single-port home-server & Cloudflare Tunnel)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.resolve(__dirname, "../dist");
+if (fs.existsSync(path.join(distDir, "index.html"))) {
+  app.use(express.static(distDir));
+  app.get(/^\/client-play\/?$/, (_req, res) => {
+    res.sendFile(path.join(distDir, "client-play", "index.html"));
+  });
+}
 
 // =====================================================
 // ROOM HELPERS

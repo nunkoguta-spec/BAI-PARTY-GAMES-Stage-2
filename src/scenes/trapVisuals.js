@@ -2,7 +2,7 @@
 // Every timed trap is a pure function of the SERVER clock, so TV and phones show the same phase.
 //
 // createTrapVisual(scene, trap) -> { trap, parts, update(now), hit(data) }
-import { TRAP, popFrame, rollerX, tramState, icicleState, gullState, pendulumState, steamState } from "../game/traps.js";
+import { TRAP, popFrame, rollerX, tramState, icicleState, gullState, pendulumState, steamState, sparkState } from "../game/traps.js";
 import { retroAudio } from "../audio/retroAudio.js";
 
 const G = TRAP.groundY;
@@ -438,7 +438,86 @@ function steam(scene, trap) {
   return obj;
 }
 
-const FACTORY = { spikes, pop, roller, tram, icicle, gull, pendulum, steam };
+// KABEL KORSLET (BAUSTELLEN-STROMBOGEN / SPARK COIL) -----------------------------------------
+function spark(scene, trap) {
+  const d = TRAP.types.spark;
+  const xL = trap.x - d.halfW + 4;
+  const xR = trap.x + d.halfW - 4;
+
+  // Caution stripe floor plate between the two roadwork pylons
+  const plate = scene.add.graphics().setDepth(DEPTH.rail);
+  plate.fillStyle(0x1e2433, 1).fillRect(xL, G - 2, xR - xL, 4);
+  for (let hx = xL + 2; hx < xR - 3; hx += 8) {
+    plate.fillStyle(0xf59e0b, 0.9).fillRect(hx, G - 2, 4, 2);
+  }
+
+  // Left and Right German Baustelle pylons
+  const makePylon = (px) => (scene.textures.exists("trap-spark-pylon")
+    ? scene.add.sprite(px, G, "trap-spark-pylon", 0).setOrigin(0.5, 1).setDepth(DEPTH.top)
+    : scene.add.rectangle(px, G - 12, 8, 24, 0xef4444).setDepth(DEPTH.top));
+  const pylonL = makePylon(xL);
+  const pylonR = makePylon(xR);
+
+  // Electric arc graphics + pre-warn static sparks
+  const arc = scene.add.graphics().setDepth(DEPTH.front);
+  const obj = {
+    trap,
+    parts: [plate, pylonL, pylonR, arc],
+    lastPhase: "idle",
+    update(now) {
+      const s = sparkState(trap, now);
+      const isNear = near(scene, trap.x, 380);
+      arc.clear();
+
+      if (s.phase === "warn") {
+        const blink = Math.floor(now / 120) % 2;
+        pylonL.setFrame?.(blink);
+        pylonR.setFrame?.(blink);
+        // Subtle tip pre-charge crackle
+        if (blink === 1) {
+          arc.fillStyle(0xfef08a, 0.9);
+          arc.fillCircle(xL + 2, G - 14, 2);
+          arc.fillCircle(xR - 2, G - 14, 2);
+        }
+      } else if (s.phase === "zap") {
+        pylonL.setFrame?.(1);
+        pylonR.setFrame?.(1);
+        const arcY = G - 13;
+        // Soft outer glow + crisp jagged pixel bolt at two heights
+        arc.lineStyle(4, 0x38bdf8, 0.35);
+        arc.lineBetween(xL + 2, arcY, xR - 2, arcY);
+
+        const segs = 6;
+        const step = (xR - xL - 4) / segs;
+        for (const [col, width, jitter] of [[0x38bdf8, 2.5, 5], [0xffffff, 1.2, 3]]) {
+          arc.lineStyle(width, col, 1);
+          arc.beginPath();
+          arc.moveTo(xL + 2, arcY);
+          for (let i = 1; i < segs; i++) {
+            const jx = xL + 2 + i * step;
+            const jy = arcY + Math.round(Math.sin(now * 0.08 + i * 2.1 + col) * jitter);
+            arc.lineTo(jx, jy);
+          }
+          arc.lineTo(xR - 2, arcY);
+          arc.strokePath();
+        }
+
+        if (obj.lastPhase !== "zap" && isNear) {
+          retroAudio.playZap?.();
+        }
+      } else {
+        pylonL.setFrame?.(0);
+        pylonR.setFrame?.(0);
+      }
+
+      obj.lastPhase = s.phase;
+    },
+    hit() { flash(scene, [pylonL, pylonR]); }
+  };
+  return obj;
+}
+
+const FACTORY = { spikes, pop, roller, tram, icicle, gull, pendulum, steam, spark };
 
 export function createTrapVisual(scene, trap) {
   return (FACTORY[trap.type] || spikes)(scene, trap);

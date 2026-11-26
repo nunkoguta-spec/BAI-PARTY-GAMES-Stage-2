@@ -97,17 +97,26 @@ export const TRAP = Object.freeze({
       blastToMs: 2700,         // steam blast ends
       halfW: 16,               // steam plume half width
       height: 48               // steam plume height (reaches y = 176 from ground 224)
+    }),
+    spark: Object.freeze({
+      label: "KABEL KORSLET",
+      periodMs: 3000,
+      warnFromMs: 1300,        // amber warning lights blink + tiny static sparks
+      zapFromMs: 1950,         // electric arc jumps between the two roadwork pylons
+      zapToMs: 2550,           // electric discharge ends
+      halfW: 22,               // half distance between the two pylons (44px span)
+      height: 20               // low electric beam height (y = 204..222, one jump clears it)
     })
   })
 });
 
 // HP damage per hit. Escalates with the stage; Köln (peaceful side-quest stage) is lighter.
 export const TRAP_DAMAGE = Object.freeze({
-  munich:    Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 12, steam: 15 }),
-  frankfurt: Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 15, steam: 15 }),
-  berlin:    Object.freeze({ spikes: 12, pop: 18, roller: 15, tram: 18, icicle: 15, gull: 15, pendulum: 18, steam: 18 }),
-  hamburg:   Object.freeze({ spikes: 15, pop: 22, roller: 18, tram: 22, icicle: 18, gull: 20, pendulum: 20, steam: 20 }),
-  koeln:     Object.freeze({ spikes: 7,  pop: 11, roller: 9,  tram: 10, icicle: 8,  gull: 9,  pendulum: 9,  steam: 10 })
+  munich:    Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 12, steam: 15, spark: 14 }),
+  frankfurt: Object.freeze({ spikes: 10, pop: 15, roller: 12, tram: 15, icicle: 11, gull: 12, pendulum: 15, steam: 15, spark: 15 }),
+  berlin:    Object.freeze({ spikes: 12, pop: 18, roller: 15, tram: 18, icicle: 15, gull: 15, pendulum: 18, steam: 18, spark: 17 }),
+  hamburg:   Object.freeze({ spikes: 15, pop: 22, roller: 18, tram: 22, icicle: 18, gull: 20, pendulum: 20, steam: 20, spark: 20 }),
+  koeln:     Object.freeze({ spikes: 7,  pop: 11, roller: 9,  tram: 10, icicle: 8,  gull: 9,  pendulum: 9,  steam: 10, spark: 10 })
 });
 
 // Local x = distance from the stage's start. `tiles` = how many 32px blocks (spikes / pop).
@@ -117,6 +126,7 @@ export const TRAP_DAMAGE = Object.freeze({
 const LAYOUT = Object.freeze({
   munich: [
     { type: "spikes", x: 380, tiles: 2 },
+    { type: "spark", x: 540, phaseMs: 400 },
     { type: "steam", x: 1325 },
     { type: "roller", from: 1690, to: 1800, periodMs: 3200 },
     { type: "pop", x: 1890 },
@@ -124,6 +134,7 @@ const LAYOUT = Object.freeze({
   ],
   frankfurt: [
     { type: "spikes", x: 380, tiles: 2 },
+    { type: "spark", x: 1170, phaseMs: 900 },
     { type: "pendulum", x: 1330, skin: "ball" },
     { type: "spikes", x: 1500 },
     { type: "pop", x: 1620, tiles: 2 },
@@ -145,6 +156,7 @@ const LAYOUT = Object.freeze({
     { type: "gull", x: 700 },
     { type: "steam", x: 910, phaseMs: 600 },
     { type: "spikes", x: 1240 },
+    { type: "spark", x: 1830, phaseMs: 500 },
     { type: "gull", x: 2000, phaseMs: 1800 }
   ],
   koeln: [
@@ -339,6 +351,27 @@ export function steamState(trap, serverNow) {
   return { cycle, t, phase, u, active: phase === "blast" };
 }
 
+// SPARK COIL: phase = idle | warn | zap | cooldown, active = electric arc between two pylons
+export function sparkState(trap, serverNow) {
+  const d = TRAP.types.spark;
+  const total = serverNow + (trap.phaseMs || 0);
+  const cycle = Math.floor(total / d.periodMs);
+  const t = total - cycle * d.periodMs;
+  let phase = "idle";
+  let u = 0;
+  if (t >= d.zapToMs) {
+    phase = "cooldown";
+    u = (t - d.zapToMs) / (d.periodMs - d.zapToMs);
+  } else if (t >= d.zapFromMs) {
+    phase = "zap";
+    u = (t - d.zapFromMs) / (d.zapToMs - d.zapFromMs);
+  } else if (t >= d.warnFromMs) {
+    phase = "warn";
+    u = (t - d.warnFromMs) / (d.zapFromMs - d.warnFromMs);
+  }
+  return { cycle, t, phase, u, active: phase === "zap" };
+}
+
 // Where the trap "is" right now (used for knock-back direction).
 export function trapCenterX(trap, serverNow) {
   switch (trap.type) {
@@ -347,6 +380,7 @@ export function trapCenterX(trap, serverNow) {
     case "gull": return gullState(trap, serverNow).x;
     case "pendulum": return pendulumState(trap, serverNow).x;
     case "steam": return trap.x;
+    case "spark": return trap.x;
     default: return trap.x;
   }
 }
@@ -410,6 +444,12 @@ export function trapHits(trap, px, py, serverNow) {
       const d = TRAP.types.steam;
       return rectHits(bodyBox(px, py), trap.x - d.halfW, trap.x + d.halfW, g - d.height, g);
     }
+    case "spark": {
+      const s = sparkState(trap, serverNow);
+      if (!s.active) return false;
+      const d = TRAP.types.spark;
+      return rectHits(bodyBox(px, py), trap.x - d.halfW, trap.x + d.halfW, g - d.height, g);
+    }
     default:
       return false;
   }
@@ -442,6 +482,10 @@ export function trapExtent(trap) {
     }
     case "steam": {
       const d = TRAP.types.steam;
+      lo = trap.x - d.halfW - reach; hi = trap.x + d.halfW + reach; break;
+    }
+    case "spark": {
+      const d = TRAP.types.spark;
       lo = trap.x - d.halfW - reach; hi = trap.x + d.halfW + reach; break;
     }
     case "gull": {

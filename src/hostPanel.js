@@ -102,8 +102,8 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   leaderboardHud.hidden = true;
   leaderboardHud.innerHTML = `
     <div class="host-leaderboard-header">
-      <span class="pixel-badge">👑 KLASEMEN</span>
-      <span id="host-leaderboard-count" class="pixel-tag">0 PEMAIN</span>
+      <span class="host-lb-title">★ KLASEMEN</span>
+      <span id="host-leaderboard-count" class="host-lb-count">0 PEMAIN</span>
     </div>
     <div id="host-leaderboard-rows" class="host-leaderboard-rows">
       <div class="host-leaderboard-empty">Menunggu pemain...</div>
@@ -112,16 +112,17 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
   const raceHud = document.createElement("div");
   raceHud.id = "host-race-hud";
-  raceHud.className = "host-race-hud";
+  raceHud.className = "pixel-box host-race-hud";
   raceHud.hidden = true;
   raceHud.innerHTML = `
     <div class="host-race-meta">
       <span id="host-race-stage" class="host-race-stage">MÜNCHEN</span>
-      <span id="host-race-camera" class="host-race-camera">KAMERA: OTOMATIS</span>
+      <span id="host-race-camera" class="host-race-camera">AUTO</span>
     </div>
-    <div class="host-race-track">
-      <div class="host-race-line"></div>
-      ${COURSE.stages.map((st, idx) => `<div class="host-race-stop" style="left:${(idx / (COURSE.stages.length - 1)) * 100}%"><span class="host-race-dot"></span><span class="host-race-city">${st.name.slice(0, 3)}</span></div>`).join("")}
+    <div class="host-race-rail-wrap">
+      <div class="host-race-ties" aria-hidden="true"></div>
+      <div class="host-race-steel" aria-hidden="true"></div>
+      <div id="host-race-stops" class="host-race-stops"></div>
       <div id="host-race-pins" class="host-race-pins"></div>
     </div>
   `;
@@ -174,7 +175,8 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
 
   const hostname = location.hostname || "localhost";
   const serverUrl = import.meta.env.VITE_SERVER_URL
-    || (location.port === "3001" ? location.origin : "");
+    || (location.port === "3001" ? location.origin
+      : (location.port === "4173" ? `${location.protocol}//${hostname}:3001` : ""));
   let controllerUrl = `${location.origin}/client-play/`;
 
   controllerUrlElement.textContent = controllerUrl;
@@ -532,22 +534,49 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   function renderHostRaceHUD() {
     const stageEl = raceHud.querySelector("#host-race-stage");
     const camEl = raceHud.querySelector("#host-race-camera");
+    const stopsEl = raceHud.querySelector("#host-race-stops");
     const pinsEl = raceHud.querySelector("#host-race-pins");
     const scene = getWorldScene();
-    const activeStage = scene?.currentStage || COURSE.stages[0];
+    const activeStageIdx = Math.max(0, Number(scene?.stageIndex) || 0);
+    const activeStage = COURSE.stages[activeStageIdx] || COURSE.stages[0];
     if (stageEl) {
-      stageEl.textContent = `${activeStage.name} · ${activeStage.landmark || ""}`;
+      stageEl.textContent = `${activeStageIdx + 1}. ${activeStage.name}`;
     }
     if (camEl) {
       camEl.textContent = selectedPlayerName
-        ? `👁 ${selectedPlayerName.slice(0, 12)}`
-        : (mode === "AUTO" ? "KAMERA: OTOMATIS" : "KAMERA: MANUAL");
+        ? `CAM: ${selectedPlayerName.slice(0, 10).toUpperCase()}`
+        : (mode === "AUTO" ? "CAM: AUTO" : "CAM: MANUAL");
     }
-    if (!pinsEl) return;
 
-    const slotColors = ["#2563eb", "#d97706", "#059669", "#7c3aed"];
-    const totalStages = Math.max(1, COURSE.stages.length - 1);
+    const slotColors = ["#2563eb", "#d97706", "#059669", "#7c3aed", "#db2777", "#0891b2", "#dc2626", "#65a30d"];
+    const totalSegs = Math.max(1, COURSE.stages.length - 1);
+
+    let maxStageReached = activeStageIdx;
+    for (const p of players) {
+      const remote = scene?.remoteAvatars?.get(p.playerId);
+      const st = Number.isInteger(remote?.stageIndex) ? remote.stageIndex : (Number.isInteger(p.stageIndex) ? p.stageIndex : 0);
+      if (st > maxStageReached) maxStageReached = st;
+    }
+
+    if (stopsEl) {
+      stopsEl.innerHTML = COURSE.stages.map((st, idx) => {
+        const leftPct = (idx / totalSegs) * 100;
+        const isActive = idx === activeStageIdx;
+        const isPassed = idx < maxStageReached;
+        const isBoss = idx === 3;
+        const isFinish = idx === 4;
+        return `
+          <div class="host-rail-station${isActive ? " is-active" : ""}${isPassed ? " is-passed" : ""}${isBoss ? " is-boss" : ""}${isFinish ? " is-finish" : ""}" style="left:${leftPct}%">
+            <span class="host-rail-node">${idx + 1}</span>
+            <span class="host-rail-code">${st.name.slice(0, 3)}</span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    if (!pinsEl) return;
     pinsEl.innerHTML = players.map((p, idx) => {
+      const slot = getPlayerSlot(p.playerId, idx);
       const remote = scene?.remoteAvatars?.get(p.playerId);
       const px = Number.isFinite(remote?.x) ? remote.x : (Number(p.x) || 0);
       const st = Number.isInteger(remote?.stageIndex)
@@ -555,13 +584,25 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
         : (Number.isInteger(p.stageIndex) ? p.stageIndex : Math.max(0, COURSE.stages.findIndex((s) => px >= s.startX && px < s.endX)));
       const stageCfg = COURSE.stages[st] || COURSE.stages[0];
       const localRatio = Math.max(0, Math.min(1, (px - stageCfg.startX) / Math.max(1, stageCfg.endX - stageCfg.startX)));
-      const pct = Math.max(0, Math.min(100, ((st + localRatio * 0.9) / COURSE.stages.length) * 100 * (COURSE.stages.length / totalStages)));
-      const clampedPct = p.finished ? 100 : Math.max(0, Math.min(100, pct));
-      const color = slotColors[idx % slotColors.length];
-      const tag = `P${idx + 1}`;
+      const rawPct = st >= totalSegs ? (totalSegs - 0.15 + localRatio * 0.15) / totalSegs * 100 : ((st + localRatio) / totalSegs) * 100;
+      const clampedPct = p.finished ? 100 : Math.max(0, Math.min(100, rawPct));
+      const color = slotColors[slot % slotColors.length];
+      const tag = `P${slot + 1}`;
       const isWatched = p.playerId === selectedPlayerId;
-      return `<span class="host-race-pin${isWatched ? " is-watched" : ""}" style="left:${clampedPct.toFixed(1)}%;background:${color}" title="${String(p.name || "Player")}">${tag}</span>`;
+      const staggerX = (slot % 3 - 1) * 4;
+      const staggerY = (slot % 2) * -8;
+      return `<span class="host-race-pin${isWatched ? " is-watched" : ""}" style="left:calc(${clampedPct.toFixed(1)}% + ${staggerX}px);transform:translate(-50%, ${staggerY}px);background:${color}" title="${String(p.name || "Player")}">${tag}</span>`;
     }).join("");
+  }
+
+  const playerSlotMap = new Map();
+  let nextSlotNum = 0;
+  function getPlayerSlot(playerId, fallbackIdx = 0) {
+    if (!playerId) return fallbackIdx;
+    if (!playerSlotMap.has(playerId)) {
+      playerSlotMap.set(playerId, nextSlotNum++);
+    }
+    return playerSlotMap.get(playerId);
   }
 
   function renderHostLeaderboardHUD() {
@@ -569,6 +610,10 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     const countEl = leaderboardHud.querySelector("#host-leaderboard-count");
     if (!rowsEl) return;
     if (countEl) countEl.textContent = `${players.length} PEMAIN`;
+
+    for (let i = 0; i < players.length; i++) {
+      getPlayerSlot(players[i].playerId, i);
+    }
 
     const ranked = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
     if (!ranked.length) {
@@ -578,39 +623,51 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     }
 
     const slotColors = [
-      { badge: "#2563eb", tag: "P1" },
-      { badge: "#d97706", tag: "P2" },
-      { badge: "#059669", tag: "P3" },
-      { badge: "#7c3aed", tag: "P4" }
+      { badge: "#2563eb" },
+      { badge: "#d97706" },
+      { badge: "#059669" },
+      { badge: "#7c3aed" },
+      { badge: "#db2777" },
+      { badge: "#0891b2" },
+      { badge: "#dc2626" },
+      { badge: "#65a30d" }
     ];
 
     const scene = getWorldScene();
-    rowsEl.innerHTML = ranked.map((p, idx) => {
+    rowsEl.replaceChildren(...ranked.map((p, idx) => {
       const rank = idx + 1;
-      const rankTag = rank === 1 ? "1 👑" : `${rank}`;
-      const pal = slotColors[idx % slotColors.length];
-      const isTop = rank === 1 && Number(p.score) > 0;
-      const name = String(p.name || "Player").slice(0, 10);
+      const slot = getPlayerSlot(p.playerId, idx);
+      const pal = slotColors[slot % slotColors.length];
+      const tag = `P${slot + 1}`;
+      const isWatched = p.playerId === selectedPlayerId;
+      const name = String(p.name || "Player").slice(0, 12);
       const score = Number(p.score) || 0;
       const remote = scene?.remoteAvatars?.get(p.playerId);
       const stIdx = Number.isInteger(remote?.stageIndex)
         ? remote.stageIndex
         : (Number.isInteger(p.stageIndex) ? p.stageIndex : 0);
-      const cityShort = p.finished ? "🏁" : (COURSE.stages[stIdx]?.name?.slice(0, 3) || "MÜN");
-      return `
-        <div class="host-leaderboard-row ${isTop ? 'top-rank' : ''}">
-          <div class="host-leaderboard-left">
-            <span class="host-rank-num ${rank <= 3 ? 'rank-' + rank : ''}">${rankTag}</span>
-            <span class="host-slot-badge" style="background:${pal.badge}">${pal.tag}</span>
-            <span class="host-player-name">${name}</span>
-          </div>
-          <div class="host-leaderboard-right">
-            <span class="host-city-pill">${cityShort}</span>
-            <span class="host-player-pts">${score} PTS</span>
-          </div>
-        </div>
+      const isKo = Boolean(remote?.ko ?? p.ko);
+      const cityShort = p.finished ? "FIN" : isKo ? "K.O" : (COURSE.stages[stIdx]?.name?.slice(0, 3) || "MÜN");
+
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = `host-leaderboard-row${rank <= 3 ? ` rank-tier-${rank}` : ""}${isWatched ? " is-watched" : ""}`;
+      row.innerHTML = `
+        <span class="host-rank-num rank-${rank <= 3 ? rank : 4}">${rank}</span>
+        <span class="host-slot-badge" style="background:${pal.badge}">${tag}</span>
+        <span class="host-player-name"></span>
+        <span class="host-city-pill${p.finished ? " is-finish" : isKo ? " is-ko" : ""}">${cityShort}</span>
+        <span class="host-player-pts">${score}</span>
       `;
-    }).join("");
+      row.querySelector(".host-player-name").textContent = name;
+      row.addEventListener("click", () => {
+        mode = "MANUAL";
+        updateModeButtons();
+        watchPlayer(p);
+        renderPlayers();
+      });
+      return row;
+    }));
     renderHostRaceHUD();
   }
 
@@ -619,11 +676,17 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   // createRoom({ resume: true }) continues the room saved in localStorage (host refreshed);
   // createRoom() always makes a brand-new room.
   function createRoom({ resume = false } = {}) {
+    panel.hidden = false;
+    leaderboardHud.hidden = false;
+    raceHud.hidden = false;
+    renderHostLeaderboardHUD();
     if (roomCreated || roomRequested) return;
     roomRequested = true;
     resumeSession = resume ? loadHostSession() : null;
     if (!socket.connected) {
       connection.textContent = "Menghubungkan server...";
+      roomStatus.textContent = "Menghubungkan ke server multiplayer...";
+      armRoomTimeout();
       socket.connect();
       return;
     }
@@ -873,6 +936,7 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   });
 
   let lastAutoPickAt = 0;
+  let lastLbRefreshAt = 0;
   socket.on("player:moved", (data) => {
     if (!data?.playerId) return;
     const scene = getWorldScene();
@@ -888,6 +952,9 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
     if (mode === "AUTO" && nowMs - lastAutoPickAt > 1200) {
       lastAutoPickAt = nowMs;
       chooseAutomaticPlayer();
+    } else if (nowMs - lastLbRefreshAt > 400) {
+      lastLbRefreshAt = nowMs;
+      renderHostLeaderboardHUD();
     } else {
       renderHostRaceHUD();
     }
@@ -985,6 +1052,11 @@ export function setupHostPanel(shell, game, { onRoomCreated = () => {} } = {}) {
   // TV: every player's HP bar / damage / K.O. comes straight from the server.
   socket.on("player:hp", (state) => {
     if (!state?.playerId) return;
+    const listed = players.find(p => p.playerId === state.playerId);
+    if (listed && typeof state.ko === "boolean") {
+      listed.ko = state.ko;
+      renderHostLeaderboardHUD();
+    }
     const scene = getWorldScene();
     scene?.setRemoteHp?.(scene.remoteAvatars?.get(state.playerId), state);
   });

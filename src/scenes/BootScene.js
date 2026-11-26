@@ -35,6 +35,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image("trap-train-front", `${ASSET}/traps/train-front.png`);
     this.load.image("trap-steam-manhole", `${ASSET}/traps/steam-manhole.png`);
     this.load.spritesheet("trap-steam-plume", `${ASSET}/traps/steam-plume.png`, { frameWidth: 32, frameHeight: 56 });
+    this.load.spritesheet("trap-spark-pylon", `${ASSET}/traps/spark-pylon.png`, { frameWidth: 16, frameHeight: 28 });
     this.load.image("trap-rails", `${ASSET}/traps/rails.png`);
     this.load.spritesheet("trap-signal", `${ASSET}/traps/signal.png`, { frameWidth: 14, frameHeight: 40 });
     this.load.spritesheet("trap-icicle", `${ASSET}/traps/icicle.png`, { frameWidth: 48, frameHeight: 30 });

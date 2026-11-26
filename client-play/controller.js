@@ -10,7 +10,8 @@ import { loadPlayerSession, savePlayerSession, clearPlayerSession } from "../src
 // =====================================================
 
 const serverUrl = import.meta.env.VITE_SERVER_URL
-  || (location.port === "3001" ? location.origin : "");
+  || (location.port === "3001" ? location.origin
+    : (location.port === "4173" ? `${location.protocol}//${location.hostname}:3001` : ""));
 const socket = io(serverUrl, {
   autoConnect: true,
   reconnection: true,
@@ -1600,13 +1601,17 @@ function renderPlayerDrawer(players = []) {
   }
   if (!container) return;
   container.replaceChildren();
+  const medals = ["🥇", "🥈", "🥉"];
+  const cityCodes = ["MÜN", "FRA", "BER", "HAM", "KÖL"];
   sorted.forEach((p, idx) => {
     const row = document.createElement("div");
     row.className = `pixel-player-row ${p.playerId === socket.id ? "pixel-row-highlight" : ""}`;
     const rank = document.createElement("span");
-    const finishTag = p.finishedAt ? " 🏁" : "";
-    rank.textContent = `${idx === 0 ? "👑 " : ""}${idx + 1}. ${p.name || "Player"}${finishTag}`;
+    const medal = idx < 3 ? `${medals[idx]} ` : `${idx + 1}. `;
+    const cityTag = p.finishedAt ? "🏁" : (cityCodes[Number(p.stageIndex) || 0] || "MÜN");
+    rank.textContent = `${medal}${String(p.name || "Player").slice(0, 11)} · ${cityTag}`;
     const pts = document.createElement("span");
+    pts.className = "drawer-pts";
     pts.textContent = `${Number(p.score) || 0} PTS`;
     row.append(rank, pts);
     container.appendChild(row);
@@ -1768,6 +1773,7 @@ socket.on("room:status", ({ status, endsAt, startedAt, remainingMs, leaderboard,
 
 socket.on("tv:leaderboard", (players) => {
   if (!Array.isArray(players)) return;
+  renderPlayerDrawer(players);
   const ranked = [...players].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
   const mine = ranked.find(player => player.playerId === socket.id);
   if (mine) {

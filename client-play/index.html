@@ -205,14 +205,15 @@
 
       <!-- FINAL BOSS ALERT SPEECH BUBBLE MODAL -->
       <section id="bossAlertModal" class="speech-bubble-modal boss-bubble-modal hidden" aria-live="polite">
+        <div class="boss-hazard-bar" aria-hidden="true">⚠ ACHTUNG · FINAL BOSS ENCOUNTER ⚠</div>
         <div class="speech-bubble-content">
           <div class="speech-avatar-wrap boss-portrait-wrap">
             <img src="/assets/enemy-asset-pack/pack/boss_tycoon/portrait.png" alt="Herr Tycoon" class="speech-avatar-img boss-avatar-img">
           </div>
           <div class="speech-body">
-            <div class="speech-tag boss-tag">⚡ FINAL BOSS ENCOUNTER</div>
-            <div class="speech-speaker boss-name">HERR TYCOON · HAMBURG MEISTER</div>
-            <div class="boss-level-pill">LEVEL 4 · B1 TINGKAT TINGGI • 300 HP</div>
+            <div class="speech-tag boss-tag">⚡ MEISTER VON HAMBURG</div>
+            <div class="speech-speaker boss-name">HERR TYCOON</div>
+            <div class="boss-level-pill">LEVEL 4 · B1 • 300 HP • 10 SOAL • SKOR x3</div>
             <p class="speech-text boss-quote">„Willkommen in Hamburg! Di sinilah akhir perjalananmu. Tunjukkan kemampuan bahasa Jermanmu!“</p>
           </div>
         </div>
@@ -221,14 +222,16 @@
 
       <!-- GAME START COUNTDOWN SPEECH BUBBLE MODAL -->
       <section id="gameStartModal" class="speech-bubble-modal start-bubble-modal hidden" aria-live="polite">
+        <div class="start-flag-bar" aria-hidden="true"></div>
         <div class="speech-bubble-content">
           <div class="speech-avatar-wrap">
             <img src="/assets/bahnhof/sprites/officer.png" alt="Petugas Stasiun" class="speech-avatar-img officer-img">
           </div>
           <div class="speech-body">
-            <div class="speech-tag">📢 BAHNHOF DURCHSAGE</div>
+            <div class="speech-tag">🚆 BAHNHOF DURCHSAGE</div>
             <div id="startModalStage" class="speech-speaker">MÜNCHEN HAUPTBAHNHOF</div>
-            <p class="speech-text">„Achtung! Der Zug nach Hamburg steht bereit. Bereit machen!“</p>
+            <p class="speech-text">„Achtung an Gleis 1! Petualangan menuju Köln segera berangkat!“</p>
+            <div class="start-route-pills" aria-hidden="true">MÜN ➔ FRA ➔ BER ➔ HAM ➔ KÖL</div>
             <div id="startModalCountdown" class="speech-countdown">3</div>
           </div>
         </div>

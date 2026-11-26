@@ -291,6 +291,7 @@ function hostRoom({ resume = false } = {}) {
     });
   }
   startGame();
+  hostPanel.show();
   hostPanel.createRoom({ resume });
 }
 

@@ -121,6 +121,7 @@ export class WorldScene extends Phaser.Scene {
     this.createArrivalStation();
     this.createBahnhof();
     this.createStageTrees();
+    this.createStageDetails();
     this.createTrapVisuals();
     this.createStageEnemies();
     this.createQuestNpcs();
@@ -135,6 +136,7 @@ export class WorldScene extends Phaser.Scene {
           for (const s of remote.sprites) {
             s.setAlpha(1);
             s.setScale(1);
+            s.setFlipX(false);
             s.setVisible(true);
           }
         }
@@ -151,7 +153,7 @@ export class WorldScene extends Phaser.Scene {
 
       if (this.hostSpectatorTarget) {
         camera.setDeadzone(0, 0);
-        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.25, 0.25);
       }
       return;
     }
@@ -162,7 +164,7 @@ export class WorldScene extends Phaser.Scene {
       this.player.body?.reset(spawnX, 208);
       this.syncAvatarLayers();
       camera.setDeadzone(0, 0);
-      camera.startFollow(this.player, true, 0.18, 0.18);
+      camera.startFollow(this.player, true, 1, 0.25);
     }
   }
 
@@ -291,6 +293,7 @@ export class WorldScene extends Phaser.Scene {
       this.createArrivalStation();
       this.createBahnhof();
       this.createStageTrees();
+      this.createStageDetails();
       this.createStageTravelTrigger();
 
       // When arriving from a train journey, player steps out from the Bahnhof doors onto the city street!
@@ -329,7 +332,7 @@ export class WorldScene extends Phaser.Scene {
 
       camera.setRoundPixels(true);
       camera.setDeadzone(0, 0);
-      camera.startFollow(this.player, true, 0.18, 0.18);
+      camera.startFollow(this.player, true, 1, 0.25);
       this.handleViewportResize();
 
       // No hazards, spikes, slugs, or obstacle overlap handlers.
@@ -349,6 +352,7 @@ export class WorldScene extends Phaser.Scene {
       this.createArrivalStation();
       this.createBahnhof();
       this.createStageTrees();
+      this.createStageDetails();
       this.createStageEnemies();
       if (this.stageIndex === COURSE.stages.length - 1) {
         this.createFinishGate(false);
@@ -371,7 +375,7 @@ export class WorldScene extends Phaser.Scene {
         camera.setZoom(1);
         camera.setDeadzone(0, 0);
         this.hostSpectatorTarget = player.sprites[0];
-        camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
+        camera.startFollow(this.hostSpectatorTarget, true, 0.25, 0.25);
       };
       this.hostClearFollow = () => {
         this.hostSpectatorTarget = null;
@@ -841,6 +845,112 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  createStageDetails() {
+    for (const item of this.stageDetails || []) {
+      if (item?.active) {
+        this.tweens?.killTweensOf(item);
+        item.destroy();
+      }
+    }
+    this.stageDetails = [];
+    this.streetBirds = [];
+
+    const stage = this.currentStage || COURSE.stages[0];
+    const ground = WORLD_DECOR_Y;
+    const avoid = [
+      battleEnemyX(stage.id),
+      ...trapsForStage(stage.id).map((t) => t.x),
+      ...(stage.id === QUEST.stageId ? QUEST.npcs.map((n) => n.x) : [])
+    ].filter(Number.isFinite);
+
+    // 1. German Yellow City Distance Signposts (Wegweiser) every ~550px
+    for (const offset of [600, 1200, 1800]) {
+      let sx = this.stageStartX + offset;
+      if (avoid.some((a) => Math.abs(a - sx) < 48)) sx += 64;
+      const distMeters = Math.max(100, Math.round((this.stageEndX - 200 - sx) / 10) * 10);
+      const post = this.add.rectangle(sx, ground, 2, 22, 0x334155).setOrigin(0.5, 1).setDepth(5.4);
+      const plate = this.add.rectangle(sx, ground - 21, 44, 11, 0xfacc15, 0.96)
+        .setStrokeStyle(1, 0x111827).setDepth(5.5);
+      const label = this.add.text(sx, ground - 21, `${distMeters}m ➔`, {
+        fontFamily: "Arial, sans-serif", fontSize: "7px", fontStyle: "bold", color: "#111827"
+      }).setOrigin(0.5).setDepth(5.6);
+      this.stageDetails.push(post, plate, label);
+    }
+
+    // 2. Subtle Street Puddles & Curb Highlights (deterministic per city)
+    const puddles = this.add.graphics().setDepth(7.62);
+    const hasPuddles = stage.id === "hamburg" || stage.id === "koeln" || stage.id === "berlin";
+    if (hasPuddles) {
+      const puddleColor = stage.id === "berlin" ? 0x93c5fd : 0x60a5fa;
+      for (let x = this.stageStartX + 430; x < this.stageEndX - 420; x += 290) {
+        if (avoid.some((a) => Math.abs(a - x) < 42)) continue;
+        puddles.fillStyle(puddleColor, 0.25);
+        puddles.fillEllipse(x, ground + 12, 26, 4);
+        puddles.fillStyle(0xffffff, 0.35);
+        puddles.fillRect(x - 6, ground + 11, 8, 1);
+      }
+    }
+    // Warm cobblestone edge highlights along the curb
+    puddles.fillStyle(0xfef3c7, 0.18);
+    for (let x = this.stageStartX + 260; x < this.stageEndX - 260; x += 48) {
+      puddles.fillRect(x, ground, 18, 1);
+    }
+    this.stageDetails.push(puddles);
+
+    // 3. Ambient Street Sparrows / Pigeons that hop & scatter as players run by
+    if (this.textures.exists("trap-gull") || true) {
+      for (const offset of [470, 1080, 1590]) {
+        let bx = this.stageStartX + offset;
+        if (avoid.some((a) => Math.abs(a - bx) < 45)) bx += 55;
+        const bird = this.add.graphics({ x: bx, y: ground - 2 }).setDepth(17.5);
+        bird.fillStyle(0x475569, 1).fillRect(-3, -2, 6, 3);
+        bird.fillStyle(0x94a3b8, 1).fillRect(-2, -3, 3, 2);
+        bird.fillStyle(0xf59e0b, 1).fillRect(3, -2, 2, 1);
+        bird.fillStyle(0x0f172a, 1).fillRect(1, -2, 1, 1);
+        this.stageDetails.push(bird);
+        this.streetBirds.push({
+          sprite: bird,
+          homeX: bx,
+          baseY: ground - 2,
+          scared: false,
+          hopPhase: offset * 0.1
+        });
+      }
+    }
+  }
+
+  updateStreetBirds(delta) {
+    if (!this.streetBirds?.length) return;
+    const dt = delta / 1000;
+    for (const b of this.streetBirds) {
+      if (!b.sprite?.active || b.scared) continue;
+      b.hopPhase += dt * 3.2;
+      const hop = Math.max(0, Math.sin(b.hopPhase)) > 0.88 ? -2 : 0;
+      b.sprite.y = b.baseY + hop;
+      const px = this.player?.x;
+      if (Number.isFinite(px) && Math.abs(px - b.sprite.x) < 48) {
+        b.scared = true;
+        const dir = px < b.sprite.x ? 1 : -1;
+        b.sprite.setScale(dir, 1);
+        this.tweens.add({
+          targets: b.sprite,
+          x: b.sprite.x + dir * 75,
+          y: b.baseY - 70,
+          alpha: 0,
+          duration: 620,
+          ease: "Quad.easeOut",
+          onComplete: () => {
+            this.time.delayedCall(4500, () => {
+              if (!b.sprite?.active) return;
+              b.sprite.setPosition(b.homeX, b.baseY).setAlpha(1);
+              b.scared = false;
+            });
+          }
+        });
+      }
+    }
+  }
+
   createArrivalStation() {
     const stage = this.currentStage || COURSE.stages[0];
     const stationX = this.stageStartX + 120;
@@ -878,6 +988,19 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.textures.exists("bhf-clocks")) {
       this.arrivalStationGroup.add(this.add.image(0, -68, "bhf-clocks").setOrigin(0.5, 1).setDepth(2));
+    }
+
+    // Stage 1 Starting Line Marker right under player spawn (world x = stageStartX + 160 -> local x = +40)
+    if (this.stageIndex === 0) {
+      const startPad = this.add.rectangle(40, -1, 38, 4, 0xf7c83b, 0.95).setStrokeStyle(1, 0x000000);
+      const startPost = this.add.rectangle(40, -24, 3, 24, 0xf7c83b).setStrokeStyle(1, 0x000000);
+      const startFlag = this.add.rectangle(53, -30, 26, 11, 0x101c2b, 0.96).setStrokeStyle(1.2, 0x82d82c);
+      const startLabel = this.add.text(53, -30, "START", {
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: "4px",
+        color: "#82d82c"
+      }).setOrigin(0.5);
+      this.arrivalStationGroup.add([startPad, startPost, startFlag, startLabel]);
     }
     this.tintSeasonProps(this.arrivalStationGroup);
   }
@@ -2263,11 +2386,17 @@ export class WorldScene extends Phaser.Scene {
   createStageEnemies() {
     if (this.stageEnemy) {
       this.stageEnemy.sprite?.destroy();
+      this.stageEnemy.aura?.destroy();
       this.stageEnemy.bar?.destroy();
       this.stageEnemy.name?.destroy();
       this.enemyBattlePrompt?.destroy();
       this.stageEnemy = null;
     }
+    this.bossEmberEvent?.remove?.();
+    this.bossEmberEvent = null;
+    this.bossBannerHud?.destroy(true);
+    this.bossBannerHud = null;
+
     const stage = COURSE.stages[this.stageIndex];
     this.stageEnemy = null;
     this.enemyInReach = false;
@@ -2278,6 +2407,43 @@ export class WorldScene extends Phaser.Scene {
     const texture = `enemy-${cfg.enemyId}-idle`;
     if (!this.textures.exists(texture)) return;
     const isBoss = cfg.boss;
+
+    let aura = null;
+    if (isBoss) {
+      aura = this.add.ellipse(x, 222, 68, 14, 0xef4444, 0.34).setStrokeStyle(1.5, 0xf7c83b, 0.7).setDepth(17.5);
+      this.tweens.add({
+        targets: aura,
+        scaleX: 1.18,
+        scaleY: 1.18,
+        alpha: 0.56,
+        duration: 750,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut"
+      });
+      this.bossEmberEvent = this.time.addEvent({
+        delay: 240,
+        loop: true,
+        callback: () => {
+          const eRef = this.stageEnemy;
+          if (!eRef || eRef.defeated || !eRef.sprite?.active) return;
+          const ex = eRef.sprite.x + Phaser.Math.Between(-26, 26);
+          const ey = eRef.feetY - Phaser.Math.Between(4, 24);
+          const color = Phaser.Utils.Array.GetRandom([0xf97316, 0xef4444, 0xf7c83b]);
+          const ember = this.add.rectangle(ex, ey, 2, 2, color, 0.9).setDepth(18);
+          this.tweens.add({
+            targets: ember,
+            y: ey - Phaser.Math.Between(22, 42),
+            x: ex + Phaser.Math.Between(-10, 10),
+            alpha: 0,
+            duration: Phaser.Math.Between(550, 950),
+            ease: "Quad.easeOut",
+            onComplete: () => ember.destroy()
+          });
+        }
+      });
+    }
+
     const enemy = this.add.image(x, isBoss ? 193 : 198, texture).setDepth(19);
     enemy.setScale(isBoss ? 0.55 : 0.72);
     enemy.setFlipX(true); // art faces right; players arrive from the left
@@ -2289,6 +2455,26 @@ export class WorldScene extends Phaser.Scene {
       stroke: "#20120d", strokeThickness: 2, fontStyle: "bold"
     }).setOrigin(0.5).setDepth(31);
 
+    // Top-center Boss Arena HP Banner (appears when player approaches Herr Tycoon)
+    if (isBoss && !this.isHostMode) {
+      const bannerTop = this.getPlayerHudTopY() + 2;
+      const hud = this.add.container(VIEW_W / 2, bannerTop + 14).setScrollFactor(0).setDepth(995).setVisible(false);
+      const plate = this.add.graphics();
+      plate.fillStyle(0x160509, 0.94).fillRoundedRect(-118, -14, 236, 28, 4);
+      plate.lineStyle(1.5, 0xef4444, 1).strokeRoundedRect(-118, -14, 236, 28, 4);
+      plate.lineStyle(1, 0xf7c83b, 0.65).strokeRoundedRect(-116, -12, 232, 24, 3);
+      const bTitle = this.add.text(-110, -10, "☠ HERR TYCOON · FINAL BOSS B1", {
+        fontFamily: "Arial, sans-serif", fontSize: "8px", fontStyle: "bold", color: "#fef08a"
+      }).setOrigin(0, 0);
+      const bHpTxt = this.add.text(110, -10, `${cfg.maxHp}/${cfg.maxHp}`, {
+        fontFamily: "'Press Start 2P', monospace", fontSize: "5px", color: "#fca5a5"
+      }).setOrigin(1, 0);
+      const bBarBg = this.add.rectangle(0, 5, 218, 6, 0x3b0a12).setOrigin(0.5);
+      const bBarFill = this.add.rectangle(-109, 5, 218, 6, 0xef4444).setOrigin(0, 0.5);
+      hud.add([plate, bTitle, bHpTxt, bBarBg, bBarFill]);
+      this.bossBannerHud = { container: hud, fill: bBarFill, hpText: bHpTxt, width: 218 };
+    }
+
     // Floating question battle alert banner above enemy (visual alert only; player must click the fight button!)
     const promptContainer = this.add.container(x, (isBoss ? 193 : 198) - (isBoss ? 74 : 56)).setDepth(35).setVisible(false);
     const pBg = this.add.graphics();
@@ -2296,9 +2482,9 @@ export class WorldScene extends Phaser.Scene {
     pBg.fillRoundedRect(-48, -10, 96, 20, 3);
     pBg.lineStyle(1.5, 0xf7c83b, 1);
     pBg.strokeRoundedRect(-48, -10, 96, 20, 3);
-    const pText = this.add.text(0, 0, "⚔ LAWAN! ⚔", {
+    const pText = this.add.text(0, 0, isBoss ? "⚔ TANTANG BOSS!" : "⚔ LAWAN! ⚔", {
       fontFamily: "'Press Start 2P', monospace",
-      fontSize: "6px",
+      fontSize: isBoss ? "5px" : "6px",
       color: "#f7c83b",
       fontStyle: "bold"
     }).setOrigin(0.5);
@@ -2314,13 +2500,13 @@ export class WorldScene extends Phaser.Scene {
     this.enemyBattlePrompt = promptContainer;
 
     this.stageEnemy = {
-      cfg, sprite: enemy, hp: cfg.maxHp, maxHp: cfg.maxHp, bar, name, barWidth,
+      cfg, sprite: enemy, aura, hp: cfg.maxHp, maxHp: cfg.maxHp, bar, name, barWidth,
       homeX: x, baseY: enemy.y, feetY: enemy.y + enemy.displayHeight / 2,
       direction: 1, lastAttack: 0, defeated: false, enemyId: cfg.enemyId, solved: 0, total: cfg.total,
       walkTime: 0, idleTime: 0
     };
     this.drawEnemyHealthBar();
-    this.showFloatingFeedback(x, 120, isBoss ? "⚠️ BOSS APPROACHING!" : "⚠️ ENEMY!", "#ffd36a");
+    this.showFloatingFeedback(x, 120, isBoss ? "☠ BOSS HAMBURG MENUNGGU!" : "⚠️ ENEMY!", isBoss ? "#f87171" : "#ffd36a");
     if (this.pendingBattleState) this.setBattleState(this.pendingBattleState);
   }
 
@@ -2370,11 +2556,24 @@ export class WorldScene extends Phaser.Scene {
       e.name.setPosition(x, top - 7);
       e.name.setText(`${e.cfg.name}  ${e.hp}/${e.maxHp}`);
     }
+    if (e.cfg.boss && this.bossBannerHud?.fill) {
+      this.bossBannerHud.fill.width = Math.max(0, Math.round(this.bossBannerHud.width * ratio));
+      this.bossBannerHud.fill.fillColor = ratio > 0.5 ? 0xef4444 : ratio > 0.25 ? 0xf59e0b : 0xdc2626;
+      this.bossBannerHud.hpText?.setText(`${e.hp}/${e.maxHp}`);
+    }
   }
 
   updateStageEnemies(delta) {
     const e = this.stageEnemy;
-    if (!e || e.defeated || !e.sprite?.active) return;
+    if (!e || e.defeated || !e.sprite?.active) {
+      this.bossBannerHud?.container?.setVisible(false);
+      return;
+    }
+    if (e.aura?.active) e.aura.x = e.sprite.x;
+    if (this.bossBannerHud?.container && this.player) {
+      const nearBossArena = Math.abs(this.player.x - e.sprite.x) < 280;
+      this.bossBannerHud.container.setVisible(nearBossArena && !this.battleActive);
+    }
     if (this.time.now < (e.actionUntil || 0)) {
       this.drawEnemyHealthBar();
       return;
@@ -2848,7 +3047,8 @@ export class WorldScene extends Phaser.Scene {
             this.setAvatarAnimation(`hurt-${dir}`);
             this.networkCharacterState = { state: `hurt-${dir}`, grounded: true, vx: 0, vy: 0 };
             this.tintAvatar(0xff4444);
-            this.cameras.main.shake(140, 0.007);
+            this.cameras.main.shake(e.cfg.boss ? 210 : 140, e.cfg.boss ? 0.011 : 0.007);
+            if (e.cfg.boss) this.cameras.main.flash(140, 175, 20, 20);
             this.spawnSlashEffect(this.player.x, this.player.y - 6);
             this.spawnHitSparks(this.player.x, this.player.y - 6);
 
@@ -2886,6 +3086,10 @@ export class WorldScene extends Phaser.Scene {
     this.enemyInReach = false;
     this.events.emit("enemy-near", false);
     if (this.enemyBattlePrompt) this.enemyBattlePrompt.destroy();
+    e.aura?.destroy();
+    this.bossEmberEvent?.remove?.();
+    this.bossEmberEvent = null;
+    this.bossBannerHud?.container?.setVisible(false);
     e.hp = 0;
     e.bar.destroy();
     e.name.destroy();
@@ -3029,7 +3233,7 @@ export class WorldScene extends Phaser.Scene {
 
       sprite.setOrigin(0.5, 0.5);
       sprite.setDepth(part.depth);
-      sprite.setFlipX(data.facing === "left");
+      sprite.setFlipX(false);
       sprite.setVisible(true);
       sprite.setActive(true);
 
@@ -3131,12 +3335,13 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    // Ensure remote avatar and name are visible (restore from any previous fade-out or stage transition)
-    if (remote.sprites) {
-      this.tweens.killTweensOf(remote.sprites);
+    // Restore visibility & reset tweened states ONLY when not inside an active combat/KO animation.
+    const inAction = this.time.now < (remote.actionUntil || 0);
+    if (remote.sprites && !inAction && !remote.ko) {
       for (const s of remote.sprites) {
         if (s.alpha < 1) s.setAlpha(1);
-        if (s.scaleY !== 1) s.setScale(1);
+        if (s.scaleX !== 1 || s.scaleY !== 1) s.setScale(1);
+        if (s.angle !== 0) s.setAngle(0);
         s.setVisible(true);
       }
     }
@@ -3177,7 +3382,7 @@ export class WorldScene extends Phaser.Scene {
     const now = performance.now();
     if (Number.isFinite(x) && Number.isFinite(y)) {
       remote.snapshots.push({ time: now, x, y });
-      remote.snapshots = remote.snapshots.slice(-4);
+      remote.snapshots = remote.snapshots.slice(-6);
       remote.targetX = x;
       remote.targetY = y;
       remote.lastUpdate = now;
@@ -3185,7 +3390,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (data.state && ["idle", "walk-left", "walk-right", "jump-left", "jump-right", "fall-left", "fall-right", "interact", "hurt", "hurt-left", "hurt-right", "punch-left", "punch-right", "sword-left", "sword-right"].includes(data.state)) {
-      if (this.time.now >= (remote.actionUntil || 0)) {
+      if (!inAction) {
         remote.state = data.state;
       }
     }
@@ -3195,12 +3400,10 @@ export class WorldScene extends Phaser.Scene {
     if (Number.isFinite(Number(data.vx))) remote.vx = Number(data.vx);
     if (Number.isFinite(Number(data.vy))) remote.vy = Number(data.vy);
 
+    // Never call setFlipX(true) here: Walk_Left / Jump_Left / Attack_Left sheets already face left,
+    // and Idle is front-facing. Flipping here caused 20Hz flicker against updateRemoteAvatarAnimation().
     if (data.facing === "left" || data.facing === "right") {
       remote.facing = data.facing;
-
-      for (const sprite of remote.sprites) {
-        sprite.setFlipX(remote.facing === "left");
-      }
     }
 
     if (data.name && data.name !== remote.name && remote.nameLabel?.active) {
@@ -3325,6 +3528,11 @@ export class WorldScene extends Phaser.Scene {
     const isBoss = Boolean(cfg.boss);
     const x = Phaser.Math.Clamp(remote.x + (isBoss ? 58 : 46), this.stageStartX + 60, this.stageEndX - 90);
     const y = isBoss ? 193 : 198;
+    let aura = null;
+    if (isBoss) {
+      aura = this.add.ellipse(x, 222, 64, 13, 0xef4444, 0.32).setStrokeStyle(1.5, 0xf7c83b, 0.7).setDepth(17.5);
+      this.tweens.add({ targets: aura, scaleX: 1.18, alpha: 0.55, duration: 750, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    }
     const sprite = this.add.image(x, y, texture).setDepth(19).setScale(isBoss ? 0.55 : 0.72).setFlipX(true);
     const bar = this.add.graphics().setDepth(30);
     const label = this.add.text(x, y, "", {
@@ -3333,7 +3541,7 @@ export class WorldScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(31);
     const num = (v, fallback) => (Number.isFinite(Number(v)) && v !== null && v !== undefined ? Number(v) : fallback);
     d = {
-      playerId: data.playerId, stageId: stage.id, cfg, enemyId: cfg.enemyId, sprite, bar, label,
+      playerId: data.playerId, stageId: stage.id, cfg, enemyId: cfg.enemyId, sprite, aura, bar, label,
       barWidth: isBoss ? 74 : 50, hp: num(data.enemyHp, cfg.maxHp), maxHp: num(data.enemyMaxHp, cfg.maxHp),
       feetY: sprite.y + sprite.displayHeight / 2, homeX: x, lastEvent: this.time.now, dead: false, actionUntil: 0
     };
@@ -3396,7 +3604,7 @@ export class WorldScene extends Phaser.Scene {
     const d = this.hostDuels?.get(playerId);
     if (!d) return;
     this.hostDuels.delete(playerId);
-    for (const part of [d.sprite, d.bar, d.label]) if (part?.active) part.destroy();
+    for (const part of [d.sprite, d.aura, d.bar, d.label]) if (part?.active) part.destroy();
     this.refreshHostGuard();
   }
 
@@ -3453,7 +3661,7 @@ export class WorldScene extends Phaser.Scene {
       const ref = duel?.sprite || (this.isHostMode ? null : this.stageEnemy?.sprite);
       const dir = (ref && ref.x < remote.x) ? "left" : "right";
       remote.facing = dir;
-      for (const sprite of remote.sprites) sprite.setFlipX(dir === "left");
+      for (const sprite of remote.sprites) sprite.setFlipX(false);
       const hasWeapon = Number(remote.avatarRows?.weapon) > 0;
       const animType = hasWeapon ? "sword" : "punch";
       remote.state = `${animType}-${dir}`;
@@ -3567,7 +3775,8 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    const renderAt = performance.now() - 35;
+    // 75ms render buffer > 50ms socket emit cadence so interpolation never starves or stutters.
+    const renderAt = performance.now() - 75;
     for (const remote of this.remoteAvatars.values()) {
       const snapshots = remote.snapshots || [];
       while (snapshots.length > 2 && snapshots[1].time <= renderAt) snapshots.shift();
@@ -3578,8 +3787,9 @@ export class WorldScene extends Phaser.Scene {
         remote.x = Phaser.Math.Linear(first.x, second.x, t);
         remote.y = Phaser.Math.Linear(first.y, second.y, t);
       } else if (first) {
-        remote.x = Phaser.Math.Linear(remote.x, first.x, Math.min(1, delta / 50));
-        remote.y = Phaser.Math.Linear(remote.y, first.y, Math.min(1, delta / 50));
+        const blend = Math.min(1, delta / 75);
+        remote.x = Math.abs(first.x - remote.x) < 0.25 ? first.x : Phaser.Math.Linear(remote.x, first.x, blend);
+        remote.y = Math.abs(first.y - remote.y) < 0.25 ? first.y : Phaser.Math.Linear(remote.y, first.y, blend);
       }
 
       this.updateRemoteAvatarAnimation(remote, delta);
@@ -3587,13 +3797,15 @@ export class WorldScene extends Phaser.Scene {
         this.showRemoteFinished(remote);
       }
 
+      // Snap to clean integer world coords without sub-pixel idleBob to eliminate pixel shimmer.
       const x = Math.round(remote.x);
       const y = Math.round(remote.y);
-      const idleBob = remote.heroState?.startsWith("idle") ? Math.sin(performance.now() / 430 + remote.slot) * 0.45 : 0;
-      for (const sprite of remote.sprites) sprite.setPosition(x, y + idleBob);
-      for (const sprite of remote.sprites) sprite.setVisible(true);
+      for (const sprite of remote.sprites) {
+        sprite.setPosition(x, y);
+        sprite.setVisible(true);
+      }
       const slotStackOffset = ((remote.slot || 0) % 4) * 6;
-      remote.nameContainer?.setPosition(x, y - 24 + idleBob - slotStackOffset);
+      remote.nameContainer?.setPosition(x, y - 24 - slotStackOffset);
       if (remote.finishBanner) remote.finishBanner.setPosition(x, y - 42);
     }
   }
@@ -3617,9 +3829,9 @@ export class WorldScene extends Phaser.Scene {
     const staleFactor = Phaser.Math.Clamp(1 - Math.max(0, staleMs - 180) / 420, 0, 1);
     const vx = (Number(remote.vx) || 0) * staleFactor;
     const vy = (Number(remote.vy) || 0) * staleFactor;
-    const isMoving = Math.abs(vx) > 8 || Math.abs(dx) > 1.1;
-    const isJumping = vy < -30 || dy < -2;
-    const isFalling = vy > 50 || dy > 2;
+    const isMoving = Math.abs(vx) > 12 || Math.abs(dx) > 1.8;
+    const isJumping = vy < -30 || dy < -2.5;
+    const isFalling = vy > 50 || dy > 2.5;
 
     let anim = "idle";
     let direction = remote.facing || "right";
@@ -3872,26 +4084,26 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    const x = Math.round(this.player.x);
-    const y = Math.round(this.player.y);
-
-    // Keep all avatar layers 100% aligned with the body sprite frame-by-frame
+    // Keep ALL 9 avatar layers at the exact same float position as `this.player`
+    // so Phaser's `roundPixels: true` rounds body & clothing identically on every frame.
+    // Rounding only `avatarParts` while `this.player` stayed float caused 1px layer jitter!
+    const px = this.player.x;
+    const py = this.player.y;
     for (const part of this.avatarParts) {
-      part.sprite.setPosition(x, y);
+      part.sprite.setPosition(px, py);
       part.sprite.setVisible(true);
     }
 
     if (this.playerShadow) {
-      const grounded = this.player.body?.onFloor() ?? true;
       const groundFloorY = 223; // Top of street cobblestone surface
-      const shadowY = Math.min(groundFloorY, y + 10);
-      const airHeight = Math.max(0, groundFloorY - (y + 10));
+      const shadowY = Math.min(groundFloorY, py + 10);
+      const airHeight = Math.max(0, groundFloorY - (py + 10));
       const heightFactor = Math.max(0, Math.min(1, airHeight / 110));
       const scaleX = this.playerKo ? 0.9 : (1.0 - heightFactor * 0.52);
       const scaleY = scaleX * 0.42;
       const alpha = this.playerKo ? 0.12 : (0.34 - heightFactor * 0.22);
 
-      this.playerShadow.setPosition(x, shadowY);
+      this.playerShadow.setPosition(Math.round(px), Math.round(shadowY));
       this.playerShadow.setScale(scaleX, scaleY);
       this.playerShadow.setAlpha(alpha);
     }
@@ -3951,12 +4163,12 @@ export class WorldScene extends Phaser.Scene {
       this.player.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, this.worldWidth, this.worldHeight));
       if (!this.isHostMode) {
         camera.setDeadzone(0, 0);
-        camera.startFollow(this.player, true, 0.18, 0.18);
+        camera.startFollow(this.player, true, 1, 0.25);
       }
     }
     if (this.isHostMode && this.hostSpectatorTarget) {
       camera.setDeadzone(0, 0);
-      camera.startFollow(this.hostSpectatorTarget, true, 0.18, 0.18);
+      camera.startFollow(this.hostSpectatorTarget, true, 0.25, 0.25);
     }
     if (!this.isHostMode) {
       const topY = this.getPlayerHudTopY();
@@ -3989,14 +4201,10 @@ export class WorldScene extends Phaser.Scene {
       this.spawnPunchSwoosh(this.player.x + (dir === "right" ? 14 : -14), this.player.y - 4, dir);
     }
 
-    // Subtle forward lunge
-    const lunge = dir === "right" ? 8 : -8;
-    this.tweens.add({
-      targets: [this.player, ...(this.avatarParts?.map(p => p.sprite) || [])],
-      x: `+=${lunge}`,
-      duration: 110,
-      yoyo: true,
-      ease: "Quad.easeOut"
+    // Forward lunge via physics velocity so it never fights Arcade Physics / syncAvatarLayers
+    this.player.body.setVelocityX(dir === "right" ? 95 : -95);
+    this.time.delayedCall(110, () => {
+      if (this.player?.body && !this.playerKo) this.player.body.setVelocityX(0);
     });
 
     this.time.delayedCall(340, () => {
@@ -4210,6 +4418,7 @@ export class WorldScene extends Phaser.Scene {
     // SEASON ATMOSPHERE (snow / leaves / petals / birds / sparkles)
     this.updateSeasonParticles(delta, scrollX);
     this.updateTraps();
+    this.updateStreetBirds(delta);
 
     // UPDATE AVATAR PEMAIN LAIN
     this.updateRemoteAvatars(delta);
@@ -4573,7 +4782,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // SCENE: GAME START COUNTDOWN SPEECH BUBBLE CUTSCENE
+  // SCENE: GAME START DEPARTURE BOARD CUTSCENE
   // =====================================================
   playGameStartIntro(onComplete) {
     if (!this.isHostMode) {
@@ -4610,54 +4819,64 @@ export class WorldScene extends Phaser.Scene {
     };
     const safetyTimer = setTimeout(finishIntro, 3200);
 
-    // Clean semi-transparent backdrop
-    const backdrop = this.add.rectangle(centerX, centerY, VIEW_W, VIEW_H, 0x0a101d, 0.62)
+    // Subtle backdrop + cinema letterbox bars
+    const backdrop = this.add.rectangle(centerX, centerY, VIEW_W, VIEW_H, 0x070b16, 0.58)
       .setScrollFactor(0).setDepth(600);
-    elements.push(backdrop);
+    const barTop = this.add.rectangle(centerX, -10, VIEW_W, 20, 0x050811, 1).setScrollFactor(0).setDepth(602);
+    const barBot = this.add.rectangle(centerX, VIEW_H + 10, VIEW_W, 20, 0x050811, 1).setScrollFactor(0).setDepth(602);
+    elements.push(backdrop, barTop, barBot);
+    this.tweens.add({ targets: barTop, y: 10, duration: 220, ease: "Quad.easeOut" });
+    this.tweens.add({ targets: barBot, y: VIEW_H - 10, duration: 220, ease: "Quad.easeOut" });
 
-    // SPEECH BUBBLE CONTAINER
+    // DEPARTURE BOARD CARD
     const bubbleContainer = this.add.container(centerX, centerY).setScrollFactor(0).setDepth(605);
     elements.push(bubbleContainer);
 
-    const bw = 330, bh = 106;
+    const bw = 372, bh = 122;
     const bubbleBg = this.add.graphics();
-    bubbleBg.fillStyle(0x0f172a, 0.96);
+    bubbleBg.fillStyle(0x0d1527, 0.97);
     bubbleBg.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
     bubbleBg.lineStyle(2.5, 0xf6c84a, 1);
     bubbleBg.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
-
-    // Speech bubble tail pointing downwards
-    bubbleBg.fillStyle(0x0f172a, 0.96);
-    bubbleBg.fillTriangle(-12, bh / 2, 12, bh / 2, 0, bh / 2 + 10);
-    bubbleBg.lineStyle(2.5, 0xf6c84a, 1);
-    bubbleBg.lineBetween(-12, bh / 2, 0, bh / 2 + 10);
-    bubbleBg.lineBetween(0, bh / 2 + 10, 12, bh / 2);
+    // German tricolor top ribbon
+    bubbleBg.fillStyle(0x111827, 1).fillRect(-bw / 2 + 6, -bh / 2 + 4, (bw - 12) / 3, 4);
+    bubbleBg.fillStyle(0xdc2626, 1).fillRect(-bw / 2 + 6 + (bw - 12) / 3, -bh / 2 + 4, (bw - 12) / 3, 4);
+    bubbleBg.fillStyle(0xfacc15, 1).fillRect(-bw / 2 + 6 + ((bw - 12) * 2) / 3, -bh / 2 + 4, (bw - 12) / 3, 4);
     bubbleContainer.add(bubbleBg);
 
     // Conductor avatar frame on left
     if (this.textures.exists("bhf-officer")) {
-      const avatarBox = this.add.rectangle(-bw / 2 + 32, 0, 44, 66, 0x1e293b, 1)
+      const avatarBox = this.add.rectangle(-bw / 2 + 34, 4, 46, 68, 0x1a2540, 1)
         .setStrokeStyle(1.5, 0xf6c84a, 1);
-      const officer = this.add.image(-bw / 2 + 32, 2, "bhf-officer").setScale(1.2);
+      const officer = this.add.image(-bw / 2 + 34, 6, "bhf-officer").setScale(1.25);
       bubbleContainer.add([avatarBox, officer]);
     }
 
-    // Header badge
-    const badge = this.add.text(-bw / 2 + 62, -bh / 2 + 12, "📢 BAHNHOF DURCHSAGE · MÜNCHEN", {
+    const tx = -bw / 2 + 66;
+    const badge = this.add.text(tx, -bh / 2 + 16, "🚆 BAHNHOF DURCHSAGE · MÜNCHEN HBF", {
       fontFamily: "'Press Start 2P', monospace", fontSize: "6px", color: "#f6c84a"
     }).setOrigin(0, 0);
 
-    const announce = this.add.text(-bw / 2 + 62, -bh / 2 + 25, "„Achtung an Gleis 1! Zug nach Hamburg fährt ab!\nAlle Fahrgäste einsteigen. Bereit machen!“", {
-      fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "bold", color: "#f1f5f9", wordWrap: { width: 250 }
+    const announce = this.add.text(tx, -bh / 2 + 31, "„Achtung an Gleis 1! Semua penumpang bersiap!\nKalahkan penjaga kota & kejar skor tertinggi!“", {
+      fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "bold", color: "#f1f5f9", wordWrap: { width: 215 }
     }).setOrigin(0, 0);
 
-    // Large countdown inside bubble
-    const countText = this.add.text(centerX - 120, 24, "3", {
-      fontFamily: "'Press Start 2P', monospace", fontSize: "22px", color: "#f59e0b", stroke: "#000", strokeThickness: 4
+    const routeTickerBg = this.add.rectangle(tx + 104, 24, 208, 18, 0x172442, 0.95)
+      .setStrokeStyle(1, 0x3b82f6, 0.65);
+    const routeTicker = this.add.text(tx + 104, 24, "MÜN ➔ FRA ➔ BER ➔ HAM ➔ KÖL", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "5px", color: "#93c5fd"
     }).setOrigin(0.5);
-    bubbleContainer.add([badge, announce, countText]);
 
-    bubbleContainer.setScale(0.85);
+    // Dedicated right countdown box (centered inside its own frame, zero overflow!)
+    const countBoxX = bw / 2 - 44;
+    const countBox = this.add.rectangle(countBoxX, 8, 66, 66, 0x11192e, 1)
+      .setStrokeStyle(2, 0xf6c84a, 0.9);
+    const countText = this.add.text(countBoxX, 8, "3", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "24px", color: "#f59e0b", stroke: "#000", strokeThickness: 4
+    }).setOrigin(0.5);
+    bubbleContainer.add([badge, announce, routeTickerBg, routeTicker, countBox, countText]);
+
+    bubbleContainer.setScale(0.86);
     bubbleContainer.setAlpha(0);
     this.tweens.add({
       targets: bubbleContainer,
@@ -4669,9 +4888,10 @@ export class WorldScene extends Phaser.Scene {
 
     const runNumber = (numStr, color, delay) => {
       this.time.delayedCall(delay, () => {
+        if (!countText.active) return;
         countText.setText(numStr);
         countText.setColor(color);
-        countText.setScale(1.4);
+        countText.setScale(1.42);
         retroAudio.playCountdownBeep?.(false);
         this.tweens.add({ targets: countText, scale: 1.0, duration: 240, ease: "Back.easeOut" });
       });
@@ -4681,22 +4901,24 @@ export class WorldScene extends Phaser.Scene {
     runNumber("1", "#10b981", 1450);
 
     this.time.delayedCall(2150, () => {
-      countText.setFontSize(13);
-      countText.setText("LOS GEHT'S! 🏁");
+      if (!countText.active) return;
+      countText.setFontSize(11);
+      countText.setText("LOS!\n🏁");
+      countText.setAlign("center");
       countText.setColor("#82d82c");
-      countText.setScale(1.4);
+      countText.setScale(1.3);
+      countBox.setStrokeStyle(2, 0x82d82c, 1);
       retroAudio.playCountdownBeep?.(true);
       retroAudio.playTrainWhistle?.();
       this.spawnCelebrationConfetti(this.player?.x || centerX, (this.player?.y || centerY) - 20);
-      this.cameras.main.flash(200, 255, 255, 255);
-      this.tweens.add({ targets: countText, scale: 1.1, duration: 250, ease: "Back.easeOut" });
+      this.cameras.main.flash(180, 255, 240, 180);
+      this.tweens.add({ targets: countText, scale: 1.05, duration: 250, ease: "Back.easeOut" });
     });
 
     this.time.delayedCall(2850, () => {
       this.tweens.add({
-        targets: [bubbleContainer, backdrop],
+        targets: [bubbleContainer, backdrop, barTop, barBot],
         alpha: 0,
-        scale: 0.9,
         duration: 220,
         ease: "Quad.easeIn",
         onComplete: finishIntro
@@ -4705,7 +4927,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // =====================================================
-  // SCENE: FINAL BOSS ENCOUNTER SPEECH BUBBLE CUTSCENE
+  // SCENE: FINAL BOSS ENCOUNTER CINEMATIC CUTSCENE
   // =====================================================
   playFinalBossIntro(onComplete) {
     if (this._bossIntroPlaying) return;
@@ -4731,83 +4953,106 @@ export class WorldScene extends Phaser.Scene {
       this.quizPaused = false;
       if (onComplete) onComplete();
     };
-    const safetyTimer = setTimeout(finishBossIntro, 2600);
+    const safetyTimer = setTimeout(finishBossIntro, 2700);
 
     retroAudio.playBossAlarm?.();
-    this.cameras.main.shake(320, 0.012);
+    this.cameras.main.shake(360, 0.014);
+    this.cameras.main.flash(180, 190, 20, 20);
 
-    // Dark crimson vignette
-    const vignette = this.add.rectangle(centerX, centerY, VIEW_W, VIEW_H, 0x1f0206, 0.72)
+    // Dark crimson vignette + dramatic letterbox bars
+    const vignette = this.add.rectangle(centerX, centerY, VIEW_W, VIEW_H, 0x1c0206, 0.78)
       .setScrollFactor(0).setDepth(600);
-    elements.push(vignette);
+    const barTop = this.add.rectangle(centerX, -11, VIEW_W, 22, 0x090204, 1).setScrollFactor(0).setDepth(602);
+    const barBot = this.add.rectangle(centerX, VIEW_H + 11, VIEW_W, 22, 0x090204, 1).setScrollFactor(0).setDepth(602);
+    const alertStrip = this.add.text(centerX, 11, "⚠ ACHTUNG · HAMBURG FINAL BOSS ENCOUNTER ⚠", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "6px", color: "#f87171"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(603).setAlpha(0);
+    elements.push(vignette, barTop, barBot, alertStrip);
 
-    // BOSS SPEECH BUBBLE CONTAINER
+    this.tweens.add({ targets: barTop, y: 11, duration: 200, ease: "Quad.easeOut" });
+    this.tweens.add({ targets: barBot, y: VIEW_H - 11, duration: 200, ease: "Quad.easeOut" });
+    this.tweens.add({ targets: alertStrip, alpha: 1, duration: 220, yoyo: true, repeat: 4 });
+
+    // Expanding shockwave ring behind Boss card
+    const shockwave = this.add.circle(centerX, centerY, 18, 0xef4444, 0.35)
+      .setStrokeStyle(2.5, 0xf7c83b, 0.9).setScrollFactor(0).setDepth(603);
+    elements.push(shockwave);
+    this.tweens.add({
+      targets: shockwave,
+      scale: 9,
+      alpha: 0,
+      duration: 520,
+      ease: "Cubic.easeOut"
+    });
+
+    // BOSS ENCOUNTER CARD
     const bubble = this.add.container(centerX, centerY).setScrollFactor(0).setDepth(605);
     elements.push(bubble);
 
-    const bw = 350, bh = 116;
+    const bw = 372, bh = 128;
     const bg = this.add.graphics();
-    bg.fillStyle(0x1a060a, 0.97);
+    bg.fillStyle(0x160409, 0.97);
     bg.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
     bg.lineStyle(2.5, 0xef4444, 1);
     bg.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
-
-    // Dialogue tail pointing left towards boss
-    bg.fillStyle(0x1a060a, 0.97);
-    bg.fillTriangle(-bw / 2 + 25, bh / 2, -bw / 2 + 45, bh / 2, -bw / 2 + 15, bh / 2 + 12);
-    bg.lineStyle(2.5, 0xef4444, 1);
-    bg.lineBetween(-bw / 2 + 25, bh / 2, -bw / 2 + 15, bh / 2 + 12);
-    bg.lineBetween(-bw / 2 + 15, bh / 2 + 12, -bw / 2 + 45, bh / 2);
+    bg.lineStyle(1.5, 0xf7c83b, 0.75);
+    bg.strokeRoundedRect(-bw / 2 + 4, -bh / 2 + 4, bw - 8, bh - 8, 6);
     bubble.add(bg);
 
-    // Boss Portrait on the left
-    const portraitKey = this.textures.exists("enemy-boss_tycoon-portrait") ? "enemy-boss_tycoon-portrait" : (this.textures.exists("enemy-hamburg-portrait") ? "enemy-hamburg-portrait" : null);
+    // Boss Portrait + animated sprite showcase on left
+    const portraitKey = this.textures.exists("enemy-boss_tycoon-portrait")
+      ? "enemy-boss_tycoon-portrait"
+      : (this.textures.exists("enemy-hamburg-portrait") ? "enemy-hamburg-portrait" : null);
     if (portraitKey) {
-      const pBox = this.add.rectangle(-bw / 2 + 38, 0, 56, 76, 0x2b060d, 1)
-        .setStrokeStyle(1.5, 0xef4444, 1);
-      const portrait = this.add.image(-bw / 2 + 38, 0, portraitKey);
-      portrait.setDisplaySize(52, 72);
+      const pBox = this.add.rectangle(-bw / 2 + 42, 0, 62, 86, 0x2b060d, 1)
+        .setStrokeStyle(2, 0xf7c83b, 1);
+      const portrait = this.add.image(-bw / 2 + 42, 0, portraitKey);
+      portrait.setDisplaySize(56, 80);
       bubble.add([pBox, portrait]);
     }
 
-    const tx = portraitKey ? -bw / 2 + 76 : -bw / 2 + 20;
-    const wrapW = bw - (portraitKey ? 92 : 40);
+    const tx = portraitKey ? -bw / 2 + 84 : -bw / 2 + 20;
+    const wrapW = bw - (portraitKey ? 98 : 40);
 
-    const tag = this.add.text(tx, -bh / 2 + 12, "⚡ PERTARUNGAN PENENTU · FINAL BOSS ⚡", {
+    const tag = this.add.text(tx, -bh / 2 + 14, "⚡ PERTARUNGAN PENENTU · HAMBURG ⚡", {
       fontFamily: "'Press Start 2P', monospace", fontSize: "6px", color: "#f59e0b"
     }).setOrigin(0, 0);
 
-    const name = this.add.text(tx, -bh / 2 + 26, "HERR TYCOON · HAMBURG MEISTER", {
+    const name = this.add.text(tx, -bh / 2 + 28, "HERR TYCOON · HAMBURG MEISTER", {
       fontFamily: "Arial, sans-serif", fontSize: "12px", fontStyle: "900", color: "#ffffff", stroke: "#000", strokeThickness: 2
     }).setOrigin(0, 0);
 
-    const stats = this.add.text(tx, -bh / 2 + 42, "LEVEL 4 · B1 TINGKAT TINGGI • 300 HP", {
-      fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "bold", color: "#ef4444"
+    const stats = this.add.text(tx, -bh / 2 + 45, "LEVEL 4 · B1  |  300 HP  |  10 SOAL  |  SKOR x3", {
+      fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "bold", color: "#f87171"
     }).setOrigin(0, 0);
 
-    const speechBg = this.add.rectangle(tx + wrapW / 2, 28, wrapW, 36, 0x26070e, 0.9)
-      .setStrokeStyle(1, 0x7f1d1d, 1);
-    const speech = this.add.text(tx + wrapW / 2, 28, "„Willkommen in Hamburg! Di sinilah akhir perjalananmu!\nTunjukkan kemampuan bahasa Jermanmu kalau mau lewat!“", {
+    const speechBg = this.add.rectangle(tx + wrapW / 2, 24, wrapW, 40, 0x280810, 0.92)
+      .setStrokeStyle(1, 0x991b1b, 1);
+    const speech = this.add.text(tx + wrapW / 2, 24, "„Willkommen in Hamburg! Di sinilah akhir perjalananmu!\nTunjukkan kemampuan bahasa Jermanmu kalau mau lewat!“", {
       fontFamily: "Arial, sans-serif", fontSize: "9px", fontStyle: "italic bold", color: "#fef08a", align: "center", wordWrap: { width: wrapW - 12 }
     }).setOrigin(0.5);
 
-    bubble.add([tag, name, stats, speechBg, speech]);
+    const readyPrompt = this.add.text(tx + wrapW / 2, bh / 2 - 12, "⚔ BERSIAP BERTARUNG! ⚔", {
+      fontFamily: "'Press Start 2P', monospace", fontSize: "6px", color: "#82d82c"
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: readyPrompt, alpha: 0.35, duration: 280, yoyo: true, repeat: -1 });
 
-    bubble.setScale(0.85);
+    bubble.add([tag, name, stats, speechBg, speech, readyPrompt]);
+
+    bubble.setScale(0.75);
     bubble.setAlpha(0);
     this.tweens.add({
       targets: bubble,
       scale: 1,
       alpha: 1,
-      duration: 250,
+      duration: 240,
       ease: "Back.easeOut"
     });
 
-    this.time.delayedCall(2200, () => {
+    this.time.delayedCall(2350, () => {
       this.tweens.add({
-        targets: [bubble, vignette],
+        targets: [bubble, vignette, barTop, barBot, alertStrip],
         alpha: 0,
-        scale: 0.95,
         duration: 200,
         ease: "Quad.easeIn",
         onComplete: finishBossIntro

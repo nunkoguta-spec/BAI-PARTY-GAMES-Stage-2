@@ -16,7 +16,11 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     strictPort: true,
-    port: 4173
+    port: 4173,
+    proxy: {
+      "/socket.io": { target: "http://127.0.0.1:3001", ws: true },
+      "/health": "http://127.0.0.1:3001"
+    }
   },
   build: {
     rollupOptions: {

@@ -5,7 +5,7 @@ import { io } from "socket.io-client";
 import { COURSE } from "../src/game/course.js";
 import { BATTLE, battleEnemyX } from "../src/game/battle.js";
 import { QUEST } from "../src/game/quests.js";
-import { TRAP, TRAPS, TRAP_DAMAGE, trapsForStage, popFrame, popDangerous, rollerX, trapHits, trapExtent, tramState, icicleState, gullState, pendulumState, steamState } from "../src/game/traps.js";
+import { TRAP, TRAPS, TRAP_DAMAGE, trapsForStage, popFrame, popDangerous, rollerX, trapHits, trapExtent, tramState, icicleState, gullState, pendulumState, steamState, sparkState } from "../src/game/traps.js";
 
 const checks = [];
 const check = (name, ok, extra = "") => { checks.push([name, Boolean(ok)]); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${ok ? "" : "  " + extra}`); };
@@ -51,7 +51,7 @@ check("every spikes/pop/roller is clearable with one jump", TRAPS.filter((t) => 
 
 // ---------- 2b. the "not ordinary" traps: logic ----------
 const kinds = new Set(TRAPS.map((t) => t.type));
-check("all 7 trap types are used somewhere", ["spikes", "pop", "roller", "icicle", "gull", "pendulum", "steam"].every((k) => kinds.has(k)), [...kinds].join());
+check("all 8 trap types are used somewhere", ["spikes", "pop", "roller", "icicle", "gull", "pendulum", "steam", "spark"].every((k) => kinds.has(k)), [...kinds].join());
 check("damage table has every type for every stage", COURSE.stages.every((s) => [...kinds].every((k) => Number.isFinite(TRAP_DAMAGE[s.id][k]))));
 
 const st = TRAPS.find((x) => x.type === "steam");
@@ -60,6 +60,13 @@ check("steam: idle at cycle start", steamState(st, st0 + 100).phase === "idle" &
 check("steam: warns before blast", steamState(st, st0 + 1600).phase === "warn" && !trapHits(st, st.x, stand, st0 + 1600));
 check("steam: dangerous during blast", trapHits(st, st.x, stand, st0 + 2200));
 check("steam: jump clears it", !trapHits(st, st.x, stand - 60, st0 + 2200));
+
+const sk = TRAPS.find((x) => x.type === "spark");
+const sk0 = 1_700_000_000_000 - (1_700_000_000_000 % 3000) - sk.phaseMs;
+check("spark: idle at cycle start", sparkState(sk, sk0 + 100).phase === "idle" && !trapHits(sk, sk.x, stand, sk0 + 100));
+check("spark: warns before zap", sparkState(sk, sk0 + 1500).phase === "warn" && !trapHits(sk, sk.x, stand, sk0 + 1500));
+check("spark: dangerous during zap", trapHits(sk, sk.x, stand, sk0 + 2200));
+check("spark: jump clears it", !trapHits(sk, sk.x, stand - 35, sk0 + 2200));
 
 const ic = TRAPS.find((x) => x.type === "icicle");
 const ic0 = 1_700_000_000_000 - (1_700_000_000_000 % 3000) - ic.phaseMs;
@@ -81,7 +88,7 @@ check("pendulum: standing under the low ball hurts, hopping over it is safe", ((
 // ---------- 2c. FAIRNESS: simulate a running / jumping player against every trap ----------
 // For EVERY arrival moment there must be a way through (run, or hop at some spot) after waiting at most
 // MAX_WAIT ms outside the trap. Hit boxes use the exact same functions the server uses.
-const SPEED = 185, JUMP = 430, GRAV = 900, STEP = 16, MAX_WAIT = { tram: 3200, pendulum: 1500, icicle: 1500, gull: 1500, steam: 1500 };
+const SPEED = 185, JUMP = 430, GRAV = 900, STEP = 16, MAX_WAIT = { tram: 3200, pendulum: 1500, icicle: 1500, gull: 1500, steam: 1500, spark: 1500 };
 function passes(trap, ext, t0, jx) {
   let x = ext[0] - 24, t = 0, y = stand, vy = 0, air = false;
   while (x < ext[1] + 24 && t < 12000) {
@@ -92,7 +99,7 @@ function passes(trap, ext, t0, jx) {
   }
   return true;
 }
-for (const type of ["icicle", "gull", "pendulum", "steam"]) {
+for (const type of ["icicle", "gull", "pendulum", "steam", "spark"]) {
   let worst = 0, stuck = 0, n = 0;
   for (const trap of TRAPS.filter((x) => x.type === type)) {
     const ext = trapExtent(trap);
@@ -171,6 +178,7 @@ async function integration() {
     check(`server: ${label} hurts (-${TRAP_DAMAGE[stageId][type]}) and sends trap:hit`, hits.length === n + 1 && hits.at(-1).type === type && before - hps.at(-1).hp === TRAP_DAMAGE[stageId][type], JSON.stringify(hits.at(-1)));
   }
   await serverHit("steam", 0, "munich", (t) => ({ at: (now) => ({ x: t.x, y: stand }) }), "steam");
+  await serverHit("spark", 0, "munich", (t) => ({ at: (now) => ({ x: t.x, y: stand }) }), "spark");
   await serverHit("pendulum", 1, "frankfurt", (t) => ({ at: (now) => { const s = pendulumState(t, now + 80); return { x: s.x, y: stand }; } }), "pendulum");
   await serverHit("icicle", 2, "berlin", (t) => ({ at: (now) => ({ x: t.x, y: stand }) }), "icicle");
   // Damage is higher now: use a fresh player (full HP) for the last checks so the HP budget never hides a result.
